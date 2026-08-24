@@ -124,6 +124,7 @@ under a `corr_` prefix, superseding the plain manual export for the same image.
 
 ```bash
 npm run report:active-learning   # §36 — which sketches most need attention next
+npm run report:dataset-quality   # read-only label/dataset checks — see docs/ml/dataset-quality-v1.1.md
 npm run eval                     # §21 — writes docs/eval/baseline-<version>.json
 ```
 

@@ -851,3 +851,179 @@ retraining. This is a data/ML-investigation phase, not a code-implementation
 phase — Claude Code should read the current `report:active-learning` output
 before writing anything.
 
+---
+
+## Phase 5 — Dataset Expansion and ML Quality Program
+
+**Date:** 2026-08-24
+**Goal:** Focus only on dataset quality (plan §5, execution plan Phase 5
+prompt). Run the active-learning report, inspect existing v1 dataset
+statistics, produce a dataset quality report (images per split, objects per
+class, underrepresented classes, weak model classes, hard-negative status,
+duplicate/leakage risk), and add/improve scripts for label validation and
+statistics. **Explicitly: do not retrain, do not change model weights.**
+**Status:** ✅ Complete.
+
+### Files added
+
+- `docs/ml/dataset-quality-v1.1.md` — the dataset quality report (plan §5.2
+  matrix, §5.4 checks, §5.5 hard-negative assessment, P0/P1/P2 priority
+  matrix, reproducibility commands, recommended next actions)
+- `scripts/src/dataset-quality-report.ts` — reusable, read-only CLI: per-
+  class/per-split instance tally, zero-area/non-finite/out-of-bounds box
+  checks, empty-label-file detection, cross-split filename-stem collision
+  check, and MD5 exact-duplicate-image detection. Exposed as
+  `npm run report:dataset-quality` (with `--json` for machine output,
+  matching `report:active-learning`'s existing convention).
+
+### Files changed
+
+- `package.json`, `scripts/package.json` — add the `report:dataset-quality`
+  script
+- `README.md` — document the new command alongside the existing
+  `report:active-learning` / `eval` entries
+
+### Files removed
+
+None.
+
+### What this phase deliberately did NOT do
+
+Per the plan's explicit Phase 5 instruction ("Do not retrain yet. Do not
+change model weights yet."):
+
+- No `ml/training/train_v1.py` run
+- No new `ml/models/ui-detector/*` version directory
+- `ml/models/ui-detector/v1.0.0/weights.pt` untouched
+- `ml/dataset/` was only READ — every script run used `--dry-run` where
+  applicable, and the new `dataset-quality-report.ts` never writes anything
+  (verified: `git status` after this phase shows zero changes under
+  `ml/dataset/` or `apps/api/data/`)
+- Did not build the content-hash deduplication tooling the report
+  recommends for the exporter — flagging that gap accurately was this
+  phase's job; fixing `export-yolo-dataset.ts` is out of scope here (see
+  the report's §8 "what this report does NOT do")
+
+### Key findings (full detail in `docs/ml/dataset-quality-v1.1.md`)
+
+1. **The on-disk full-taxonomy corpus is 162 images / 2,917 label
+   instances** across train/val/test — 6 more images than the frozen
+   `v1-training-scope.md` subset count (156), because that subset drops
+   images left with zero boxes after filtering to the 16 trained classes.
+2. **Label geometry is clean**: 0 zero-area, 0 non-finite, 0 out-of-bounds
+   boxes anywhere in 2,917 instances. All 41 classes have a documented
+   definition in `docs/ml/annotation-guide.md` — verified by checking every
+   class name is backtick-quoted there.
+3. **New finding, not previously documented anywhere in the repo: 6 exact
+   byte-identical duplicate images exist in the corpus** (5 duplicate
+   groups via MD5), accounting for ≈7.5% of all label instances (218 of
+   2,917) being counted from content that already appears elsewhere.
+   Traced to the same handful of in-house sketches being re-uploaded across
+   multiple test/demo projects during development, each getting a fresh
+   asset UUID that the exporter treats as a distinct image. **All 6 stay
+   within `train`** — confirmed no duplicate crosses into `val`/`test`, so
+   there is no train/test leakage from this, but it does inflate perceived
+   per-class coverage without adding real diversity.
+4. **4 classes have zero examples anywhere**: `avatar`, `list_item`, `map`,
+   `newsletter`. 25 of 41 classes remain unevaluable (0 in val or test) —
+   unchanged from what `v1-training-scope.md` already documented, now
+   independently reconfirmed against the live corpus rather than trusted
+   from an earlier snapshot.
+5. **4 empty label files** exist in `train`, and cross-referencing against
+   the live store's active-learning report shows these read as simply
+   un-annotated uploads rather than deliberate §9.5 background negatives —
+   flagged for manual confirmation before being trusted as training signal.
+6. **No genuine hard-negative examples** (off-page handwritten notes,
+   arrows, measurements) currently exist in the corpus, despite the
+   annotation guide and runtime boundary-filtering system both already
+   having the correct policy/mechanism. This is a data-collection gap, not
+   a policy or tooling gap.
+7. **P0/P1/P2 priority matrix** built from real AP@0.5 numbers (not
+   estimated): P0 = `select`, `radio_button`, `carousel` (already-known-weak,
+   per the model's own registry README) plus `card` and `page` (currently
+   **untrained** — 0 in val/test — despite driving core product features:
+   card-grid layout inference and page-boundary detection respectively).
+
+### Tests
+
+No new Vitest suite — `dataset-quality-report.ts` is a build-time CLI tool
+in the `scripts` workspace, matching `active-learning-report.ts` and
+`export-yolo-dataset.ts`'s existing precedent of no dedicated test file
+(none of the three has one; correctness is demonstrated by running them
+against the real corpus and manually verifying the output, which is exactly
+what this phase did — see "Verification" below).
+
+| Command | Result | Delta from Phase 4 |
+|---|---|---|
+| `npm run test` (Vitest) | 62 unique tests passing (124 reported, same known dist duplication) | unchanged |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean (new script typechecks under the `scripts` workspace) | unchanged |
+| `npm run build` | success (96 modules, Vite 677 ms) | unchanged |
+
+### Verification
+
+`scripts/src/dataset-quality-report.ts`'s output was cross-checked against
+an independent ad-hoc analysis (inline Node scripts, not committed) run
+before the tool was written — both approaches produced **identical** numbers
+for every metric: 162 images, 2,917 labels, the same per-class/per-split
+counts, the same 4 empty label files, the same 5 duplicate groups with the
+same 6 extra files, zero cross-split stem collisions. This cross-check is
+the evidence that the new script is correct, not just that it runs.
+
+### Manual verification
+
+N/A — this phase produces a document and a read-only reporting tool, not a
+runtime feature. `npm run report:dataset-quality` was executed directly and
+its output inspected (see above).
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+None.
+
+### ML changes
+
+- **Documentation only**: `docs/ml/dataset-quality-v1.1.md` is new. No
+  dataset files, model weights, or training configuration changed.
+
+### Known limitations / open decisions
+
+1. **Hard-negative assessment is necessarily incomplete** — detecting
+   whether an image contains an unlabeled off-page note requires looking at
+   the actual image content, which this phase's tooling does not do
+   (label-file parsing alone cannot distinguish "correctly left unlabeled
+   hard negative" from "just wasn't drawn there"). The report is explicit
+   about this limitation rather than fabricating a metric.
+2. **The duplicate-image finding is not yet acted on.** The report
+   recommends either manual cleanup of the redundant store projects/assets
+   or an exporter-side content-hash dedup pass; neither was implemented
+   this phase, by design (§5's scope is reporting).
+3. **`npm run import:external` was not re-run** — it requires a network
+   download from Roboflow Universe, which was unnecessary since the
+   already-imported files are on disk and directly inspectable. This means
+   the report is current as of what's already merged, not a check of
+   whether new upstream data exists at the source.
+4. **No automated CI gate** on any of these checks yet (Phase 15's job) —
+   `report:dataset-quality` exists as a tool a human or a future CI job can
+   run, not as an enforced pre-commit/pre-export check.
+
+### Next phase
+
+Per the execution plan's phase order and this report's own §9
+recommendations, the next item is **Phase 6 — train YOLO release v1.1** —
+but per the plan's explicit gate, that cannot start until:
+(1) the duplicate-image and empty-label issues from this report are
+resolved, and (2) a model-architecture decision document
+(`docs/ml/model-decision.md` — YOLOv8-nano vs. literal YOLOv5, per plan
+§9/Phase 6) is written FIRST, before any training code changes. Recommend
+confirming with the user which of the two — data cleanup or the
+architecture decision doc — to do first, since Phase 6 explicitly forbids
+silently choosing an architecture.
+

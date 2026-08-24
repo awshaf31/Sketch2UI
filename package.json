@@ -16,6 +16,7 @@
     "import:external": "tsx scripts/src/import-external-datasets.ts",
     "build:v1": "tsx scripts/src/build-v1-subset.ts",
     "report:active-learning": "tsx scripts/src/active-learning-report.ts",
+    "report:dataset-quality": "tsx scripts/src/dataset-quality-report.ts",
     "eval": "tsx scripts/src/evaluate.ts",
     "test": "npm run test -w packages/shared-types",
     "test:py": "cd services/cv-worker && .venv/bin/python -m pytest -q"

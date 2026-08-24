@@ -9,6 +9,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build:v1": "tsx src/build-v1-subset.ts",
     "report:active-learning": "tsx src/active-learning-report.ts",
+    "report:dataset-quality": "tsx src/dataset-quality-report.ts",
     "eval": "tsx src/evaluate.ts"
   },
   "dependencies": {
