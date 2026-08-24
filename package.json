@@ -18,8 +18,9 @@
     "report:active-learning": "tsx scripts/src/active-learning-report.ts",
     "report:dataset-quality": "tsx scripts/src/dataset-quality-report.ts",
     "eval": "tsx scripts/src/evaluate.ts",
-    "test": "npm run test -w packages/shared-types",
-    "test:py": "cd services/cv-worker && .venv/bin/python -m pytest -q"
+    "test": "npm run test -w packages/shared-types && npm run test -w apps/api",
+    "test:py": "cd services/cv-worker && .venv/bin/python -m pytest -q",
+    "check:db-state": "tsx scripts/src/check-db-state-usage.ts"
   },
   "devDependencies": {
     "tsx": "^4.16.2",

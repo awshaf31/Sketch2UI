@@ -1395,3 +1395,182 @@ local Postgres server.
 
 
 
+
+---
+
+## Phase 8 (part 2) — Repository Boundary + Projects Domain Migrated
+
+**Date:** 2026-08-24
+**Goal:** Formally amend the Phase 8 architecture, introduce the repository/service
+boundary the plan assumed already existed, and migrate the first domain end-to-end.
+**Status:** ✅ Complete for this increment. 1 of 13 domains migrated, with the
+architecture and parity harness in place for the remaining 12.
+
+### Architecture amendment
+
+Full document: [phase-8-architecture-amendment.md](phase-8-architecture-amendment.md).
+
+> Phase 8 changes from "swap persistence implementation without route changes" to
+> "introduce a real repository/service boundary, then convert persistence callers
+> module-by-module while preserving route contracts and user-visible behavior."
+
+The plan's §8.1 critical rule assumed `jsonStore.ts` exposed a swappable functional
+abstraction. It does not — it exposes `db.state`, a synchronous mutable object graph
+that 19 files reach into directly (100 occurrences over 92 lines, 32 `db.save()`
+calls, 2 async handlers in the whole API). Prisma has no synchronous API, so the
+substitution the plan describes is impossible. Write-behind caching and synchronous
+DB wrappers were both considered and rejected in the amendment (§4, §5) — the first
+discards exactly the transactional guarantees Phase 8 exists to provide; the second
+is unsafe or destroys throughput.
+
+**Six route families were found to depend on hidden synchronous mutation** (amendment
+§2.3) — including the detection model→manual flip, the most behaviour-critical
+mutation in the app. These are enumerated because they fail *silently* under Prisma
+(mutating a detached row persists nothing) rather than loudly.
+
+### Files added
+
+- `docs/execution/phase-8-architecture-amendment.md`
+- `apps/api/src/repositories/types.ts` — 13 domain-shaped contracts
+- `apps/api/src/repositories/index.ts` — factory + `PERSISTENCE_DRIVER` switch
+- `apps/api/src/repositories/json/project.repository.ts`
+- `apps/api/src/repositories/prisma/client.ts`, `prisma/project.repository.ts`
+- `apps/api/src/repositories/__tests__/project.contract.test.ts` (+ `.prisma.test.ts`)
+- `apps/api/src/middleware/asyncHandler.ts`
+- `apps/api/vitest.config.ts`, `apps/api/vitest.setup.ts`
+- `scripts/src/check-db-state-usage.ts`
+
+### Files changed
+
+- `apps/api/src/modules/projects/projects.routes.ts` — **migrated**
+- `apps/api/src/config/env.ts` — `persistenceDriver`
+- `apps/api/prisma/schema.prisma` — removed the custom generator `output` (see below)
+- `apps/api/package.json`, `scripts/package.json`, `package.json`
+
+### Files removed
+
+None.
+
+### Counts
+
+| Metric | Before | After |
+|---|---:|---:|
+| `db.state` in unmigrated app modules (code only) | 82 | **78** |
+| `db.save()` in unmigrated app modules (code only) | 29 | **26** |
+| Migrated domains | 0 | **1** (Projects) |
+| App modules importing `jsonStore` | 19 | **18** |
+| Files importing `@prisma/client` | 1 | **3** (all inside `repositories/prisma/` + the importer) |
+
+The earlier "92 / 32" figures were *line* counts; occurrences are 100 / 32. The table
+above counts occurrences in application code with comments stripped and persistence
+infrastructure excluded, which is what the CI guard enforces.
+
+### Repository interfaces
+
+`ProjectRepository`, `AssetRepository`, `DetectionRepository`, `BoundaryRepository`,
+`CodeVersionRepository`, `Style/Content/Geometry/StructureOverrideRepository` (via a
+shared `OverrideRepository<T>`), `JobRepository`, `TrainingRepository`,
+`ExportRepository`, `CorrectionRepository`.
+
+All async, all domain-shaped rather than generic CRUD — each method corresponds to an
+operation the code actually performs (e.g. `clearModelDetections`,
+`saveRespectingManual`, `resolveActive`). Behaviour that must not be lost is pinned to
+the contract, not to a route: `DetectionRepository.update` owns the model→manual flip
+so no future caller can bypass it.
+
+### Implemented this increment
+
+- JSON: `JsonProjectRepository`
+- Prisma: `PrismaProjectRepository`
+- Migrated: `modules/projects/projects.routes.ts`
+
+### Tests
+
+```
+npm run test              packages/shared-types  6 files, 124 passed
+                          apps/api               2 files, 44 passed | 1 skipped
+npm run test:py           19 passed
+npm run build             success (96 modules, Vite 655 ms)
+npm run typecheck         clean
+npm run check:db-state    OK
+```
+
+The 1 skip is the Prisma contract arm, which reports its reason rather than passing
+vacuously. Both adapters run the **same** suite via `runProjectRepositoryContract`.
+
+**Test data safety:** `db.reset()` writes to `env.storeFile`, which defaults to the
+real store (15 projects / 393 detections). `vitest.setup.ts` redirects `STORE_FILE` to
+a temp file **and asserts the redirect took effect**, refusing to run otherwise. Store
+re-verified untouched after every run.
+
+### Runtime verification (live API, JSON driver)
+
+Route contracts on the migrated module — all pass: POST→201 with identical body shape,
+GET→200, GET missing→404, PATCH partial (other fields preserved), PATCH missing→404,
+POST without name→400, DELETE→204, DELETE again→404.
+
+**Mixed-mode coexistence proven:** unmigrated modules (`/style-overrides`,
+`/corrections`, `/code-versions`) all resolve a project created through the
+repository — confirming both paths share one source of truth, which is what makes the
+incremental migration safe.
+
+**Core pipeline intact** on a real 86-detection project: codegen (7,036 bytes HTML),
+version list, version activation + persistence, export (1.8 MB ZIP).
+
+Smoke testing added 1 code version and 1 export to real data; both were reverted and
+the store restored to exactly 15/393/7/2.
+
+### Two real bugs found by running things
+
+1. **Prisma client generated to the wrong location.** The custom `output` pointed at
+   `apps/api/node_modules/.prisma/client`, but `@prisma/client` hoists to the workspace
+   root and reads root `node_modules/.prisma/client` — a *stub*. Every query was typed
+   `any`, surfacing as four implicit-any errors that looked unrelated to Prisma.
+   Fixed at the root cause (removed the custom `output`) rather than by annotating
+   around it; the structural `PrismaProjectRow` workaround was then deleted in favour
+   of the real generated types.
+2. **The CI guard false-positived on itself.** It matched `db.state` inside the
+   migrated module's own comments explaining what it no longer does. Fixed by
+   stripping comments before counting.
+
+### Postgres live verification
+
+**Not performed.** Docker is not installed, and the only running Postgres (14.19)
+serves an unrelated `good_morning_db` with no `sketch2ui` role. Per the instruction,
+that instance was **not** touched — no roles created, no credentials altered, nothing
+dropped.
+
+Options, in the instruction's order of preference: (1) start a dedicated cluster via
+`initdb` on a separate port/data directory owned by this project; (2) a separate
+Postgres installation; (3) Docker if installed; (4) a remote dev database with
+explicit authorization. Option 1 is the cheapest here and needs no new software —
+but it creates a new long-running local service, so it is left for the user to
+authorize.
+
+### Known limitations
+
+1. **12 of 13 domains still unmigrated** and still on `db.state`.
+2. **The Prisma adapter has never executed against a database.** It typechecks and
+   satisfies the contract by construction, but "compiles" is not "works" — the
+   contract arm that would prove it is skipped.
+3. **`PERSISTENCE_DRIVER=postgres` is not yet usable**: only Projects has a Prisma
+   adapter, so the rest of the app would still read JSON, splitting the source of
+   truth. It defaults to `json` for exactly this reason.
+4. **One deliberate response-shape narrowing:** `GET /api/projects/:id` no longer
+   returns the four override maps. Verified safe first — `apps/web` reads overrides
+   only from their dedicated endpoints, and exactly one stored project carried any
+   override key. They are separate tables in the Prisma schema and separate
+   repositories in the contract.
+5. **`failOrphanedJobs()` is still synchronous** in `server.ts`'s `app.listen`
+   callback. It must handle a promise when `JobRepository` is migrated, or orphan
+   reaping silently stops — flagged in the contract's doc comment.
+
+### Next action
+
+**Migrate the Assets domain** (`AssetRepository` + `assets.routes.ts`, 3 `db.state` /
+1 `db.save()`) — the smallest remaining domain, which exercises the
+project-guard-via-repository pattern that the other 11 domains all need, at minimal
+risk.
+
+Separately, and independently: authorize a dedicated local Postgres cluster so the
+Prisma contract arm can stop being skipped.

@@ -19,7 +19,12 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
+  // No custom `output`. This is an npm-workspaces repo, so `@prisma/client` hoists to
+  // the ROOT node_modules and resolves its generated types from the root
+  // node_modules/.prisma/client. Pointing output at apps/api/node_modules/.prisma/client
+  // put the real types somewhere the hoisted package never looks, leaving `PrismaClient`
+  // typed as the unpopulated stub — every query returned `any`, which surfaced as
+  // implicit-any errors rather than as anything obviously Prisma-related.
 }
 
 datasource db {

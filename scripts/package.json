@@ -10,7 +10,8 @@
     "build:v1": "tsx src/build-v1-subset.ts",
     "report:active-learning": "tsx src/active-learning-report.ts",
     "report:dataset-quality": "tsx src/dataset-quality-report.ts",
-    "eval": "tsx src/evaluate.ts"
+    "eval": "tsx src/evaluate.ts",
+    "check:db-state": "tsx src/check-db-state-usage.ts"
   },
   "dependencies": {
     "@sketch2ui/shared-types": "*",

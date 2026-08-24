@@ -21,4 +21,16 @@ export const env = {
   // Inference on CPU runs ~2s for a single sketch; allow generous headroom before
   // declaring the worker unreachable.
   cvWorkerTimeoutMs: Number(process.env.CV_WORKER_TIMEOUT_MS ?? 120_000),
+  /**
+   * Which persistence adapter the repository layer uses — Phase 8 amendment §8.
+   *
+   * Defaults to "json" DELIBERATELY: the migration is incremental, and most modules
+   * still read `db.state` directly. Defaulting to "postgres" while unconverted modules
+   * bypass the repositories would split the source of truth in two, which is the one
+   * failure mode the amendment is most concerned with.
+   *
+   * This switch exists for migration and parity testing only. The end state is
+   * "postgres" for every module; see the amendment's rollback section.
+   */
+  persistenceDriver: (process.env.PERSISTENCE_DRIVER ?? "json") as "json" | "postgres",
 };
