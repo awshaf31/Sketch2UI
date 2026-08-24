@@ -4,11 +4,11 @@ import { Router } from "express";
 import multer from "multer";
 import imageSize from "image-size";
 import { v4 as uuid } from "uuid";
-import type { ProjectAsset } from "@sketch2ui/shared-types";
 import { env } from "../../config/env.js";
-import { db } from "../../db/jsonStore.js";
 import type { ProjectParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
+import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { getRepositories } from "../../repositories/index.js";
 
 const ALLOWED_MIME: Record<string, string> = {
   "image/png": ".png",
@@ -54,8 +54,9 @@ export const assetsRouter = Router({ mergeParams: true });
 
 // POST /api/projects/:id/assets — plan section 18.2 & 19.1: validate upload, never trust the
 // original filename, generate a server-side storage key, and decode dimensions before trusting them.
-assetsRouter.post<ProjectParams>("/", upload.single("file"), (req, res) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
+assetsRouter.post<ProjectParams>("/", upload.single("file"), asyncHandler(async (req, res) => {
+  const repos = getRepositories();
+  const project = await repos.projects.findById(req.params.id);
   if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
   const file = req.file;
@@ -78,26 +79,29 @@ assetsRouter.post<ProjectParams>("/", upload.single("file"), (req, res) => {
 
   const ext = ALLOWED_MIME[file.mimetype];
   const storageKey = `${uuid()}${ext}`;
+  // The file is written before the row is created, so a failed insert leaves an orphan
+  // file rather than a row pointing at nothing. That is the same ordering the previous
+  // implementation used, and it is the right way round: a stray byte blob is harmless,
+  // a dangling storageKey breaks every consumer that tries to read it.
   fs.mkdirSync(env.uploadsDir, { recursive: true });
   fs.writeFileSync(path.join(env.uploadsDir, storageKey), file.buffer);
 
-  const asset: ProjectAsset = {
-    id: uuid(),
+  const asset = await repos.assets.create({
     projectId: project.id,
     storageKey,
     mimeType: file.mimetype,
     width: dimensions.width,
     height: dimensions.height,
     fileSize: file.size,
-    createdAt: new Date().toISOString(),
-  };
+  });
 
-  db.state.assets.push(asset);
-  db.save();
   res.status(201).json(asset);
-});
+}));
 
 // GET /api/projects/:id/assets
-assetsRouter.get<ProjectParams>("/", (req, res) => {
-  res.json(db.state.assets.filter((a) => a.projectId === req.params.id));
-});
+//
+// Deliberately NOT guarded by a project lookup: the original filtered the array and
+// returned [] for an unknown project rather than 404, and clients depend on that.
+assetsRouter.get<ProjectParams>("/", asyncHandler(async (req, res) => {
+  res.json(await getRepositories().assets.listByProject(req.params.id));
+}));

@@ -28,7 +28,10 @@ const API_SRC = path.resolve(__dirname, "../../apps/api/src");
  * Modules converted to the repository layer. Each must stay free of direct store
  * access. Add to this list as part of the commit that migrates the module.
  */
-const MIGRATED_MODULES = ["modules/projects/projects.routes.ts"];
+const MIGRATED_MODULES = [
+  "modules/projects/projects.routes.ts",
+  "modules/assets/assets.routes.ts",
+];
 
 /**
  * Files allowed to touch the store regardless: the store itself, its adapters, and the
@@ -41,8 +44,8 @@ const INFRASTRUCTURE = [
 ];
 
 /** Occurrences remaining in UNMIGRATED application modules. Ratchet downward only. */
-const BASELINE_STATE = 78;
-const BASELINE_SAVE = 26;
+const BASELINE_STATE = 75;
+const BASELINE_SAVE = 25;
 
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

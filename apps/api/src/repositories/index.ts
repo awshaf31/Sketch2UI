@@ -16,24 +16,33 @@
  */
 
 import { env } from "../config/env.js";
-import type { ProjectRepository } from "./types.js";
+import type { AssetRepository, ProjectRepository } from "./types.js";
 import { JsonProjectRepository } from "./json/project.repository.js";
+import { JsonAssetRepository } from "./json/asset.repository.js";
 import { PrismaProjectRepository } from "./prisma/project.repository.js";
+import { PrismaAssetRepository } from "./prisma/asset.repository.js";
 
 export * from "./types.js";
 
 /** Domains migrated to the repository layer so far. Grows per Phase 8 increment. */
 export interface MigratedRepositories {
   projects: ProjectRepository;
+  assets: AssetRepository;
 }
 
 let cached: MigratedRepositories | undefined;
 
 function build(): MigratedRepositories {
   if (env.persistenceDriver === "postgres") {
-    return { projects: new PrismaProjectRepository() };
+    return {
+      projects: new PrismaProjectRepository(),
+      assets: new PrismaAssetRepository(),
+    };
   }
-  return { projects: new JsonProjectRepository() };
+  return {
+    projects: new JsonProjectRepository(),
+    assets: new JsonAssetRepository(),
+  };
 }
 
 /**

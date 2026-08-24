@@ -1,5 +1,6 @@
 import { describe, it } from "vitest";
 import { runProjectRepositoryContract } from "./project.contract.js";
+import { databaseReachable } from "./prisma-available.js";
 
 /**
  * Prisma arm of the ProjectRepository contract.
@@ -8,42 +9,23 @@ import { runProjectRepositoryContract } from "./project.contract.js";
  * demonstrated by both adapters passing one suite, not by two suites that happen to
  * look similar.
  *
- * SKIPS when no database is reachable, and says why. It does not silently pass: a
- * skipped suite is visibly skipped in the reporter, whereas a suite that quietly
- * asserted nothing would look like evidence it is not.
+ * SKIPS when no database is reachable, and says so. A skipped suite is visibly skipped
+ * in the reporter, whereas one that quietly asserted nothing would look like evidence
+ * it is not.
+ *
+ * vitest.setup.ts rewrites DATABASE_URL to a *_test database and refuses to run
+ * otherwise, so the destructive reset below cannot reach development data.
  *
  * To run this arm:
- *   1. Provide a dedicated Postgres (see the Phase 8 report — do NOT reuse the
- *      unrelated instance already running on this machine).
+ *   1. Provide a dedicated Postgres and a <db>_test database.
  *   2. DATABASE_URL=postgresql://... npm run db:migrate -w apps/api
- *   3. DATABASE_URL=postgresql://... npm run test -w apps/api
+ *   3. npm run test -w apps/api
  */
-
-const DATABASE_URL = process.env.DATABASE_URL;
-
-/**
- * Cheap reachability probe. Deliberately does NOT run migrations or create anything —
- * it only answers "is there a database I am allowed to talk to". Anything else would
- * risk touching a server this project does not own.
- */
-async function databaseReachable(): Promise<boolean> {
-  if (!DATABASE_URL) return false;
-  try {
-    const { getPrismaClient } = await import("../prisma/client.js");
-    const prisma = getPrismaClient();
-    await prisma.$queryRaw`SELECT 1`;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 const reachable = await databaseReachable();
 
 if (reachable) {
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
-
   const { afterAll } = await import("vitest");
 
   runProjectRepositoryContract(
@@ -57,17 +39,12 @@ if (reachable) {
 
   // beforeEach clears BEFORE each test, so the final test's rows would otherwise be
   // left behind in a shared database — which then looks like real data to anything
-  // else pointed at it (the JSON importer counted one such row as pre-existing).
+  // else pointed at it (the JSON importer once counted such a row as pre-existing).
   afterAll(async () => {
     await getPrismaClient().project.deleteMany({});
   });
 } else {
   describe("ProjectRepository contract — Prisma adapter", () => {
-    it.skip(
-      `skipped: no reachable database (DATABASE_URL ${
-        DATABASE_URL ? "is set but unreachable" : "is not set"
-      })`,
-      () => {}
-    );
+    it.skip("skipped: no reachable database (see DATABASE_URL)", () => {});
   });
 }

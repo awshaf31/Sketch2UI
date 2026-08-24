@@ -1710,3 +1710,97 @@ before and after every operation. The importer is one-way and read-only on JSON.
 
 **Migrate the Assets domain** — unchanged recommendation, now with a real database
 behind the contract so each subsequent domain gets both adapters verified as it lands.
+
+---
+
+## Phase 8 (part 4) — Assets domain migrated
+
+**Date:** 2026-08-24
+**Goal:** Second domain through the repository boundary, with both adapters verified
+against real backends.
+**Status:** ✅ Complete. **2 of 13 domains migrated.**
+
+### Files added
+
+- `apps/api/src/repositories/json/asset.repository.ts`
+- `apps/api/src/repositories/prisma/asset.repository.ts`
+- `apps/api/src/repositories/__tests__/asset.contract.ts` (+ `.json.test.ts`, `.prisma.test.ts`)
+- `apps/api/src/repositories/__tests__/prisma-available.ts` — shared reachability probe
+
+### Files changed
+
+- `apps/api/src/modules/assets/assets.routes.ts` — **migrated**
+- `apps/api/src/repositories/index.ts` — `assets` wired into the factory
+- `apps/api/src/repositories/__tests__/project.contract.prisma.test.ts` — uses the
+  shared probe instead of its own inline copy
+- `apps/api/vitest.config.ts` — `fileParallelism: false` (see below)
+- `scripts/src/check-db-state-usage.ts` — Assets registered, baselines re-ratcheted
+
+### Counts
+
+| Metric | Part 3 | Now |
+|---|---:|---:|
+| Migrated domains | 1 | **2** |
+| `db.state` in unmigrated app code | 78 | **75** |
+| `db.save()` in unmigrated app code | 26 | **25** |
+
+### Contract preserved — including the easy-to-miss part
+
+`GET /api/projects/:id/assets` deliberately does **not** 404 on an unknown project;
+the original filtered an array and returned `[]`. That is pinned by a contract test
+and re-verified live, because "add the project guard for consistency" is exactly the
+sort of tidy-up that would silently break a client.
+
+Ordering is also contractual: `listByProject` returns insertion order, since
+`exports.routes.ts` takes the last asset as a project's source sketch. The Prisma
+adapter reproduces it with `orderBy createdAt asc`. Documented parity edge: two assets
+created in the same millisecond have undefined relative order in Postgres, so `id` is
+a tiebreaker for determinism — noted rather than claimed to be bit-identical.
+
+### A real bug the second suite exposed
+
+Adding a second database-backed suite immediately broke both: **12 failures,
+`Foreign key constraint violated: project_assets_projectId_fkey`.**
+
+Cause was test-harness interference, not adapter code. Vitest runs test *files* in
+parallel by default; both Prisma arms share one test database and each calls
+`project.deleteMany({})` (which cascades) in `beforeEach`. The Project suite's reset
+was deleting the parent project the Asset suite was mid-way through using.
+
+Fixed with `fileParallelism: false` — a shared external resource cannot be safely
+parallelised without per-worker isolation. The principled alternative (a schema per
+worker) is noted in the config as worth doing only if wall-clock time ever matters;
+the whole run is currently under a second.
+
+Symptom worth remembering: the arms reported *asymmetric* test counts (15 vs 21, 22 vs
+27) before the fix. Identical suites producing different counts is itself the tell.
+
+### Tests
+
+```
+Project contract   22 JSON + 22 Prisma
+Asset contract     15 JSON + 15 Prisma
+apps/api           74 passed (4 files)
+shared-types       124 passed
+pytest             19 passed
+typecheck/build    clean
+check:db-state     OK (2 migrated, 75/25 remaining)
+```
+
+### Runtime verification (live API)
+
+- `GET` empty → `200 []`; `GET` for an unknown project → `200 []`, **not** 404 ✅
+- `POST` real 1023×1537 PNG → `201`, dimensions decoded, mime correct ✅
+- no file → `400`; unknown project → `404` ✅
+- unmigrated `/page-boundary` resolves a repository-created asset ✅ (mixed mode intact)
+- `DELETE` project cascaded away both the row **and** the uploaded file — smoke test
+  left zero residue, verified by diffing against a pre-test snapshot
+
+JSON store and dev Postgres both unchanged throughout (15 / 14 / 393).
+
+### Next action
+
+**Migrate the Detections domain** — the highest-risk remaining one. Its repository must
+own the model→manual flip, `originalClassName` capture and `clearModelDetections`
+idempotency, all of which are currently route-level logic that a future caller could
+bypass.
