@@ -1189,4 +1189,209 @@ now met. The realistic options are:
 Recommend **(b)** to keep momentum, returning to Phase 6 when labeled data
 exists.
 
+---
+
+## Phase 8 (part 1) — Prisma Schema, Migration SQL, and JSON→Postgres Importer
+
+**Date:** 2026-08-24
+**Goal:** Begin the PostgreSQL + Prisma migration (plan §8, Appendix E):
+schema from the real domain models, migration SQL, and the JSON→Postgres
+import tool with parity/validation.
+**Status:** ✅ Part 1 complete (schema + SQL + importer, all verified).
+⛔ **Part 2 (runtime switchover) is BLOCKED on a decision — see the
+discrepancy below.**
+
+### ⚠ Discrepancy: the plan's central Phase 8 premise does not hold
+
+The plan states, as its *critical rule* for this phase:
+
+> **8.1 Critical rule** — "Do not rewrite route behavior. The current JSON
+> store deliberately exposes module-level functions so it can be swapped.
+> Use that abstraction."
+
+`jsonStore.ts`'s own header comment makes the same claim: *"Swap for
+Prisma/Postgres in Phase 2+ without touching module/route code, since routes
+only depend on the exported functions below."*
+
+**Measured against the actual source, that is not true.** The store exports
+`db.state` — a synchronous, in-memory, **mutable object graph** — and routes
+reach directly into it:
+
+```ts
+const project = db.state.projects.find((p) => p.id === req.params.id);
+project.styleOverrides[detection.id] = cleaned;   // in-place mutation
+db.save();                                        // rewrite whole file
+```
+
+Counted across `apps/api/src`:
+
+| Measurement | Count |
+|---|---:|
+| Direct `db.state` accesses | **92** |
+| Files touching `db.state` | **19** |
+| `db.save()` call sites | **32** |
+| `async` route handlers | **2** |
+
+Prisma's API is **asynchronous** — every query returns a Promise. There is no
+way to serve `db.state.projects.find(...)` from Postgres synchronously.
+Therefore the "swap the implementation, leave routes untouched" path the plan
+describes **cannot be executed as written**. The comment in `jsonStore.ts`
+describes an intent the code never actually honoured: routes depend on the
+mutable state object, not on functions.
+
+Per operating Rule 7 and Rule 12 ("if the repository differs from the plan,
+stop and reconcile before implementing dependent phases"), this is reported
+rather than worked around, and Part 2 is deliberately **not** started.
+
+Alternatives considered and rejected:
+
+- **Write-behind cache** (load all rows into memory at boot, mutate
+  synchronously, flush to Postgres in the background). Preserves route code,
+  but throws away transactional consistency and concurrent-write safety —
+  precisely the two properties §8.3/§8.4 want Postgres *for* — while adding a
+  network hop. Strictly worse than the JSON store it replaces.
+- **A synchronous Postgres driver.** No mainstream Node driver is
+  synchronous; the exotic worker-thread + `Atomics.wait` approaches are
+  fragile and would be a far larger risk than the async conversion itself.
+
+**Conclusion: the async conversion of all 19 files is unavoidable.** It should
+be done incrementally (repository interface first, then one module at a time,
+parity-tested per module) rather than as one large rewrite — but it *is* a
+rewrite of route plumbing, and the plan should be updated to say so.
+
+### Files added
+
+- `apps/api/prisma/schema.prisma` — 13 models, 12 enums, derived from the
+  real `packages/shared-types` definitions
+- `apps/api/prisma/migrations/20260824000000_init/migration.sql` — 396 lines
+  of generated DDL
+- `apps/api/prisma/migrations/migration_lock.toml`
+- `apps/api/src/db/migrate-json-to-postgres.ts` — the importer, with a
+  database-free `--dry-run` validator
+
+### Files changed
+
+- `apps/api/package.json` — `prisma` + `@prisma/client` (both v5.22), plus
+  `db:generate` / `db:migrate` / `db:migrate-json` scripts
+- `package-lock.json`
+
+### Schema design decisions
+
+Three judgement calls, each documented at its definition in the schema:
+
+1. **The four inspector override maps are NORMALIZED into their own tables.**
+   In JSON they are `Record<detectionId, X>` maps on `Project`. The plan's
+   §8.4 explicitly requires preventing *"override → missing detection"* — as
+   map keys that is unenforceable; as rows with a foreign key it is a database
+   guarantee, and deleting a detection now cleans up its overrides instead of
+   leaving the orphaned keys the JSON store accumulates today.
+   `StructureOverride.parentDetectionId` additionally gets a self-referencing
+   FK to `Detection`, turning `validateStructureOverride`'s "parent must
+   exist" app-level check into a structural one.
+2. **`bbox` is FLATTENED into four `Float` columns** rather than kept as JSON.
+   These are the most-queried values in the system (boundary filtering,
+   layout containment, crop generation) and flat columns can carry real CHECK
+   constraints on the normalized `[0,1]` invariant. JSON would preclude both.
+3. **Genuinely opaque payloads stay `Json`** — `TrainingSample.boxes`,
+   `Job.pageBoundary`, `PageBoundaryRecord.polygon`, `CodeVersion.metadata`,
+   `StyleOverride.style`. Each is written and read as a whole and never
+   queried per-field. `boxes` in particular is an immutable human-signed-off
+   snapshot; normalizing it would invite exactly the per-row edits the
+   snapshot exists to prevent.
+
+Two smaller ones worth noting:
+
+- **`null` vs `undefined` for parent ids.** `parentDetectionId: null` means
+  "root" while an absent field means "keep auto-inferred" — a distinction one
+  nullable Postgres column cannot express. Companion `*Set` booleans carry it.
+- **`Project.activeCodeVersionId` is a plain indexed column, not a relation.**
+  `CodeVersion` already points at `Project`; adding the reverse relation
+  creates a cycle requiring one side to exist before the other can reference
+  it. Matches how the JSON store treats it.
+
+Constraints the JSON store never enforced and the schema now does:
+`@@unique([projectId, versionNumber])` on code versions and exports,
+`@@unique([assetId])` on page boundaries and training samples, and
+`@@unique([detectionId])` on each override table.
+
+### Tests
+
+| Command | Result | Delta |
+|---|---|---|
+| `npm run test` (Vitest) | 62 unique passing (124 reported, known dist duplication) | unchanged |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean | unchanged |
+| `npm run build` | success (96 modules, Vite 668 ms) | unchanged |
+
+### Verification — what was actually proven, without a database
+
+The Postgres instance on this machine belongs to an unrelated project
+(`good_morning_db`), the `sketch2ui` role does not exist, and **Docker is not
+installed**, so `docker-compose.yml` cannot be used here. No database was
+touched. Everything below was verified offline instead:
+
+| Check | Method | Result |
+|---|---|---|
+| Schema is valid | `prisma validate` | ✅ "The schema … is valid" |
+| Schema produces real DDL | `prisma migrate diff --from-empty --script` | ✅ 13 tables, 12 enums, 27 indexes, **23 foreign keys** |
+| Client generates | `prisma generate` | ✅ all 13 models present on the client |
+| **Schema fits the real data** | importer `--dry-run` against the live `store.json` | ✅ **445 rows** mapped (15 projects, 14 assets, 393 detections, 7 code versions, 12 jobs, 2 samples, 2 exports); **referential integrity OK** |
+| **The validator actually detects problems** | injected 4 corruption classes into a scratch copy | ✅ caught all 4 |
+
+That last row matters more than the one above it: a pre-flight check that has
+only ever returned "OK" is not evidence of anything. Four deliberate
+corruptions were injected into a throwaway copy — a dangling
+`sourceAssetId`, a `bbox` with a `null` field, a duplicate
+`(projectId, versionNumber)`, and a stale override key naming a nonexistent
+detection — and each was reported with the correct classification. The real
+store was never modified (re-confirmed afterwards: still 15/393/7).
+
+### Database changes
+
+None applied. The migration SQL exists and is committed but **has not been run
+against any database.**
+
+### API / frontend / ML changes
+
+None. No route, service, or component was modified — deliberately, given the
+discrepancy above.
+
+### Known limitations / open decisions
+
+1. **The runtime still uses the JSON store.** Nothing is wired to Prisma yet.
+2. **Nothing has been executed against Postgres** — no `migrate deploy`, no
+   import. The schema is validated and the DDL generated, but "generates valid
+   SQL" is weaker evidence than "applied cleanly to a real database", and that
+   distinction is deliberately not blurred here.
+3. **Docker unavailable; local Postgres is not ours.** Running this needs
+   either Docker, or a `sketch2ui` role + database created in the existing
+   local instance — the latter modifies a shared server hosting someone else's
+   data, so it needs explicit authorization rather than being assumed.
+4. **No parity tests yet** (Appendix E stage 6). They are only meaningful once
+   a repository layer exists to run both backends behind.
+5. **`prisma migrate deploy` will require `DATABASE_URL`** to point at a
+   reachable database; `.env` currently names `sketch2ui:sketch2ui@localhost:5432/sketch2ui`,
+   which does not yet exist.
+
+### Next phase
+
+**Phase 8 part 2 needs a decision before it can start**, because it
+contradicts the plan's own critical rule:
+
+- **(a) Proceed with the async conversion** — introduce a repository
+  interface, then migrate the 19 files module-by-module with parity tests at
+  each step. This is the only route to real Postgres, but it *is* the "rewrite
+  route behavior" the plan forbids, so the plan needs amending first.
+- **(b) Pause Phase 8** and move to **Phase 9 (durable jobs)** or **Phase 10
+  (auth)**. Note that Phase 9 has the *same* async property, and Phase 10 adds
+  ownership columns that would be cheaper to land in the same schema pass —
+  so ordering matters.
+- **(c) Land the schema as documentation only** and revisit when a real
+  Postgres instance is available.
+
+To actually run the migration here, one of these is also needed: install
+Docker, or authorize creating a `sketch2ui` role/database in the existing
+local Postgres server.
+
+
 
