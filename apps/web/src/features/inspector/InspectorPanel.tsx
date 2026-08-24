@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ContentOverride, Detection, GeometryOverride } from "@sketch2ui/shared-types";
+import type {
+  ContentOverride,
+  Detection,
+  GeometryOverride,
+  StructureOverride,
+} from "@sketch2ui/shared-types";
 import { contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
 
 // Style + Content + Geometry inspector — plan §6.7 / §17.3. Field set matches the
@@ -29,6 +34,14 @@ interface InspectorPanelProps {
   currentContent: ContentOverride | null;
   /** Current persisted geometry override for the selected detection (null if none). */
   currentGeometry: GeometryOverride | null;
+  /** Current persisted structure override for the selected detection (null if none). */
+  currentStructure: StructureOverride | null;
+  /**
+   * The candidate parents the dropdown offers — all active detections in the project
+   * EXCEPT the selected node itself and anything downstream of it (which would create
+   * a cycle). ProjectWorkspace builds this list; the panel just renders it.
+   */
+  parentCandidates: Array<Pick<Detection, "id" | "className">>;
   /**
    * Apply the style draft: persist and regenerate. Rejecting propagates so the panel
    * can surface the error rather than silently swallowing a failed save.
@@ -50,7 +63,15 @@ interface InspectorPanelProps {
   onApplyGeometry: (detectionId: string, geometry: GeometryOverride) => Promise<void>;
   /** Clear the geometry override for this component. */
   onResetGeometry: (detectionId: string) => Promise<void>;
-  /** Whether an Apply/Reset (style / content / geometry) is currently in flight. */
+  /**
+   * Apply the structure draft: persist and regenerate. Body is `parentDetectionId`
+   * (string | null | undefined) and/or `displayOrder`. Auto containment inference
+   * still runs — the override redirects it rather than replacing it.
+   */
+  onApplyStructure: (detectionId: string, structure: StructureOverride) => Promise<void>;
+  /** Clear the structure override for this component (revert to auto). */
+  onResetStructure: (detectionId: string) => Promise<void>;
+  /** Whether an Apply/Reset (any group) is currently in flight. */
   busy?: boolean;
 }
 
@@ -189,17 +210,71 @@ function parseGeometryDraft(
   return { ok: true, override: parsed };
 }
 
+// Structure draft — parent as a string ("" = "auto", "__root__" = force to root,
+// anything else = detection id) and displayOrder as a string. Neutral empty state
+// means "no override", matching the "leave blank to inherit" convention the
+// Geometry section already established. The sentinel makes explicit-root
+// distinguishable from unset in a select value.
+interface StructureDraft {
+  parent: string;
+  displayOrder: string;
+}
+
+const STRUCTURE_ROOT_SENTINEL = "__root__";
+
+function toStructureDraft(override: StructureOverride | null): StructureDraft {
+  if (!override) return { parent: "", displayOrder: "" };
+  return {
+    parent:
+      override.parentDetectionId === undefined
+        ? ""
+        : override.parentDetectionId === null
+          ? STRUCTURE_ROOT_SENTINEL
+          : override.parentDetectionId,
+    displayOrder:
+      typeof override.displayOrder === "number" ? String(override.displayOrder) : "",
+  };
+}
+
+function structureDraftsEqual(a: StructureDraft, b: StructureDraft): boolean {
+  return a.parent === b.parent && a.displayOrder.trim() === b.displayOrder.trim();
+}
+
+function parseStructureDraft(
+  draft: StructureDraft
+): { ok: true; override: StructureOverride } | { ok: false; error: string } {
+  const override: StructureOverride = {};
+  if (draft.parent === STRUCTURE_ROOT_SENTINEL) {
+    override.parentDetectionId = null;
+  } else if (draft.parent !== "") {
+    override.parentDetectionId = draft.parent;
+  }
+  const orderRaw = draft.displayOrder.trim();
+  if (orderRaw !== "") {
+    const n = Number(orderRaw);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+      return { ok: false, error: "displayOrder must be a non-negative integer." };
+    }
+    override.displayOrder = n;
+  }
+  return { ok: true, override };
+}
+
 export default function InspectorPanel({
   selected,
   currentStyle,
   currentContent,
   currentGeometry,
+  currentStructure,
+  parentCandidates,
   onApplyStyle,
   onResetStyle,
   onApplyContent,
   onResetContent,
   onApplyGeometry,
   onResetGeometry,
+  onApplyStructure,
+  onResetStructure,
   busy,
 }: InspectorPanelProps) {
   const [styleDraft, setStyleDraft] = useState<Record<StyleFieldKey, string>>(() =>
@@ -211,9 +286,13 @@ export default function InspectorPanel({
   const [geometryDraft, setGeometryDraft] = useState<Record<GeometryFieldKey, string>>(
     () => toGeometryDraft(currentGeometry)
   );
+  const [structureDraft, setStructureDraft] = useState<StructureDraft>(() =>
+    toStructureDraft(currentStructure)
+  );
   const [styleError, setStyleError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
   const [geometryError, setGeometryError] = useState<string | null>(null);
+  const [structureError, setStructureError] = useState<string | null>(null);
 
   // Applicability is class-driven (Appendix P): a text field on an image would be
   // silently ignored server-side, so the panel does not offer it at all. This is the
@@ -238,6 +317,11 @@ export default function InspectorPanel({
     setGeometryError(null);
   }, [selected?.id, currentGeometry]);
 
+  useEffect(() => {
+    setStructureDraft(toStructureDraft(currentStructure));
+    setStructureError(null);
+  }, [selected?.id, currentStructure]);
+
   const styleDirty = !styleDraftsEqual(styleDraft, toStyleDraft(currentStyle));
   const contentDirty = !contentDraftsEqual(
     contentDraft,
@@ -245,6 +329,7 @@ export default function InspectorPanel({
     applicableFields
   );
   const geometryDirty = !geometryDraftsEqual(geometryDraft, toGeometryDraft(currentGeometry));
+  const structureDirty = !structureDraftsEqual(structureDraft, toStructureDraft(currentStructure));
   const hasStyleOverride = Object.keys(currentStyle).length > 0;
   const hasContentOverride =
     !!currentContent &&
@@ -255,6 +340,10 @@ export default function InspectorPanel({
       currentGeometry.y !== undefined ||
       currentGeometry.width !== undefined ||
       currentGeometry.height !== undefined);
+  const hasStructureOverride =
+    !!currentStructure &&
+    (currentStructure.parentDetectionId !== undefined ||
+      currentStructure.displayOrder !== undefined);
 
   async function handleApplyStyle() {
     if (!selected) return;
@@ -330,6 +419,31 @@ export default function InspectorPanel({
     }
   }
 
+  async function handleApplyStructure() {
+    if (!selected) return;
+    setStructureError(null);
+    const parsed = parseStructureDraft(structureDraft);
+    if (!parsed.ok) {
+      setStructureError(parsed.error);
+      return;
+    }
+    try {
+      await onApplyStructure(selected.id, parsed.override);
+    } catch (err) {
+      setStructureError((err as Error).message);
+    }
+  }
+
+  async function handleResetStructure() {
+    if (!selected) return;
+    setStructureError(null);
+    try {
+      await onResetStructure(selected.id);
+    } catch (err) {
+      setStructureError((err as Error).message);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -338,7 +452,7 @@ export default function InspectorPanel({
 
       {!selected ? (
         <div className="px-3 py-4 text-xs text-gray-500">
-          Select a component on the canvas or in the tree to edit its style, geometry and content.
+          Select a component on the canvas or in the tree to edit its style, geometry, structure and content.
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-auto">
@@ -558,6 +672,89 @@ export default function InspectorPanel({
                 disabled={busy || !geometryDirty}
                 className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
                 title="Save this position/size and regenerate the code"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
+          {/* -------- Structure section (§17.3 Structure) -------- */}
+
+          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Structure
+          </div>
+
+          <div className="px-3 pb-1 text-[10px] text-gray-400">
+            Reparent this node or pin its position among its siblings. Leave a field
+            blank to keep auto-inferred behaviour.
+          </div>
+
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-3 text-xs">
+            <label className="text-gray-500" htmlFor="structure-parent">parent</label>
+            <select
+              id="structure-parent"
+              value={structureDraft.parent}
+              onChange={(e) =>
+                setStructureDraft({ ...structureDraft, parent: e.target.value })
+              }
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            >
+              <option value="">Auto (from containment)</option>
+              <option value={STRUCTURE_ROOT_SENTINEL}>Root (page)</option>
+              {parentCandidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.className} · {candidate.id.slice(0, 8)}
+                </option>
+              ))}
+            </select>
+
+            <label className="text-gray-500" htmlFor="structure-order">order</label>
+            <input
+              id="structure-order"
+              type="number"
+              min={0}
+              step={1}
+              value={structureDraft.displayOrder}
+              placeholder="Auto"
+              onChange={(e) =>
+                setStructureDraft({ ...structureDraft, displayOrder: e.target.value })
+              }
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            />
+          </div>
+
+          {structureError && (
+            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
+              {structureError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400">
+              {busy
+                ? "Working…"
+                : structureDirty
+                  ? "Unapplied"
+                  : hasStructureOverride
+                    ? "Applied"
+                    : "No structure override"}
+            </span>
+            <div className="flex gap-1">
+              <button
+                onClick={handleResetStructure}
+                disabled={busy || !hasStructureOverride}
+                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                title="Clear parent/order overrides and let auto containment inference decide"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleApplyStructure}
+                disabled={busy || !structureDirty}
+                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                title="Save this parent/order and regenerate the code"
               >
                 Apply
               </button>

@@ -244,4 +244,207 @@ None. Model registry `ui-detector/v1.0.0` untouched.
 **Phase 2 — Structure Inspector.** Not blocked. Ready to start after user
 confirmation.
 
+---
+
+## Phase 2 — Structure Inspector
+
+**Date:** 2026-08-24
+**Goal:** Add an editable Structure group (parent, displayOrder) to the
+Inspector, keyed on detection UUID, LAYERING on top of the existing automatic
+containment / row grouping in `packages/codegen/src/layout.ts`.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `packages/shared-types/src/structure-override.ts` — `StructureOverride` type,
+  `validateStructureOverride()` (parent existence, self-parent, cycle
+  detection over the pending state), `structureOverrideHasFields()`
+- `packages/shared-types/src/__tests__/structure-override.test.ts` — 19 tests
+  covering the accept/reject matrix (empty, root, valid parent, both fields,
+  undefined; non-object, unknown field, self-parent, missing parent, direct
+  cycle, chain cycle, negative order, non-integer order, string order, empty
+  parent id, `structureOverrideHasFields`)
+- `apps/api/src/modules/structure-overrides/structure-overrides.routes.ts` —
+  GET/PUT/DELETE under `/api/projects/:id/structure-overrides[/:detectionId]`
+
+### Files changed
+
+- `packages/shared-types/src/index.ts` — re-export structure-override
+- `packages/shared-types/src/project.ts` — add `Project.structureOverrides?`
+- `packages/codegen/src/layout.ts` — targeted addition (no rewrite): new
+  `resolveParent()` consults overrides ahead of `findParent()`;
+  `reorderByStructureOverrides()` sorts each container's direct children by
+  (displayOrder, explicit-wins-tie, autoIndex); `buildUITree` accepts
+  `structureOverrides` in its options and threads it through `finalize()` and
+  the root-level pass
+- `packages/codegen/src/index.ts` — accept `structureOverrides` in
+  `generateCode` options
+- `apps/api/src/server.ts` — import + mount `structureOverridesRouter`
+- `apps/api/src/modules/codegen/codegen.routes.ts` — pass
+  `project.structureOverrides` through to `generateCode`
+- `apps/web/src/services/api.ts` — add `listStructureOverrides` /
+  `putStructureOverride` / `clearStructureOverride`
+- `apps/web/src/utils/tree.ts` — accept `structureOverrides`, pass to
+  `buildUITree`
+- `apps/web/src/features/inspector/InspectorPanel.tsx` — add Structure section
+  (parent dropdown with "Auto" + "Root" + candidates, displayOrder input,
+  Apply/Reset, dirty tracking, client-side parse errors), consumes new
+  `currentStructure` / `parentCandidates` / `onApplyStructure` /
+  `onResetStructure` props
+- `apps/web/src/pages/ProjectWorkspace.tsx` — load structure map on workspace
+  open, compute `parentCandidates` (excludes selected node and its downstream
+  chain per stored overrides), wire `handleApplyStructure` / `handleResetStructure`,
+  and pass through to Inspector + `buildTreeAndCode`
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `packages/codegen/src/layout.ts` — modified via **targeted additions only**
+  (`resolveParent`, `reorderByStructureOverrides`, one option field on
+  `buildUITree`). The existing `findParent`, `groupIntoRows`,
+  `groupRepeatedSiblings`, `inferLayout`, and `resolveOverlappingDetections`
+  functions are unchanged. Auto containment / row grouping / repeated-sibling
+  grid detection all still run first; the override redirects, never replaces.
+- `packages/codegen/src/html.ts`, `packages/codegen/src/css.ts` — unchanged
+- Existing Style/Content/Geometry override modules — unchanged
+- Immutable `CodeVersion` behavior — unchanged (Apply still creates a new
+  `source: "generated"` version via the same POST route)
+- Boundary parity contract — unchanged (Python + TS both green)
+- Preview sandbox — unchanged (structure is not an HTML/CSS injection surface)
+
+### Design decisions
+
+1. **Fold-in point**: parent + order **inside** `buildUITree`, not after. Auto
+   containment and the manual override compete for the same slot (which parent
+   this node belongs to), so applying the override outside would require
+   re-parenting an already-built tree. The chosen split is: auto inference is
+   the default; the override is consulted first in `resolveParent`, and the
+   ordering pass runs after `groupRepeatedSiblings` so synthetic group nodes
+   are still respected.
+2. **Tie-break rule** for `displayOrder`: explicit values outrank implicit
+   auto-index values at the same numeric key. Discovered during smoke test —
+   an early version had "button pinned to 0" tie with "heading at auto-index
+   0" resolving in favor of heading, which contradicts the user's mental
+   model. The fix is documented in the sort comparator.
+3. **Cycle detection** at write time, over the **pending state** (existing
+   overrides merged with the proposed edit). Guarantees `layout.ts` never
+   sees a cycle; a saved cycle would infinite-loop `resolveParent`.
+4. **Candidate list** for the Inspector dropdown excludes the selected node
+   and its downstream chain (per stored overrides). Defence-in-depth: the
+   server rejects a cycle anyway, but hiding the option makes the UI less
+   confusing.
+5. **Dangling parent safety net** in `resolveParent`: a stored override
+   pointing at a detection that has since been deleted or marked `rejected`
+   treats the child as root, rather than dropping it. The API refuses to
+   write such a reference in the first place, so this is only a
+   post-modification safety net.
+
+### Tests
+
+| Command | Result | Delta from Phase 1 |
+|---|---|---|
+| `npm run test` (Vitest) | **all tests passing** — 62 unique across 3 files (19 boundary + 24 geometry + 19 structure). Vitest reports 124 because it also picks up the compiled `dist/**/*.test.js` from an earlier `npm run build` — see limitations below. | +19 unique |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean | unchanged |
+| `npm run build` | success (95 modules, Vite 989 ms) | +1 module |
+
+New coverage in `structure-override.test.ts`:
+- accepts: empty body, `parentDetectionId: null`, valid parent ref,
+  `displayOrder`, both fields, `undefined` fields (6 cases)
+- rejects: non-object body, unknown field, self-parent, missing parent,
+  direct cycle (A↔B), chain cycle (A→B→C→A), negative order, non-integer
+  order, string order, empty-string parent id (10 cases)
+- `structureOverrideHasFields` — 3 cases
+
+### Live API + codegen smoke test
+
+Ran a scripted end-to-end that not only exercises every route branch but also
+verifies the generated HTML **actually reflects the override** end-to-end.
+
+| Case | Verification | Verdict |
+|---|---|---|
+| Three siblings in one row (heading/text/button) | HTML order: `h2 → p → button` (auto) | ✓ |
+| PUT `{displayOrder: 0}` on button | HTML re-order: `button → h2 → p` | ✓ pinned-to-front |
+| PUT reparent A under B | Generated HTML has `<h2>` nested inside `<p>` | ✓ reparented |
+| PUT self-parent | 400 "A detection cannot be its own parent." | ✓ |
+| PUT non-existent parent | 400 "not an active detection" | ✓ |
+| PUT unknown field | 400 "Unknown structure field: weirdo" | ✓ |
+| Set B parent = C, then try C parent = B | 400 "This override would create a parent cycle." | ✓ |
+| DELETE (Reset) | 204, GET returns `{}` | ✓ |
+
+### Manual verification (regression checklist)
+
+Not executed as a browser session (no interactive display). Automated coverage
+above validates the server + codegen layers end-to-end; the frontend section
+relies on typechecking and the Vite build (both clean). The `parentCandidates`
+memo prevents the user from ever selecting an obviously invalid parent in the
+UI.
+
+### Database changes
+
+- `Project.structureOverrides?: Record<detectionId, StructureOverride>` — new
+  optional field on the JSON store's `Project` shape. Absent on existing
+  projects; GET returns `{}` when missing. No migration needed.
+
+### API changes
+
+- **New router:** `/api/projects/:id/structure-overrides`
+  - `GET /` — full map for the project
+  - `PUT /:detectionId` — upsert; empty body `{}` deletes the entry (matches
+    the other Inspector groups' Reset flow)
+  - `DELETE /:detectionId` — 204, idempotent
+- Validation: `parentDetectionId` must be null or the id of a currently
+  ACTIVE detection in the project; no self-parent; no cycle over the
+  pending state. `displayOrder` must be a non-negative integer.
+
+### Frontend changes
+
+- **New section** in `InspectorPanel`: Structure, between Geometry and Content.
+  Parent dropdown offers "Auto (from containment)", "Root (page)", and every
+  eligible sibling; displayOrder is a numeric input; both blank = "no
+  override".
+- Loading, apply/reset, and busy-flag semantics **mirror the other three
+  groups verbatim** — same look, same error surface, same regenerate-then-
+  refresh flow.
+
+### ML changes
+
+None. Model registry `ui-detector/v1.0.0` untouched.
+
+### Known limitations / open decisions
+
+1. **Test count double-report**: `npm run test` reports 124 because vitest
+   auto-discovers `dist/**/*.test.js` when a build has been run locally. The
+   62 `.ts` sources are the source of truth; the `.js` duplicates just re-run
+   the same assertions. Fix (out of scope for Phase 2): add
+   `test.exclude: ["**/dist/**"]` to a `vitest.config.ts` in
+   `packages/shared-types`. CI (per Phase 15) will run without local build
+   output and see the correct count.
+2. **No E2E test yet** (Playwright is Phase 14). The layout `.ts`
+   integration test (buildUITree with structureOverrides) is verified end-to-
+   end through the live smoke test only; a unit test in `packages/codegen`
+   would need to add vitest to that package. Deferred to Phase 14 or 15.
+3. **Order semantics**: `displayOrder` is a sort *floor* with
+   explicit-beats-implicit tie-break — not an absolute-position rewrite.
+   Documented in the sort comparator. A user who wants "renumber everything
+   0..N" must Apply on each sibling.
+4. **DisplayOrder on synthetic group nodes**: not supported. The user's
+   addressable unit is the detection; synthetic group containers (the ones
+   created by `groupRepeatedSiblings` for repeated card rows) have no
+   `sourceDetectionId` and therefore inherit their auto position. If a user
+   wants to reorder cards within a card grid, they'd set explicit
+   `displayOrder` on each card. Fine for Phase 2; revisit if the UX proves
+   awkward.
+5. **Tree drag/drop UI** (mentioned as optional in the plan) — not
+   implemented. The dropdown + numeric input covers the same functional
+   surface; drag/drop is deferred to a later polish pass.
+
+### Next phase
+
+**Phase 3 — Detection Inspector.** Not blocked. Ready to start after user
+confirmation.
+
 

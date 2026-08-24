@@ -1,5 +1,6 @@
 import type { BBox, Detection } from "@sketch2ui/shared-types";
 import type { UINode, UIRoot } from "@sketch2ui/shared-types";
+import type { StructureOverridesByDetection } from "@sketch2ui/shared-types";
 import { isContainerClass } from "@sketch2ui/shared-types";
 
 // Layout reconstruction engine — plan section 11.
@@ -119,6 +120,74 @@ function findParent(detection: Detection, all: Detection[]): Detection | null {
   return best;
 }
 
+/**
+ * Resolve the effective parent for a detection, layering a manual structure override
+ * onto the auto-inferred `findParent` result. §17.3 Structure group.
+ *
+ * - `parentDetectionId: null`   → force to root
+ * - `parentDetectionId: "..."`  → force to that detection (must be in `all`)
+ * - `undefined` (no override)   → fall through to findParent's containment result
+ *
+ * A stored override pointing at a detection no longer in `all` (e.g. it was
+ * marked `deleted` or `rejected` since the override was written) is treated the
+ * same as `null`: root. The API validator refuses to WRITE such a reference in the
+ * first place, so this is a state-drift safety net rather than a common path.
+ */
+function resolveParent(
+  detection: Detection,
+  all: Detection[],
+  overrides: StructureOverridesByDetection | undefined
+): Detection | null {
+  const override = overrides?.[detection.id];
+  if (override?.parentDetectionId === null) return null;
+  if (typeof override?.parentDetectionId === "string") {
+    return all.find((d) => d.id === override.parentDetectionId) ?? null;
+  }
+  return findParent(detection, all);
+}
+
+/**
+ * Sort a container's direct children by (structure override displayOrder, auto index).
+ * Auto index preserves whatever `groupRepeatedSiblings` produced — reading order
+ * across rows, or grouped rows — so an unset displayOrder keeps the current
+ * behavior verbatim. A set displayOrder wins; ties resolve by auto index.
+ *
+ * Synthetic group nodes (`node.type === "group"`) have no `sourceDetectionId` and
+ * therefore inherit their auto position — the user's addressable unit is the
+ * detection, not the synthetic container.
+ */
+function reorderByStructureOverrides(
+  children: UINode[],
+  overrides: StructureOverridesByDetection | undefined
+): UINode[] {
+  if (!overrides) return children;
+  return children
+    .map((child, autoIndex) => {
+      const explicit = child.sourceDetectionId
+        ? overrides[child.sourceDetectionId]?.displayOrder
+        : undefined;
+      const hasExplicit = typeof explicit === "number";
+      return {
+        child,
+        autoIndex,
+        orderKey: hasExplicit ? explicit! : autoIndex,
+        hasExplicit,
+      };
+    })
+    .sort((a, b) => {
+      if (a.orderKey !== b.orderKey) return a.orderKey - b.orderKey;
+      // Tie on the numeric key: an explicit override outranks an implicit auto
+      // index. This matches the user's mental model — "pin me to 0" means "put me
+      // first" even if another sibling happens to already be there. Two explicits
+      // at the same value, or two implicits at the same value, fall back to the
+      // auto index so a Reset of any single node returns the tree to a stable
+      // deterministic order.
+      if (a.hasExplicit !== b.hasExplicit) return a.hasExplicit ? -1 : 1;
+      return a.autoIndex - b.autoIndex;
+    })
+    .map((wrapped) => wrapped.child);
+}
+
 /** Row detection — plan section 11.6: sort by y, then split on vertical-center gaps. */
 function groupIntoRows(nodes: UINode[]): UINode[][] {
   const sorted = [...nodes].sort((a, b) => centerY(a.bbox) - centerY(b.bbox));
@@ -222,10 +291,21 @@ function toUINode(detection: Detection): UINode {
  * Build a semantic UI-IR tree from a flat list of detections.
  * Containers (plan section 11.4) receive children whose bbox center falls inside them;
  * the smallest enclosing container wins. Un-contained nodes attach to the root.
+ *
+ * When `structureOverrides` is passed, they layer onto the auto-inferred result:
+ * parent choice is deferred to `resolveParent`, and each container's direct children
+ * are re-sorted by explicit `displayOrder` (§17.3 Structure group). Auto inference
+ * still runs first — an override never disables it, only redirects it — so a Reset
+ * on any single override returns that node to auto behavior without unsettling the
+ * rest of the tree.
  */
 export function buildUITree(
   detections: Detection[],
-  options: { name?: string; viewport: { width: number; height: number } }
+  options: {
+    name?: string;
+    viewport: { width: number; height: number };
+    structureOverrides?: StructureOverridesByDetection;
+  }
 ): UIRoot {
   idCounter = 0;
   // Rejected boxes (section 10.7) never reach layout; then collapse duplicate readings
@@ -238,7 +318,7 @@ export function buildUITree(
 
   for (const d of active) {
     nodesById.set(d.id, toUINode(d));
-    parentOf.set(d.id, findParent(d, active));
+    parentOf.set(d.id, resolveParent(d, active, options.structureOverrides));
   }
 
   const rootChildren: UINode[] = [];
@@ -255,15 +335,19 @@ export function buildUITree(
 
   // Recursively order children by reading order and infer layout, containers-first bias
   // (plan section 11.4: structural classes act as containers even with few children).
+  // Structure-inspector displayOrder wins over the auto sibling order emitted by
+  // groupRepeatedSiblings.
   function finalize(node: UINode): UINode {
-    node.children = groupRepeatedSiblings(node.children.map(finalize));
+    const grouped = groupRepeatedSiblings(node.children.map(finalize));
+    node.children = reorderByStructureOverrides(grouped, options.structureOverrides);
     if (isContainerClass(node.type) || node.children.length > 1) {
       node.layout = inferLayout(node.children);
     }
     return node;
   }
 
-  const orderedRoot = groupRepeatedSiblings(rootChildren.map(finalize));
+  const groupedRoot = groupRepeatedSiblings(rootChildren.map(finalize));
+  const orderedRoot = reorderByStructureOverrides(groupedRoot, options.structureOverrides);
 
   return {
     schemaVersion: "1.0",

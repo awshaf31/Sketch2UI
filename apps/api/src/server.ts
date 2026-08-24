@@ -17,6 +17,7 @@ import { codeVersionsRouter } from "./modules/codegen/code-versions.routes.js";
 import { styleOverridesRouter } from "./modules/style-overrides/style-overrides.routes.js";
 import { contentOverridesRouter } from "./modules/content-overrides/content-overrides.routes.js";
 import { geometryOverridesRouter } from "./modules/geometry-overrides/geometry-overrides.routes.js";
+import { structureOverridesRouter } from "./modules/structure-overrides/structure-overrides.routes.js";
 
 const app = express();
 
@@ -42,6 +43,7 @@ app.use("/api/projects/:id/code", latestCodeRouter);
 app.use("/api/projects/:id/style-overrides", styleOverridesRouter);
 app.use("/api/projects/:id/content-overrides", contentOverridesRouter);
 app.use("/api/projects/:id/geometry-overrides", geometryOverridesRouter);
+app.use("/api/projects/:id/structure-overrides", structureOverridesRouter);
 app.use("/api/projects", projectsRouter);
 
 app.use(errorHandler);

@@ -40,6 +40,10 @@ codegenRouter.post<ProjectParams>("/", (req, res) => {
     // before layout inference — see packages/shared-types/src/geometry-override.ts
     // and generateCode() in packages/codegen for the ordering rationale.
     geometryOverrides: project.geometryOverrides,
+    // Structure-inspector tweaks (§17.3 Structure). Applied INSIDE buildUITree —
+    // resolveParent / reorderByStructureOverrides. Auto containment still runs
+    // first; overrides layer on top.
+    structureOverrides: project.structureOverrides,
   });
 
   const existing = db.state.codeVersions.filter((c) => c.projectId === project.id);

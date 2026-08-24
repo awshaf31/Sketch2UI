@@ -32,6 +32,14 @@ export interface Project {
    * geometry-override.ts's applyGeometryOverrides and its call site in generateCode.
    */
   geometryOverrides?: Record<string, import("./geometry-override.js").GeometryOverride>;
+  /**
+   * Structure-inspector tweaks (§17.3 Structure group). Same detection-uuid keying.
+   * Applied WITHIN buildUITree (see layout.ts): parent override changes the
+   * containment result, displayOrder changes the sibling ordering. Auto inference
+   * still runs — overrides layer on top rather than replacing it, so a Reset returns
+   * the node to whatever bbox containment and reading-order say.
+   */
+  structureOverrides?: Record<string, import("./structure-override.js").StructureOverride>;
   createdAt: string;
   updatedAt: string;
 }

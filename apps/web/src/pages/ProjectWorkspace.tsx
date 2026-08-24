@@ -10,6 +10,7 @@ import type {
   PagePolygon,
   Project,
   ProjectExport,
+  StructureOverride,
 } from "@sketch2ui/shared-types";
 import {
   DEFAULT_OVERLAP_THRESHOLD,
@@ -67,6 +68,12 @@ export default function ProjectWorkspace() {
   // key off the overridden positions.
   const [geometryOverrides, setGeometryOverrides] = useState<Record<string, GeometryOverride>>({});
   const [applyingGeometry, setApplyingGeometry] = useState(false);
+  // Structure-inspector overrides (§17.3 Structure) — parent + displayOrder, same
+  // detection-uuid keying. Applied WITHIN buildUITree so auto containment inference
+  // still runs first. The Inspector's parent dropdown reads its candidate list from
+  // the current detections in this page.
+  const [structureOverrides, setStructureOverrides] = useState<Record<string, StructureOverride>>({});
+  const [applyingStructure, setApplyingStructure] = useState(false);
 
   const {
     asset,
@@ -145,6 +152,7 @@ export default function ProjectWorkspace() {
     api.listStyleOverrides(id).then(setStyleOverrides).catch(() => setStyleOverrides({}));
     api.listContentOverrides(id).then(setContentOverrides).catch(() => setContentOverrides({}));
     api.listGeometryOverrides(id).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
+    api.listStructureOverrides(id).then(setStructureOverrides).catch(() => setStructureOverrides({}));
   }, [id]);
 
   /**
@@ -205,10 +213,14 @@ export default function ProjectWorkspace() {
             (node) =>
               node.sourceDetectionId ? api.cropUrl(id, node.sourceDetectionId) : null,
             styleOverrides,
-            contentOverrides
+            contentOverrides,
+            // geometry already applied via effectiveDetections above; leave the
+            // sixth arg unset so buildTreeAndCode does not double-apply.
+            undefined,
+            structureOverrides
           )
         : { tree: null, html: "", css: "" },
-    [asset, effectiveDetections, project?.name, id, styleOverrides, contentOverrides]
+    [asset, effectiveDetections, project?.name, id, styleOverrides, contentOverrides, structureOverrides]
   );
 
   // What the code panel and preview reflect: the active saved version if one is set,
@@ -509,6 +521,88 @@ export default function ProjectWorkspace() {
     }
   }
 
+  // Structure Apply/Reset — same persist-then-regenerate shape as the other
+  // Inspector groups. The server validates parent existence, self-parent and
+  // cycles; a rejected PUT propagates as an ApiError and the Inspector surfaces
+  // the message.
+  async function handleApplyStructure(
+    detectionId: string,
+    structure: StructureOverride
+  ) {
+    if (!id) return;
+    setApplyingStructure(true);
+    try {
+      const result = await api.putStructureOverride(id, detectionId, structure);
+      setStructureOverrides((prev) => {
+        const next = { ...prev };
+        if (result.structure) {
+          next[detectionId] = result.structure;
+        } else {
+          delete next[detectionId];
+        }
+        return next;
+      });
+      await api.generateCode(id);
+      await refreshVersions();
+    } finally {
+      setApplyingStructure(false);
+    }
+  }
+
+  async function handleResetStructure(detectionId: string) {
+    if (!id) return;
+    setApplyingStructure(true);
+    try {
+      await api.clearStructureOverride(id, detectionId);
+      setStructureOverrides((prev) => {
+        const next = { ...prev };
+        delete next[detectionId];
+        return next;
+      });
+      await api.generateCode(id);
+      await refreshVersions();
+    } finally {
+      setApplyingStructure(false);
+    }
+  }
+
+  /**
+   * Candidate parents for the Structure section's dropdown: every ACTIVE detection
+   * in this page except the selected node itself and every downstream descendant.
+   * Excluding descendants here is UX polish — the server also refuses a cycle-
+   * creating PUT (see structure-overrides.routes.ts), so this is defence-in-depth
+   * plus a less confusing list.
+   */
+  const parentCandidates = useMemo(() => {
+    if (!selectedId) return [] as Array<{ id: string; className: string }>;
+
+    // Build a "who currently points at whom" map from the persisted overrides so a
+    // node whose structure override already parents it under this selection is a
+    // descendant, not a candidate.
+    const childrenOf = new Map<string, string[]>();
+    for (const [childId, override] of Object.entries(structureOverrides)) {
+      if (typeof override.parentDetectionId === "string") {
+        const list = childrenOf.get(override.parentDetectionId) ?? [];
+        list.push(childId);
+        childrenOf.set(override.parentDetectionId, list);
+      }
+    }
+    const excluded = new Set<string>([selectedId]);
+    const stack = [selectedId];
+    while (stack.length) {
+      const cursor = stack.pop()!;
+      for (const child of childrenOf.get(cursor) ?? []) {
+        if (!excluded.has(child)) {
+          excluded.add(child);
+          stack.push(child);
+        }
+      }
+    }
+    return effectiveDetections
+      .filter((d) => d.status === "active" && !excluded.has(d.id))
+      .map((d) => ({ id: d.id, className: d.className }));
+  }, [selectedId, effectiveDetections, structureOverrides]);
+
   const selectedDetection = selectedId
     ? detections.find((d) => d.id === selectedId) ?? null
     : null;
@@ -765,13 +859,19 @@ export default function ProjectWorkspace() {
                 currentGeometry={
                   selectedDetection ? geometryOverrides[selectedDetection.id] ?? null : null
                 }
+                currentStructure={
+                  selectedDetection ? structureOverrides[selectedDetection.id] ?? null : null
+                }
+                parentCandidates={parentCandidates}
                 onApplyStyle={handleApplyStyle}
                 onResetStyle={handleResetStyle}
                 onApplyContent={handleApplyContent}
                 onResetContent={handleResetContent}
                 onApplyGeometry={handleApplyGeometry}
                 onResetGeometry={handleResetGeometry}
-                busy={applyingStyle || applyingContent || applyingGeometry}
+                onApplyStructure={handleApplyStructure}
+                onResetStructure={handleResetStructure}
+                busy={applyingStyle || applyingContent || applyingGeometry || applyingStructure}
               />
             </div>
           </div>

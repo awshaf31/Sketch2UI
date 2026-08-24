@@ -3,7 +3,11 @@ import type {
   ContentOverridesByDetection,
   StyleOverridesByDetection,
 } from "@sketch2ui/codegen";
-import type { Detection, GeometryOverridesByDetection } from "@sketch2ui/shared-types";
+import type {
+  Detection,
+  GeometryOverridesByDetection,
+  StructureOverridesByDetection,
+} from "@sketch2ui/shared-types";
 import { applyGeometryOverrides } from "@sketch2ui/shared-types";
 import {
   applyContentOverrides,
@@ -28,12 +32,17 @@ export function buildTreeAndCode(
    * BEFORE the tree is built so containment and row grouping key off the
    * effective positions. Symmetrical with the server-side generateCode path.
    */
-  geometryOverrides?: GeometryOverridesByDetection
+  geometryOverrides?: GeometryOverridesByDetection,
+  /**
+   * Structure-inspector tweaks (§17.3 Structure) — parent + displayOrder. Applied
+   * WITHIN buildUITree so auto containment inference still runs first.
+   */
+  structureOverrides?: StructureOverridesByDetection
 ) {
   const withGeometry = geometryOverrides
     ? applyGeometryOverrides(detections, geometryOverrides)
     : detections;
-  const tree = buildUITree(withGeometry, { name, viewport });
+  const tree = buildUITree(withGeometry, { name, viewport, structureOverrides });
   if (contentOverrides) applyContentOverrides(tree, contentOverrides);
   if (styleOverrides) applyStyleOverrides(tree, styleOverrides);
   return {

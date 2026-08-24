@@ -8,6 +8,7 @@ import type {
   PageBoundary,
   ProjectAsset,
   ProjectExport,
+  StructureOverride,
 } from "@sketch2ui/shared-types";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
@@ -278,6 +279,28 @@ export const api = {
   },
   clearGeometryOverride(projectId: string, detectionId: string): Promise<void> {
     return request(`/api/projects/${projectId}/geometry-overrides/${detectionId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // Per-node structure overrides (§17.3 Structure). Same detection-uuid keying;
+  // the API validator rejects a self-parent, a parent that is not currently active,
+  // and any edit that would create a parent cycle.
+  listStructureOverrides(projectId: string): Promise<Record<string, StructureOverride>> {
+    return request(`/api/projects/${projectId}/structure-overrides`);
+  },
+  putStructureOverride(
+    projectId: string,
+    detectionId: string,
+    input: StructureOverride
+  ): Promise<{ detectionId: string; structure: StructureOverride | null }> {
+    return request(`/api/projects/${projectId}/structure-overrides/${detectionId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  clearStructureOverride(projectId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/structure-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },
