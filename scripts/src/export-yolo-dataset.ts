@@ -17,6 +17,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import type { Detection, ProjectAsset, TrainingSample } from "@sketch2ui/shared-types";
 import {
   CLASSES_FILE,
@@ -54,6 +55,8 @@ interface ExportStats {
   correctionImages: number;
   correctionLabels: number;
   supersededAssets: number;
+  /** Assets skipped because another export already wrote byte-identical image data. */
+  duplicateSkipped: Array<{ skipped: string; keptInstead: string }>;
 }
 
 const args = new Set(process.argv.slice(2));
@@ -162,7 +165,38 @@ function emptyStats(): ExportStats {
     correctionImages: 0,
     correctionLabels: 0,
     supersededAssets: 0,
+    duplicateSkipped: [],
   };
+}
+
+/**
+ * Content hash of one uploaded image.
+ *
+ * Deduplication has to key on CONTENT, not filename or asset id: the same sketch
+ * re-uploaded through the UI gets a fresh asset uuid and a fresh storage key, so
+ * every filename-based check sees two unrelated images. Measured on the real corpus
+ * (docs/ml/dataset-quality-v1.1.md §5.1): 6 byte-identical extra copies were
+ * inflating ~7.5% of all label instances, entirely from the same handful of in-house
+ * sketches being re-uploaded across development/test projects.
+ *
+ * md5 is the right tool here — this is duplicate detection, not a security boundary,
+ * and an adversarial collision is not a threat model for locally-uploaded sketches.
+ */
+function fileMd5(filePath: string): string {
+  return crypto.createHash("md5").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+/** Delete any previously-written export of one image stem, across all splits. */
+function removeExportedStem(stem: string, ext: string): void {
+  if (DRY_RUN) return;
+  for (const split of SPLITS) {
+    for (const file of [
+      path.join(imagesDir(split), `${stem}${ext}`),
+      path.join(labelsDir(split), `${stem}.txt`),
+    ]) {
+      if (fs.existsSync(file)) fs.rmSync(file, { force: true });
+    }
+  }
 }
 
 function bump(map: Map<string, number>, key: string): void {
@@ -256,6 +290,21 @@ function main(): void {
     store.trainingSamples.filter((s) => s.approved).map((s) => s.imageAssetId)
   );
 
+  // Content-hash claims, so the same image cannot enter the dataset twice under two
+  // different asset uuids. Approved samples claim their hash FIRST because they are
+  // the authoritative version of an image: a human signed off on that box set, and it
+  // includes corrected model boxes the plain manual export would drop. Without this
+  // pre-pass the plain export would win purely by running earlier.
+  const claimedHashes = new Map<string, string>(); // md5 -> exported stem that owns it
+  for (const sample of store.trainingSamples) {
+    if (!sample.approved) continue;
+    const sourcePath = path.join(UPLOADS_DIR, sample.storageKey);
+    if (!fs.existsSync(sourcePath)) continue;
+    const stem = `${CORRECTION_PREFIX}${path.parse(sample.storageKey).name}`;
+    const hash = fileMd5(sourcePath);
+    if (!claimedHashes.has(hash)) claimedHashes.set(hash, stem);
+  }
+
   for (const asset of store.assets) {
     if (approvedAssetIds.has(asset.id)) {
       stats.supersededAssets += 1;
@@ -270,6 +319,20 @@ function main(): void {
       stats.missingImageFiles.push(asset.storageKey);
       continue;
     }
+
+    // Same-content check. Distinct from the approvedAssetIds check above, which only
+    // catches the SAME asset id — this catches a different asset id holding identical
+    // image bytes (a re-upload of the same sketch).
+    const parsedKey = path.parse(asset.storageKey);
+    const contentHash = fileMd5(sourcePath);
+    const owner = claimedHashes.get(contentHash);
+    if (owner) {
+      stats.duplicateSkipped.push({ skipped: asset.storageKey, keptInstead: owner });
+      // A previous run may already have written this duplicate before dedup existed.
+      removeExportedStem(parsedKey.name, parsedKey.ext);
+      continue;
+    }
+    claimedHashes.set(contentHash, parsedKey.name);
 
     const detections = byAsset.get(asset.id) ?? [];
     const lines: string[] = [];
@@ -314,7 +377,7 @@ function main(): void {
     stats.images[split] += 1;
   }
 
-  exportApprovedSamples(store, stats);
+  exportApprovedSamples(store, stats, claimedHashes);
   report(stats);
 }
 
@@ -326,13 +389,29 @@ function main(): void {
  * Both manual and model-sourced boxes are included: after correction the approver has
  * vouched for both equally.
  */
-function exportApprovedSamples(store: StoreShape, stats: ExportStats): void {
+function exportApprovedSamples(
+  store: StoreShape,
+  stats: ExportStats,
+  claimedHashes: Map<string, string>
+): void {
   for (const sample of store.trainingSamples) {
     if (!sample.approved) continue;
 
     const sourcePath = path.join(UPLOADS_DIR, sample.storageKey);
     if (!fs.existsSync(sourcePath)) {
       stats.missingImageFiles.push(sample.storageKey);
+      continue;
+    }
+
+    // Two approved samples can hold byte-identical images (the same sketch uploaded
+    // to two projects and approved in both). The pre-pass in main() recorded which
+    // stem owns each hash; anything else is a duplicate of it.
+    const parsed = path.parse(sample.storageKey);
+    const ownStem = `${CORRECTION_PREFIX}${parsed.name}`;
+    const owner = claimedHashes.get(fileMd5(sourcePath));
+    if (owner && owner !== ownStem) {
+      stats.duplicateSkipped.push({ skipped: sample.storageKey, keptInstead: owner });
+      removeExportedStem(ownStem, parsed.ext);
       continue;
     }
 
@@ -356,8 +435,7 @@ function exportApprovedSamples(store: StoreShape, stats: ExportStats): void {
 
     if (lines.length === 0) continue;
 
-    const parsed = path.parse(sample.storageKey);
-    const stem = `${CORRECTION_PREFIX}${parsed.name}`;
+    const stem = ownStem;
     const split = sample.datasetSplit;
 
     if (!DRY_RUN) {
@@ -387,6 +465,22 @@ function report(stats: ExportStats): void {
     console.log(
       `  ${stats.supersededAssets} asset(s) exported from their approved snapshot instead of raw manual boxes`
     );
+  }
+
+  if (stats.duplicateSkipped.length > 0) {
+    console.log(
+      `\nDuplicate images skipped: ${stats.duplicateSkipped.length} (byte-identical to an image already exported)`
+    );
+    for (const d of stats.duplicateSkipped) {
+      console.log(`  ${d.skipped}  ->  kept ${d.keptInstead} instead`);
+    }
+    console.log(
+      "  These are re-uploads of the same sketch under a different asset id. Exporting"
+    );
+    console.log(
+      "  both would inflate per-class counts without adding visual diversity — see"
+    );
+    console.log("  docs/ml/dataset-quality-v1.1.md §5.1.");
   }
 
   console.log(`\nLabels: ${stats.labels}`);

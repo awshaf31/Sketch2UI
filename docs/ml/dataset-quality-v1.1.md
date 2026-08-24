@@ -226,8 +226,28 @@ bytes both get exported.
 feed a real training run, either (a) delete the redundant projects/assets in
 `apps/api/data/store.json` so only one upload per distinct sketch survives,
 or (b) add a content-hash dedup pass to `export-yolo-dataset.ts` that keeps
-only the first asset per image MD5. Not done as part of this phase — Phase
-5's scope is reporting, not modifying the exporter (see §8).
+only the first asset per image MD5.
+
+> **UPDATE (same day, Phase 6 prep):** option (b) was implemented —
+> `export-yolo-dataset.ts` now hashes image content and refuses to export the
+> same bytes twice, with approved-correction samples claiming their hash first
+> (they are the authoritative version of an image). Option (b) was chosen over
+> (a) because it is non-destructive — no user data is deleted — and it prevents
+> the problem recurring on every future re-upload rather than cleaning it up
+> once.
+>
+> Running the exporter against the **live store** (`data/uploads/`, 14 files)
+> rather than the already-exported corpus surfaced **one additional duplicate
+> pair this report's original scan missed**: `4c6b43be…` / `3eb8232e…`. Both are
+> un-annotated uploads, so neither had ever been exported with labels — they
+> were invisible to a scan of `ml/dataset/images/`. The live store contains
+> **8 unique images across 14 files** (independently confirmed with `md5` and
+> `cmp`), i.e. **6 duplicate copies**, which is exactly what the new dedup pass
+> now skips.
+>
+> The fix is in place but **has not been applied to the on-disk corpus** — that
+> requires a real (non-`--dry-run`) `npm run export:dataset`, which is a data
+> operation left for whoever runs the next training refresh.
 
 ### 5.2 Empty label files
 
@@ -318,6 +338,9 @@ not need.
   dataset quality" (the Phase 5 prompt's explicit instruction) — flagging
   the gap accurately is this phase's job; fixing the exporter is next
   phase's or a dedicated data-cleanup phase's job.
+  *(Superseded — see the UPDATE in §5.1: the dedup pass was implemented
+  immediately afterwards as Phase 6 preparation, since it is a hard
+  precondition for a defensible v1.1 comparison.)*
 - **No expansion to the full 41-class training set.** Per plan §5.3, doing
   so requires every class to have definition + positive examples + negative
   examples + enough images + annotation consistency. Definitions are

@@ -1027,3 +1027,166 @@ confirming with the user which of the two — data cleanup or the
 architecture decision doc — to do first, since Phase 6 explicitly forbids
 silently choosing an architecture.
 
+---
+
+## Phase 6 (preparation) — Architecture Decision + Exporter Dedup
+
+**Date:** 2026-08-24
+**Goal:** Satisfy the two hard preconditions the plan places in front of any
+v1.1 training run: (1) write the mandated model-architecture decision
+document, (2) fix the duplicate-image defect Phase 5 found. **No training
+run, no weight changes.**
+**Status:** ✅ Complete. Phase 6 *proper* (training) remains blocked — see
+"Why training did not run" below.
+
+### Files added
+
+- `docs/ml/model-decision.md` — the plan's §9/Phase 6 mandated decision
+  record: current vs. target architecture, evidence, trade-offs, inference-API
+  compatibility analysis, decision, preconditions, and the recommended
+  experiment design.
+
+### Files changed
+
+- `scripts/src/export-yolo-dataset.ts` — content-hash (MD5) deduplication.
+  Approved-correction samples claim their content hash in a pre-pass (they are
+  the authoritative version of an image — a human signed off on that box set,
+  including corrected model boxes the plain manual export drops); the asset
+  loop then skips any asset whose bytes are already claimed, and deletes any
+  stale copy a pre-dedup run had written. Skipped duplicates are reported
+  explicitly rather than silently dropped.
+- `docs/ml/dataset-quality-v1.1.md` — §5.1 and §8 updated to record that the
+  dedup fix landed and to add the newly-discovered duplicate pair.
+
+### The architecture decision, in brief
+
+**Decision: keep YOLOv8-nano as the primary line for v1.1; run a YOLOv5n arm
+as a controlled A/B once the data is fixed; never adopt the classic
+`ultralytics/yolov5` repo.**
+
+The most useful finding is that the plan's binary framing (keep v8n vs. move
+to YOLOv5) hides a third option that changes the calculus:
+
+| Option | What | Inference-API impact |
+|---|---|---|
+| A | keep `yolov8n.pt` | none |
+| **B1** | `yolov5n.yaml` **as shipped inside ultralytics 8.3.0** | **none** |
+| B2 | classic `ultralytics/yolov5` repo | **breaking** |
+
+Verified locally against the project's own pinned stack rather than assumed:
+
+- Ultralytics 8.3.0 ships `yolov5.yaml` / `yolov5-p6.yaml`, so YOLOv5 is a
+  first-class in-stack option — no new dependency.
+- Both architectures instantiate cleanly at `nc=16`:
+  **YOLOv5n = 2,222,064 params / 286 modules; YOLOv8n = 2,724,448 params /
+  249 modules.** YOLOv5n is *smaller* (−18% params).
+- `yolov5.yaml` uses **C3** blocks (genuine YOLOv5 v6.0 topology) while
+  `yolov8.yaml` uses **C2f** — but **both terminate in the same anchor-free
+  `Detect` head**. Identical head ⇒ identical output tensor format.
+- `services/cv-worker/app/detector/model.py` couples only to the generic
+  ultralytics surface (`YOLO(path)`, `.predict()`, `boxes.xywhn/.cls/.conf`).
+  **Switching A → B1 therefore needs one CLI flag and zero inference-code
+  changes.** B2 would require replacing the loader, rewriting result
+  unpacking, adding a second ML dependency, and breaking the shared-pin
+  guarantee between `ml/training/requirements.txt` and the worker.
+
+The reason to still keep A as primary is scientific, not technical: Phase 5
+established the bottleneck is *data*, and Phase 7 gates promotion on a
+comparison against `baseline-v1.0.0.json`. Changing data *and* architecture in
+the same version makes any metric movement unattributable. Since B1 costs one
+flag, it is strictly better as a clean second arm on a fixed corpus than as a
+confounder folded into v1.1.
+
+An honest caveat is recorded in the document: ultralytics' `yolov5n` is
+YOLOv5's backbone/neck with an anchor-free head, so it must be described as
+"YOLOv5 backbone (C3) with an anchor-free head, via Ultralytics 8.3" and not
+as plain "YOLOv5" — describing it as the latter would repeat exactly the kind
+of imprecision the document exists to correct.
+
+### The dedup fix
+
+Phase 5 reported 5 duplicate groups / 6 extra copies by scanning
+`ml/dataset/images/`. Running the fixed exporter against the **live store**
+(`data/uploads/`) surfaced **one further pair that scan could not see** —
+`4c6b43be…` / `3eb8232e…`, both un-annotated uploads that had therefore never
+been exported with labels.
+
+Independently confirmed three ways: `md5 -r` grouping shows **8 unique images
+across 14 files**, `cmp` confirms a sample pair is byte-identical, and the
+exporter's own dry run skips exactly 6.
+
+Option (b) (exporter dedup) was chosen over option (a) (delete redundant
+store projects) deliberately: it is **non-destructive** — no user data is
+deleted — and it prevents recurrence on every future re-upload rather than
+cleaning up once.
+
+### Why training did not run
+
+Running v1.1 today would be **theater, not progress**. The corpus has not
+changed: same images, same labels, same config, fixed seed ⇒ a v1.1 that
+reproduces v1.0.0 to within noise. It would consume the one clean baseline
+comparison Phase 7 depends on and produce no new information.
+
+The genuine blocker is **human annotation work**, which cannot be automated
+here: new P0-class examples (`select`, `radio_button`, `carousel` drawn so the
+distinguishing mark matters), first-ever evaluable `card` / `page` coverage,
+and genuine hard negatives (off-page notes, arrows, measurements — the corpus
+contains none). This is stated plainly in `model-decision.md` §5 rather than
+worked around.
+
+### Tests
+
+| Command | Result | Delta from Phase 5 |
+|---|---|---|
+| `npm run test` (Vitest) | 62 unique passing (124 reported, known dist duplication) | unchanged |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean | unchanged |
+| `npm run build` | success (96 modules, Vite 685 ms) | unchanged |
+
+No new automated tests: the exporter is a build-time CLI in the `scripts`
+workspace, which has no test harness (same precedent as Phase 5's
+`dataset-quality-report.ts`). Correctness was established by cross-checking
+the dedup output against two independent methods (`md5 -r` grouping and
+`cmp`), which is stronger evidence for this specific change than a unit test
+over a mocked filesystem would be.
+
+### Verification that nothing was mutated
+
+`git status` after all work shows only `scripts/src/export-yolo-dataset.ts`,
+`docs/ml/model-decision.md`, `docs/ml/dataset-quality-v1.1.md` and this log —
+**zero changes under `ml/dataset/`, `ml/models/`, or `apps/api/data/`.** Every
+exporter invocation used `--dry-run`.
+
+### Known limitations / open decisions
+
+1. **The dedup fix is in place but not applied to the on-disk corpus.**
+   Applying it needs a real (non-dry-run) `npm run export:dataset`, which
+   rewrites `ml/dataset/` — a data operation deliberately left to whoever runs
+   the next training refresh rather than performed unilaterally here.
+2. **The 4 empty-label files are still unresolved** — distinguishing a
+   deliberate background negative from an un-annotated upload requires looking
+   at the images, which is a human judgement call.
+3. **`train_v1.py`'s `--model` default is unchanged** (`yolov8n.pt`), per the
+   decision. The v5 arm is opt-in via the existing flag; no training-script
+   change was needed to enable the recommended experiment.
+4. **The YOLOv5n arm has not been run**, so its real accuracy on this task is
+   unmeasured — the parameter counts above are architectural facts, not
+   performance claims.
+
+### Next phase
+
+**Phase 6 proper (train v1.1) is blocked on human data collection**, not on
+tooling — both of its documented preconditions that *could* be automated are
+now met. The realistic options are:
+
+- **(a)** Collect/annotate new sketches per `dataset-quality-v1.1.md` §9, then
+  run the two-arm experiment in `model-decision.md` §6.
+- **(b)** Skip ahead to a phase that is not data-blocked — **Phase 8
+  (PostgreSQL + Prisma)** is the highest-value unblocked item, and Phase 0's
+  baseline already flags the JSON store as a real scalability/consistency
+  risk. Phases 9-10 (durable jobs, auth) are similarly unblocked.
+
+Recommend **(b)** to keep momentum, returning to Phase 6 when labeled data
+exists.
+
+
