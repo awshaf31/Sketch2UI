@@ -1,17 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { db } from "../../db/jsonStore.js";
-import { JsonProjectRepository } from "../json/project.repository.js";
 import type { ProjectRepository } from "../types.js";
 
 /**
- * ProjectRepository CONTRACT test — Phase 8 amendment §10.
+ * ProjectRepository CONTRACT — Phase 8 amendment §10.
  *
  * The point of this suite is that it is written against the INTERFACE, not against an
  * implementation. Every adapter must satisfy identical assertions, which is what makes
  * swapping JSON for Prisma a verifiable change rather than a hopeful one.
  *
- * The Prisma arm is defined in project.contract.prisma.test.ts and skips itself when no
- * database is reachable — it shares this suite via `runProjectRepositoryContract`.
+ * This module is deliberately NOT a *.test.ts file and registers nothing on import.
+ * Each adapter gets its own thin test file that calls the exported function once.
+ * (An earlier version registered the JSON arm at the bottom of this file; importing it
+ * from the Prisma test then ran that arm a second time — 44 JSON tests instead of 22.)
  */
 
 export function runProjectRepositoryContract(
@@ -192,15 +192,3 @@ export function runProjectRepositoryContract(
     });
   });
 }
-
-// --- JSON adapter arm -------------------------------------------------------------
-// Always runs: it needs no external service.
-runProjectRepositoryContract(
-  "JSON adapter",
-  () => new JsonProjectRepository(),
-  () => {
-    // Safe because vitest.setup.ts redirected STORE_FILE to a temp file and asserted
-    // the redirect took effect before any module loaded.
-    db.reset();
-  }
-);

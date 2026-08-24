@@ -32,6 +32,31 @@ import type { Prisma } from "@prisma/client";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Load the repo-root .env.
+ *
+ * The Prisma CLI auto-loads .env; Prisma CLIENT does not — it reads `process.env`
+ * directly. So `prisma migrate deploy` worked while this script failed with
+ * "Environment variable not found: DATABASE_URL", despite both nominally using the
+ * same configuration. Loading it here removes that asymmetry.
+ *
+ * Existing environment wins, so `DATABASE_URL=... npm run db:migrate-json` still
+ * overrides the file.
+ */
+function loadRootEnv(): void {
+  const envPath = path.resolve(__dirname, "../../../../.env");
+  if (!fs.existsSync(envPath)) return;
+  for (const line of fs.readFileSync(envPath, "utf-8").split("\n")) {
+    const match = /^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/.exec(line);
+    if (!match) continue;
+    const [, key, rawValue] = match;
+    if (process.env[key] === undefined) {
+      process.env[key] = rawValue.replace(/^["']|["']$/g, "");
+    }
+  }
+}
+loadRootEnv();
+
 const argv = process.argv.slice(2);
 const DRY_RUN = argv.includes("--dry-run");
 
@@ -80,6 +105,20 @@ function loadStore(): Store {
     pageBoundaries: raw.pageBoundaries ?? [],
     correctionRecords: raw.correctionRecords ?? [],
   };
+}
+
+/**
+ * Backfill `source` for code versions written before the field existed.
+ *
+ * "generated" is not a guess. `source` was introduced together with hand-editing
+ * (code-versions.routes.ts: a hand-edit appends a NEW version with source "edited").
+ * Before that feature shipped, generation was the only code path that could create a
+ * version at all — so every row predating the field is necessarily generated.
+ *
+ * Found in the real store: 4 of 7 code versions are in this state.
+ */
+function legacyCodeVersionSource(value: unknown): "generated" | "edited" {
+  return value === "edited" ? "edited" : "generated";
 }
 
 /** "user-edited" is legal in TS but not as a Postgres enum member. */
@@ -186,6 +225,46 @@ function validate(store: Store): Problem[] {
         );
       }
     }
+  }
+
+  // Required-field presence.
+  //
+  // The JSON store is schemaless, so rows written before a field existed simply lack
+  // it — and Postgres will reject them as NOT NULL violations. Found in the real store:
+  // 4 of 7 code versions predate `source`, which was added with the hand-edit feature.
+  // Referential checks alone never see this class of problem, which is why it is
+  // checked separately rather than folded into the FK pass.
+  const REQUIRED: Array<[string, Row[], string[]]> = [
+    ["project_assets", store.assets, ["projectId", "storageKey", "mimeType", "width", "height", "fileSize"]],
+    ["detections", store.detections, ["projectId", "sourceAssetId", "className", "confidence", "status", "source"]],
+    ["code_versions", store.codeVersions, ["projectId", "versionNumber", "html", "css"]],
+    ["jobs", store.jobs, ["projectId", "type", "status", "stage"]],
+    ["training_samples", store.trainingSamples, ["projectId", "imageAssetId", "storageKey", "approved", "approvedAt", "datasetSplit", "imageWidth", "imageHeight"]],
+    ["project_exports", store.exports, ["projectId", "codeVersionId", "versionNumber", "storagePath", "fileSize"]],
+    ["page_boundaries", store.pageBoundaries, ["projectId", "assetId", "polygon", "confidence", "method", "areaFraction", "applied", "source"]],
+  ];
+  for (const [table, rows, fields] of REQUIRED) {
+    for (const row of rows) {
+      const missing = fields.filter((f) => row[f] === undefined || row[f] === null);
+      if (missing.length > 0) {
+        problems.push({
+          kind: "malformed",
+          table,
+          id: String(row.id ?? "(no id)"),
+          detail: `missing required field(s): ${missing.join(", ")}`,
+        });
+      }
+    }
+  }
+
+  // `code_versions.source` is handled as a BACKFILL rather than an error — see
+  // legacyCodeVersionSource(). Reported for visibility, not as a blocker.
+  const legacySourceCount = store.codeVersions.filter((c) => c.source === undefined).length;
+  if (legacySourceCount > 0) {
+    console.log(
+      `\nNote: ${legacySourceCount} code version(s) predate the \`source\` field and will be ` +
+        'backfilled as "generated" — see legacyCodeVersionSource() for why that is correct.\n'
+    );
   }
 
   // Uniqueness the JSON store never enforced but the schema now does.
@@ -303,7 +382,7 @@ async function migrate(store: Store): Promise<void> {
           id: c.id,
           projectId: c.projectId,
           versionNumber: c.versionNumber,
-          source: c.source,
+          source: legacyCodeVersionSource(c.source),
           html: c.html,
           css: c.css,
           javascript: c.javascript ?? null,

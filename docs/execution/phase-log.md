@@ -1574,3 +1574,139 @@ risk.
 
 Separately, and independently: authorize a dedicated local Postgres cluster so the
 Prisma contract arm can stop being skipped.
+
+---
+
+## Phase 8 (part 3) — Live PostgreSQL: schema applied, data migrated, parity proven
+
+**Date:** 2026-08-24
+**Goal:** Remove the "never executed against a database" caveat from part 2.
+**Status:** ✅ Complete. The Prisma adapter is now **proven**, not merely typechecked.
+
+### Environment resolved
+
+The user supplied credentials for their own local server. Findings:
+
+- The server on :5432 is **PostgreSQL 17.6** (`/Library/PostgreSQL/17`, EDB installer).
+  The earlier "14.19" was the *Homebrew client* first on PATH — two installs coexist.
+- Password auth is required (`fe_sendauth: no password supplied`); superuser `postgres`
+  authenticates successfully.
+- Created a **dedicated role and two databases** — `sketch2ui` (dev) and
+  `sketch2ui_test` (tests) — both owned by a non-superuser `sketch2ui` role.
+  `good_morning_db` was **not touched**: no roles created in it, no credentials
+  altered, nothing dropped.
+- Measured the new role's blast radius rather than assuming isolation: it *can*
+  connect to `good_morning_db` (Postgres grants `CONNECT` to `PUBLIC` by default) but
+  has **zero** table privileges and **cannot create** anything there. The `PUBLIC`
+  grant was deliberately left alone — revoking it would affect the other project too.
+
+### Part 15 database safety review — verified live
+
+| Check | Expected | Actual |
+|---|---:|---|
+| Tables | 13 | **13** ✅ |
+| Enums | 12 | **12** ✅ |
+| Indexes | 27 | **27 non-PK** (+13 PK = 40 total) ✅ |
+| Foreign keys | 23 | **23** ✅ |
+| Override FKs → detections | 4 groups | ✅ (`structure_overrides` twice: `detectionId` + `parentDetectionId`) |
+| Version uniqueness | present | ✅ as a UNIQUE **index** (Prisma emits `@@unique` that way, not as a table constraint) |
+
+Constraints were proven to **actually enforce**, not merely exist:
+
+- duplicate `(projectId, versionNumber)` → `ERROR: duplicate key value violates unique
+  constraint "code_versions_projectId_versionNumber_key"`
+- `style_overrides` → nonexistent detection → `ERROR: violates foreign key constraint
+  "style_overrides_detectionId_fkey"`
+
+That second one is plan §8.4's requirement (*"prevent override → missing detection"*)
+becoming a database guarantee rather than an application convention.
+
+### Data migration executed
+
+`npm run db:migrate-json` committed **445 rows** in one transaction — exactly the
+dry-run's prediction:
+
+```
+projects=15  assets=14  detections=393  code_versions=7  jobs=12  training=2  exports=2
+```
+
+### Part 12 semantic parity — JSON vs PostgreSQL
+
+| Dimension | JSON | PostgreSQL |
+|---|---|---|
+| Row counts | p=15 a=14 d=393 cv=7 j=12 | **identical** |
+| Sample project | `85b9d6dd` "Car marketplace" status=generated active=`805c158c` | **identical** |
+| bbox (6 dp) | `[0.013333, 0.007626, 0.976667, 0.986654]` | **identical** |
+| Class histogram (top 5) | section=69 text=54 heading=48 image=43 button=27 | **identical** |
+| status distribution | active=392 rejected=1 | **identical** |
+| source distribution | manual=225 model=168 | **identical** |
+
+### Prisma contract arm — no longer skipped
+
+```
+22 ProjectRepository contract — JSON adapter
+22 ProjectRepository contract — Prisma adapter
+Tests  44 passed (44)      # previously 44 passed | 1 skipped
+```
+
+Both adapters pass the **same** 22 assertions against real backends — including the
+detached-read assertion, which is the one that would have caught a JSON adapter
+handing out live references where Prisma cannot.
+
+### Four real defects found by executing rather than reasoning
+
+1. **Prisma Client does not auto-load `.env`** (only the CLI does). `migrate deploy`
+   worked while the importer failed with "Environment variable not found:
+   DATABASE_URL" from nominally the same config. Fixed by loading the root `.env` in
+   the script.
+2. **`.env` lives at the repo root but Prisma resolves it from cwd** (`apps/api`).
+   Fixed with a gitignored symlink so there is one source of truth rather than a
+   duplicate that drifts.
+3. **4 of 7 code versions have no `source` field at all** — they predate the field,
+   which arrived with hand-editing. Postgres rejects them as NOT NULL. The dry-run
+   validator had missed this entire class (it checked referential integrity, geometry
+   and uniqueness, but never required-field presence). Fixed on both sides: the
+   validator now audits required fields across seven tables, and the importer
+   backfills `source` as `"generated"` — **provably** correct, since before hand-editing
+   existed generation was the only code path that could create a version.
+4. **The contract tests would have destroyed the migrated database.**
+   `project.deleteMany({})` cascades to every table; pointed at the dev database an
+   ordinary `npm test` would have silently wiped all 445 rows. Fixed with a second
+   isolation guard that rewrites `DATABASE_URL` to `<db>_test` and **refuses to run**
+   if the result does not target a `*_test` database. Verified: dev DB still 15/393
+   after a full test run, test DB left empty.
+
+The contract suite was also restructured — the shared contract moved out of a
+`*.test.ts` file, because importing it from the Prisma arm re-ran its side-effectful
+JSON registration (44 JSON tests instead of 22).
+
+### Verification
+
+```
+npm run typecheck        clean
+npm run test             124 (shared-types) + 44 (apps/api, both adapters)
+npm run test:py          19 passed
+npm run build            success
+npm run check:db-state   OK
+```
+
+**The JSON store remains the untouched source of truth: 15 / 393 / 7 / 2**, verified
+before and after every operation. The importer is one-way and read-only on JSON.
+
+### Known limitations
+
+1. **12 of 13 domains still unmigrated** — unchanged from part 2. Only Projects has a
+   Prisma adapter.
+2. **`PERSISTENCE_DRIVER` still defaults to `json`** and must stay there: flipping it
+   now would serve Projects from Postgres while 12 domains still read the JSON file,
+   splitting the source of truth.
+3. **Postgres now holds a point-in-time copy.** It will drift from JSON as the app
+   continues writing to the file store. Re-importing later requires clearing it first
+   (duplicate primary keys otherwise).
+4. **Local dev credentials are weak** (`sketch2ui` / same password as the superuser).
+   Acceptable for a local-only database; must not be reused anywhere reachable.
+
+### Next action
+
+**Migrate the Assets domain** — unchanged recommendation, now with a real database
+behind the contract so each subsequent domain gets both adapters verified as it lands.

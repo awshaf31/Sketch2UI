@@ -1,5 +1,5 @@
 import { describe, it } from "vitest";
-import { runProjectRepositoryContract } from "./project.contract.test.js";
+import { runProjectRepositoryContract } from "./project.contract.js";
 
 /**
  * Prisma arm of the ProjectRepository contract.
@@ -44,6 +44,8 @@ if (reachable) {
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
 
+  const { afterAll } = await import("vitest");
+
   runProjectRepositoryContract(
     "Prisma adapter",
     () => new PrismaProjectRepository(),
@@ -52,6 +54,13 @@ if (reachable) {
       await getPrismaClient().project.deleteMany({});
     }
   );
+
+  // beforeEach clears BEFORE each test, so the final test's rows would otherwise be
+  // left behind in a shared database — which then looks like real data to anything
+  // else pointed at it (the JSON importer counted one such row as pre-existing).
+  afterAll(async () => {
+    await getPrismaClient().project.deleteMany({});
+  });
 } else {
   describe("ProjectRepository contract — Prisma adapter", () => {
     it.skip(
