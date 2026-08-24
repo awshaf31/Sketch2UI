@@ -11,3 +11,4 @@ export * from "./code-validation.js";
 export * from "./boundary-geometry.js";
 export * from "./taxonomy.js";
 export * from "./content-override.js";
+export * from "./geometry-override.js";

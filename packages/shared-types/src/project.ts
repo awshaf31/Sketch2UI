@@ -25,6 +25,13 @@ export interface Project {
    * API validator accepts.
    */
   contentOverrides?: Record<string, import("./content-override.js").ContentOverride>;
+  /**
+   * Geometry-inspector tweaks (§17.3 Geometry group). Same detection-uuid keying as
+   * styleOverrides/contentOverrides. Applied BEFORE buildUITree so containment and
+   * row grouping key off the overridden bboxes — see
+   * geometry-override.ts's applyGeometryOverrides and its call site in generateCode.
+   */
+  geometryOverrides?: Record<string, import("./geometry-override.js").GeometryOverride>;
   createdAt: string;
   updatedAt: string;
 }

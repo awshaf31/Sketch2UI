@@ -2,6 +2,7 @@ import type {
   CodeVersion,
   ContentOverride,
   Detection,
+  GeometryOverride,
   Job,
   Project,
   PageBoundary,
@@ -255,6 +256,28 @@ export const api = {
   },
   clearContentOverride(projectId: string, detectionId: string): Promise<void> {
     return request(`/api/projects/${projectId}/content-overrides/${detectionId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // Per-node geometry overrides (§17.3 Geometry). Same detection-uuid keying as
+  // style/content overrides. Body is a partial { x?, y?, width?, height? } in
+  // normalized [0,1] — the API validator enforces the strict-normalized rules.
+  listGeometryOverrides(projectId: string): Promise<Record<string, GeometryOverride>> {
+    return request(`/api/projects/${projectId}/geometry-overrides`);
+  },
+  putGeometryOverride(
+    projectId: string,
+    detectionId: string,
+    input: GeometryOverride
+  ): Promise<{ detectionId: string; geometry: GeometryOverride | null }> {
+    return request(`/api/projects/${projectId}/geometry-overrides/${detectionId}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  },
+  clearGeometryOverride(projectId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/geometry-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },

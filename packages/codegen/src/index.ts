@@ -1,4 +1,6 @@
 import type { Detection, UIRoot } from "@sketch2ui/shared-types";
+import type { GeometryOverridesByDetection } from "@sketch2ui/shared-types";
+import { applyGeometryOverrides } from "@sketch2ui/shared-types";
 import type { AssetResolver } from "./html.js";
 import { buildUITree } from "./layout.js";
 import { generateHTML } from "./html.js";
@@ -43,9 +45,20 @@ export function generateCode(
      * only applies fields the class accepts (see CONTENT_APPLICABILITY).
      */
     contentOverrides?: ContentOverridesByDetection;
+    /**
+     * Manual per-node geometry tweaks from the inspector (§17.3 Geometry). Applied
+     * to the detection bboxes BEFORE the tree is built — see the comment in
+     * geometry-override.ts for why the position of this call matters.
+     */
+    geometryOverrides?: GeometryOverridesByDetection;
   }
 ): GeneratedCode {
-  const tree = buildUITree(detections, options);
+  // Geometry runs at the detection layer, before layout inference. Style and content
+  // are folded onto the resulting UI-IR nodes because they never influence structure.
+  const withGeometry = options.geometryOverrides
+    ? applyGeometryOverrides(detections, options.geometryOverrides)
+    : detections;
+  const tree = buildUITree(withGeometry, options);
   // Content first, then style — content changes the text/alt/href, style changes the
   // layout; order does not actually matter because they touch disjoint fields, but
   // applying content first mirrors the read-order in a mental "what will this look

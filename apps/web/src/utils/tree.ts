@@ -3,7 +3,8 @@ import type {
   ContentOverridesByDetection,
   StyleOverridesByDetection,
 } from "@sketch2ui/codegen";
-import type { Detection } from "@sketch2ui/shared-types";
+import type { Detection, GeometryOverridesByDetection } from "@sketch2ui/shared-types";
+import { applyGeometryOverrides } from "@sketch2ui/shared-types";
 import {
   applyContentOverrides,
   applyStyleOverrides,
@@ -21,9 +22,18 @@ export function buildTreeAndCode(
   /** Style-inspector tweaks (§6.7 / §17.3) folded into the tree before rendering. */
   styleOverrides?: StyleOverridesByDetection,
   /** Content-inspector tweaks (§17.3 Content, Appendix Q). */
-  contentOverrides?: ContentOverridesByDetection
+  contentOverrides?: ContentOverridesByDetection,
+  /**
+   * Geometry-inspector tweaks (§17.3 Geometry) — applied to the detection bboxes
+   * BEFORE the tree is built so containment and row grouping key off the
+   * effective positions. Symmetrical with the server-side generateCode path.
+   */
+  geometryOverrides?: GeometryOverridesByDetection
 ) {
-  const tree = buildUITree(detections, { name, viewport });
+  const withGeometry = geometryOverrides
+    ? applyGeometryOverrides(detections, geometryOverrides)
+    : detections;
+  const tree = buildUITree(withGeometry, { name, viewport });
   if (contentOverrides) applyContentOverrides(tree, contentOverrides);
   if (styleOverrides) applyStyleOverrides(tree, styleOverrides);
   return {

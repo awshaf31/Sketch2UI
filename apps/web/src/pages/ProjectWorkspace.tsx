@@ -5,12 +5,17 @@ import type {
   CodeVersion,
   ContentOverride,
   DetectionStatus,
+  GeometryOverride,
   PageBoundary,
   PagePolygon,
   Project,
   ProjectExport,
 } from "@sketch2ui/shared-types";
-import { DEFAULT_OVERLAP_THRESHOLD, shouldAccept } from "@sketch2ui/shared-types";
+import {
+  DEFAULT_OVERLAP_THRESHOLD,
+  applyGeometryOverrides,
+  shouldAccept,
+} from "@sketch2ui/shared-types";
 import type { CodeVersionSummaryEntry } from "../services/api.js";
 import { api } from "../services/api.js";
 import { useProjectStore } from "../stores/projectStore.js";
@@ -56,6 +61,12 @@ export default function ProjectWorkspace() {
   // inspector is shared with style: only one codegen round-trip in flight at a time.
   const [contentOverrides, setContentOverrides] = useState<Record<string, ContentOverride>>({});
   const [applyingContent, setApplyingContent] = useState(false);
+  // Geometry-inspector overrides (§17.3 Geometry) — same detection-uuid keying and
+  // same persist-then-regenerate Apply flow. Applied to the detection bboxes BEFORE
+  // layout inference (see applyGeometryOverrides), so containment and row grouping
+  // key off the overridden positions.
+  const [geometryOverrides, setGeometryOverrides] = useState<Record<string, GeometryOverride>>({});
+  const [applyingGeometry, setApplyingGeometry] = useState(false);
 
   const {
     asset,
@@ -133,6 +144,7 @@ export default function ProjectWorkspace() {
     if (!id) return;
     api.listStyleOverrides(id).then(setStyleOverrides).catch(() => setStyleOverrides({}));
     api.listContentOverrides(id).then(setContentOverrides).catch(() => setContentOverrides({}));
+    api.listGeometryOverrides(id).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
   }, [id]);
 
   /**
@@ -144,16 +156,20 @@ export default function ProjectWorkspace() {
    * silently rejecting their own work because a detected quad clipped it would be wrong.
    */
   const effectiveDetections = useMemo(() => {
+    // Geometry overrides come first: an override changes the effective bbox, which
+    // both the boundary check and the layout engine key off. Applying it here means
+    // the canvas overlay, tree, code and preview all see the same positions.
+    const withGeometry = applyGeometryOverrides(detections, geometryOverrides);
     const polygon = boundary?.polygon;
-    if (!polygon || !boundary?.applied) return detections;
+    if (!polygon || !boundary?.applied) return withGeometry;
 
-    return detections.map((d) => {
+    return withGeometry.map((d) => {
       if (d.source !== "model") return d;
       const { accepted } = shouldAccept(d.bbox, polygon, DEFAULT_OVERLAP_THRESHOLD);
       const status: DetectionStatus = accepted ? "active" : "rejected";
       return status === d.status ? d : { ...d, status };
     });
-  }, [detections, boundary]);
+  }, [detections, boundary, geometryOverrides]);
 
   const visibleDetections = useMemo(
     () => (showRejected ? effectiveDetections : effectiveDetections.filter((d) => d.status !== "rejected")),
@@ -181,6 +197,8 @@ export default function ProjectWorkspace() {
     () =>
       asset && id
         ? buildTreeAndCode(
+            // effectiveDetections already has geometry overrides folded in; passing
+            // an empty geometry map to buildTreeAndCode avoids a double-apply pass.
             effectiveDetections,
             { width: asset.width, height: asset.height },
             project?.name,
@@ -247,6 +265,23 @@ export default function ProjectWorkspace() {
     // tree restyle off `source`. Without this the box would stay purple until reload.
     const saved = await api.updateDetection(id, detectionId, bbox);
     updateDetection(detectionId, saved);
+    // A canvas drag is the user committing a concrete new geometry directly to the
+    // detection. Any prior inspector-authored geometry override would then win over
+    // the drag on next render — visually the drag would silently revert. Clear the
+    // override so the drag lands. Best-effort: a network hiccup here still leaves
+    // detection.bbox correct; the next Apply/Reset from the inspector reconciles.
+    if (geometryOverrides[detectionId]) {
+      setGeometryOverrides((prev) => {
+        const next = { ...prev };
+        delete next[detectionId];
+        return next;
+      });
+      try {
+        await api.clearGeometryOverride(id, detectionId);
+      } catch {
+        // Left in place: not worth surfacing — detection.bbox already reflects the drag.
+      }
+    }
   }
 
   async function handleDeleteSelected() {
@@ -426,6 +461,51 @@ export default function ProjectWorkspace() {
       await refreshVersions();
     } finally {
       setApplyingContent(false);
+    }
+  }
+
+  // Geometry Apply/Reset — identical persist-then-regenerate shape as Style and
+  // Content. The result body carries the server-normalized override so a
+  // client-side value that only differed by rounding matches whatever the server
+  // stored.
+  async function handleApplyGeometry(
+    detectionId: string,
+    geometry: GeometryOverride
+  ) {
+    if (!id) return;
+    setApplyingGeometry(true);
+    try {
+      const result = await api.putGeometryOverride(id, detectionId, geometry);
+      setGeometryOverrides((prev) => {
+        const next = { ...prev };
+        if (result.geometry) {
+          next[detectionId] = result.geometry;
+        } else {
+          delete next[detectionId];
+        }
+        return next;
+      });
+      await api.generateCode(id);
+      await refreshVersions();
+    } finally {
+      setApplyingGeometry(false);
+    }
+  }
+
+  async function handleResetGeometry(detectionId: string) {
+    if (!id) return;
+    setApplyingGeometry(true);
+    try {
+      await api.clearGeometryOverride(id, detectionId);
+      setGeometryOverrides((prev) => {
+        const next = { ...prev };
+        delete next[detectionId];
+        return next;
+      });
+      await api.generateCode(id);
+      await refreshVersions();
+    } finally {
+      setApplyingGeometry(false);
     }
   }
 
@@ -682,11 +762,16 @@ export default function ProjectWorkspace() {
                 selected={selectedDetection}
                 currentStyle={selectedDetection ? styleOverrides[selectedDetection.id] ?? {} : {}}
                 currentContent={selectedDetection ? contentOverrides[selectedDetection.id] ?? null : null}
+                currentGeometry={
+                  selectedDetection ? geometryOverrides[selectedDetection.id] ?? null : null
+                }
                 onApplyStyle={handleApplyStyle}
                 onResetStyle={handleResetStyle}
                 onApplyContent={handleApplyContent}
                 onResetContent={handleResetContent}
-                busy={applyingStyle || applyingContent}
+                onApplyGeometry={handleApplyGeometry}
+                onResetGeometry={handleResetGeometry}
+                busy={applyingStyle || applyingContent || applyingGeometry}
               />
             </div>
           </div>

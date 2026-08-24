@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ContentOverride, Detection } from "@sketch2ui/shared-types";
-import { contentFieldsFor } from "@sketch2ui/shared-types";
+import type { ContentOverride, Detection, GeometryOverride } from "@sketch2ui/shared-types";
+import { contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
 
-// Style + Content inspector — plan §6.7 / §17.3. Field set matches the plan's
-// grouping exactly: Style is display/gap/padding/margin/font-size/alignment (§17.3);
-// Content is text/altText/href (§17.3 Content group, Appendix Q). Debounce-then-apply
-// (§6.12): drafts live locally in this panel and are pushed to the API only when the
-// user hits Apply, so a slider drag never triggers a codegen round-trip.
+// Style + Content + Geometry inspector — plan §6.7 / §17.3. Field set matches the
+// plan's grouping exactly: Style is display/gap/padding/margin/font-size/alignment
+// (§17.3); Content is text/altText/href (§17.3 Content group, Appendix Q); Geometry
+// is x/y/width/height (§17.3 Geometry group). Debounce-then-apply (§6.12): drafts
+// live locally in this panel and are pushed to the API only when the user hits
+// Apply, so typing a value never triggers a codegen round-trip.
 
 export type StyleOverride = Record<string, string>;
 
@@ -18,14 +19,16 @@ export interface ContentDraft {
 
 interface InspectorPanelProps {
   /**
-   * The currently-selected detection. Both sections are disabled without one — an
-   * override needs a node to attach to, so Apply has nothing to save.
+   * The currently-selected detection. All three sections are disabled without one —
+   * an override needs a node to attach to, so Apply has nothing to save.
    */
   selected: Detection | null;
   /** Current persisted style override for the selected detection (empty if none). */
   currentStyle: StyleOverride;
   /** Current persisted content override for the selected detection (null if none). */
   currentContent: ContentOverride | null;
+  /** Current persisted geometry override for the selected detection (null if none). */
+  currentGeometry: GeometryOverride | null;
   /**
    * Apply the style draft: persist and regenerate. Rejecting propagates so the panel
    * can surface the error rather than silently swallowing a failed save.
@@ -40,7 +43,14 @@ interface InspectorPanelProps {
   onApplyContent: (detectionId: string, content: ContentDraft) => Promise<void>;
   /** Clear the content override for this component. */
   onResetContent: (detectionId: string) => Promise<void>;
-  /** Whether an Apply/Reset (style or content) is currently in flight. */
+  /**
+   * Apply the geometry draft: persist and regenerate. Only fields the user actually
+   * touched are sent — undefined dimensions inherit the detection's stored bbox.
+   */
+  onApplyGeometry: (detectionId: string, geometry: GeometryOverride) => Promise<void>;
+  /** Clear the geometry override for this component. */
+  onResetGeometry: (detectionId: string) => Promise<void>;
+  /** Whether an Apply/Reset (style / content / geometry) is currently in flight. */
   busy?: boolean;
 }
 
@@ -133,14 +143,63 @@ function contentDraftsEqual(
   return true;
 }
 
+// Geometry draft is a string map so partial input (empty = "inherit the detection
+// bbox for this field") round-trips cleanly through the DOM value model. Numbers
+// go over the wire; only non-empty fields are sent so a user editing width alone
+// does not have to restate x/y/height.
+type GeometryFieldKey = "x" | "y" | "width" | "height";
+const GEOMETRY_FIELDS: GeometryFieldKey[] = ["x", "y", "width", "height"];
+
+function emptyGeometryDraft(): Record<GeometryFieldKey, string> {
+  return { x: "", y: "", width: "", height: "" };
+}
+
+function toGeometryDraft(
+  override: GeometryOverride | null
+): Record<GeometryFieldKey, string> {
+  const draft = emptyGeometryDraft();
+  if (!override) return draft;
+  for (const key of GEOMETRY_FIELDS) {
+    const value = override[key];
+    if (typeof value === "number") draft[key] = String(value);
+  }
+  return draft;
+}
+
+function geometryDraftsEqual(
+  a: Record<GeometryFieldKey, string>,
+  b: Record<GeometryFieldKey, string>
+): boolean {
+  return GEOMETRY_FIELDS.every((k) => a[k].trim() === b[k].trim());
+}
+
+function parseGeometryDraft(
+  draft: Record<GeometryFieldKey, string>
+): { ok: true; override: GeometryOverride } | { ok: false; error: string } {
+  const parsed: GeometryOverride = {};
+  for (const key of GEOMETRY_FIELDS) {
+    const raw = draft[key].trim();
+    if (raw === "") continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n)) {
+      return { ok: false, error: `${key} must be a number.` };
+    }
+    parsed[key] = n;
+  }
+  return { ok: true, override: parsed };
+}
+
 export default function InspectorPanel({
   selected,
   currentStyle,
   currentContent,
+  currentGeometry,
   onApplyStyle,
   onResetStyle,
   onApplyContent,
   onResetContent,
+  onApplyGeometry,
+  onResetGeometry,
   busy,
 }: InspectorPanelProps) {
   const [styleDraft, setStyleDraft] = useState<Record<StyleFieldKey, string>>(() =>
@@ -149,8 +208,12 @@ export default function InspectorPanel({
   const [contentDraft, setContentDraft] = useState<Required<ContentDraft>>(() =>
     toContentDraft(currentContent)
   );
+  const [geometryDraft, setGeometryDraft] = useState<Record<GeometryFieldKey, string>>(
+    () => toGeometryDraft(currentGeometry)
+  );
   const [styleError, setStyleError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
+  const [geometryError, setGeometryError] = useState<string | null>(null);
 
   // Applicability is class-driven (Appendix P): a text field on an image would be
   // silently ignored server-side, so the panel does not offer it at all. This is the
@@ -170,16 +233,28 @@ export default function InspectorPanel({
     setContentError(null);
   }, [selected?.id, currentContent]);
 
+  useEffect(() => {
+    setGeometryDraft(toGeometryDraft(currentGeometry));
+    setGeometryError(null);
+  }, [selected?.id, currentGeometry]);
+
   const styleDirty = !styleDraftsEqual(styleDraft, toStyleDraft(currentStyle));
   const contentDirty = !contentDraftsEqual(
     contentDraft,
     toContentDraft(currentContent),
     applicableFields
   );
+  const geometryDirty = !geometryDraftsEqual(geometryDraft, toGeometryDraft(currentGeometry));
   const hasStyleOverride = Object.keys(currentStyle).length > 0;
   const hasContentOverride =
     !!currentContent &&
     (!!currentContent.text || !!currentContent.altText || !!currentContent.href);
+  const hasGeometryOverride =
+    !!currentGeometry &&
+    (currentGeometry.x !== undefined ||
+      currentGeometry.y !== undefined ||
+      currentGeometry.width !== undefined ||
+      currentGeometry.height !== undefined);
 
   async function handleApplyStyle() {
     if (!selected) return;
@@ -221,6 +296,40 @@ export default function InspectorPanel({
     }
   }
 
+  async function handleApplyGeometry() {
+    if (!selected) return;
+    setGeometryError(null);
+
+    const parsed = parseGeometryDraft(geometryDraft);
+    if (!parsed.ok) {
+      setGeometryError(parsed.error);
+      return;
+    }
+    // Client-side validation runs the SAME rules the server enforces, so a caught
+    // rejection here matches an API 400 verbatim — no divergent error messages.
+    const validated = validateGeometryOverride(parsed.override, selected.bbox);
+    if (!validated.ok) {
+      setGeometryError(validated.error);
+      return;
+    }
+
+    try {
+      await onApplyGeometry(selected.id, validated.override);
+    } catch (err) {
+      setGeometryError((err as Error).message);
+    }
+  }
+
+  async function handleResetGeometry() {
+    if (!selected) return;
+    setGeometryError(null);
+    try {
+      await onResetGeometry(selected.id);
+    } catch (err) {
+      setGeometryError((err as Error).message);
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -229,7 +338,7 @@ export default function InspectorPanel({
 
       {!selected ? (
         <div className="px-3 py-4 text-xs text-gray-500">
-          Select a component on the canvas or in the tree to edit its style and content.
+          Select a component on the canvas or in the tree to edit its style, geometry and content.
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-auto">
@@ -344,6 +453,111 @@ export default function InspectorPanel({
                 disabled={busy || !styleDirty}
                 className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
                 title="Save these style tweaks and regenerate the code"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+
+          {/* -------- Geometry section (§17.3 Geometry) -------- */}
+
+          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Geometry
+          </div>
+
+          <div className="px-3 pb-1 text-[10px] text-gray-400">
+            Normalized [0..1] relative to the sketch. Leave a field blank to inherit the
+            detection's stored value.
+          </div>
+
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-3 text-xs">
+            <label className="text-gray-500" htmlFor="geo-x">x</label>
+            <input
+              id="geo-x"
+              type="number"
+              step="0.001"
+              min={0}
+              max={1}
+              value={geometryDraft.x}
+              placeholder={selected.bbox.x.toFixed(4)}
+              onChange={(e) => setGeometryDraft({ ...geometryDraft, x: e.target.value })}
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            />
+
+            <label className="text-gray-500" htmlFor="geo-y">y</label>
+            <input
+              id="geo-y"
+              type="number"
+              step="0.001"
+              min={0}
+              max={1}
+              value={geometryDraft.y}
+              placeholder={selected.bbox.y.toFixed(4)}
+              onChange={(e) => setGeometryDraft({ ...geometryDraft, y: e.target.value })}
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            />
+
+            <label className="text-gray-500" htmlFor="geo-width">width</label>
+            <input
+              id="geo-width"
+              type="number"
+              step="0.001"
+              min={0}
+              max={1}
+              value={geometryDraft.width}
+              placeholder={selected.bbox.width.toFixed(4)}
+              onChange={(e) => setGeometryDraft({ ...geometryDraft, width: e.target.value })}
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            />
+
+            <label className="text-gray-500" htmlFor="geo-height">height</label>
+            <input
+              id="geo-height"
+              type="number"
+              step="0.001"
+              min={0}
+              max={1}
+              value={geometryDraft.height}
+              placeholder={selected.bbox.height.toFixed(4)}
+              onChange={(e) => setGeometryDraft({ ...geometryDraft, height: e.target.value })}
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            />
+          </div>
+
+          {geometryError && (
+            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
+              {geometryError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400">
+              {busy
+                ? "Working…"
+                : geometryDirty
+                  ? "Unapplied"
+                  : hasGeometryOverride
+                    ? "Applied"
+                    : "No geometry override"}
+            </span>
+            <div className="flex gap-1">
+              <button
+                onClick={handleResetGeometry}
+                disabled={busy || !hasGeometryOverride}
+                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                title="Clear this component's geometry override and revert to the raw detection bbox"
+              >
+                Reset
+              </button>
+              <button
+                onClick={handleApplyGeometry}
+                disabled={busy || !geometryDirty}
+                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                title="Save this position/size and regenerate the code"
               >
                 Apply
               </button>

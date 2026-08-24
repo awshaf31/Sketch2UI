@@ -36,6 +36,10 @@ codegenRouter.post<ProjectParams>("/", (req, res) => {
     // Content-inspector tweaks (§17.3 Content, Appendix Q). Same fold-in strategy —
     // one CodeVersion contains everything, so preview and export stay in step.
     contentOverrides: project.contentOverrides,
+    // Geometry-inspector tweaks (§17.3 Geometry). Applied at the DETECTION layer
+    // before layout inference — see packages/shared-types/src/geometry-override.ts
+    // and generateCode() in packages/codegen for the ordering rationale.
+    geometryOverrides: project.geometryOverrides,
   });
 
   const existing = db.state.codeVersions.filter((c) => c.projectId === project.id);
