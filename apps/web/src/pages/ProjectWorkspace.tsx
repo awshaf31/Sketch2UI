@@ -74,6 +74,9 @@ export default function ProjectWorkspace() {
   // the current detections in this page.
   const [structureOverrides, setStructureOverrides] = useState<Record<string, StructureOverride>>({});
   const [applyingStructure, setApplyingStructure] = useState(false);
+  // Detection-inspector class change (§17.3 Detection group) — not an override map,
+  // a direct PATCH on the detection (same route the canvas correction flow uses).
+  const [applyingDetection, setApplyingDetection] = useState(false);
 
   const {
     asset,
@@ -301,6 +304,29 @@ export default function ProjectWorkspace() {
     const target = selectedId;
     removeDetection(target);
     await api.deleteDetection(id, target);
+  }
+
+  /**
+   * Detection-inspector class change (§17.3 Detection group). Unlike Style/
+   * Content/Geometry/Structure this is not an override map — it PATCHes the
+   * detection directly via the same route the canvas correction flow already
+   * uses (handleUpdate). The server flips `source` to "manual" and records
+   * `originalClassName` when the edited detection was model-sourced, exactly
+   * as an in-canvas correction does — this is a second entry point onto the
+   * same behavior, not a new one. Regenerates code afterward so preview/export
+   * follow the same Apply pattern as the other Inspector groups.
+   */
+  async function handleChangeClass(detectionId: string, className: string) {
+    if (!id) return;
+    setApplyingDetection(true);
+    try {
+      const saved = await api.updateDetection(id, detectionId, { className });
+      updateDetection(detectionId, saved);
+      await api.generateCode(id);
+      await refreshVersions();
+    } finally {
+      setApplyingDetection(false);
+    }
   }
 
   /**
@@ -871,7 +897,14 @@ export default function ProjectWorkspace() {
                 onResetGeometry={handleResetGeometry}
                 onApplyStructure={handleApplyStructure}
                 onResetStructure={handleResetStructure}
-                busy={applyingStyle || applyingContent || applyingGeometry || applyingStructure}
+                onChangeClass={handleChangeClass}
+                busy={
+                  applyingStyle ||
+                  applyingContent ||
+                  applyingGeometry ||
+                  applyingStructure ||
+                  applyingDetection
+                }
               />
             </div>
           </div>

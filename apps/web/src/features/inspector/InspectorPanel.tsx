@@ -5,7 +5,7 @@ import type {
   GeometryOverride,
   StructureOverride,
 } from "@sketch2ui/shared-types";
-import { contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
+import { ALL_CLASSES, contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
 
 // Style + Content + Geometry inspector — plan §6.7 / §17.3. Field set matches the
 // plan's grouping exactly: Style is display/gap/padding/margin/font-size/alignment
@@ -71,6 +71,15 @@ interface InspectorPanelProps {
   onApplyStructure: (detectionId: string, structure: StructureOverride) => Promise<void>;
   /** Clear the structure override for this component (revert to auto). */
   onResetStructure: (detectionId: string) => Promise<void>;
+  /**
+   * Change the detection's class. Unlike the other four groups this is NOT an
+   * override map — it PATCHes the detection itself. When the current source is
+   * `model`, the server flips it to `manual` and records `originalClassName` so a
+   * later re-detect cannot overwrite the correction (plan §17.3 Detection group).
+   * The parent regenerates the code as part of Apply so preview + export stay in
+   * step with every other Inspector group's flow.
+   */
+  onChangeClass: (detectionId: string, className: string) => Promise<void>;
   /** Whether an Apply/Reset (any group) is currently in flight. */
   busy?: boolean;
 }
@@ -275,6 +284,7 @@ export default function InspectorPanel({
   onResetGeometry,
   onApplyStructure,
   onResetStructure,
+  onChangeClass,
   busy,
 }: InspectorPanelProps) {
   const [styleDraft, setStyleDraft] = useState<Record<StyleFieldKey, string>>(() =>
@@ -289,10 +299,12 @@ export default function InspectorPanel({
   const [structureDraft, setStructureDraft] = useState<StructureDraft>(() =>
     toStructureDraft(currentStructure)
   );
+  const [classDraft, setClassDraft] = useState<string>(selected?.className ?? "");
   const [styleError, setStyleError] = useState<string | null>(null);
   const [contentError, setContentError] = useState<string | null>(null);
   const [geometryError, setGeometryError] = useState<string | null>(null);
   const [structureError, setStructureError] = useState<string | null>(null);
+  const [detectionError, setDetectionError] = useState<string | null>(null);
 
   // Applicability is class-driven (Appendix P): a text field on an image would be
   // silently ignored server-side, so the panel does not offer it at all. This is the
@@ -321,6 +333,11 @@ export default function InspectorPanel({
     setStructureDraft(toStructureDraft(currentStructure));
     setStructureError(null);
   }, [selected?.id, currentStructure]);
+
+  useEffect(() => {
+    setClassDraft(selected?.className ?? "");
+    setDetectionError(null);
+  }, [selected?.id, selected?.className]);
 
   const styleDirty = !styleDraftsEqual(styleDraft, toStyleDraft(currentStyle));
   const contentDirty = !contentDraftsEqual(
@@ -444,6 +461,29 @@ export default function InspectorPanel({
     }
   }
 
+  async function handleApplyClass() {
+    if (!selected) return;
+    if (classDraft === selected.className) return;
+    setDetectionError(null);
+    try {
+      await onChangeClass(selected.id, classDraft);
+    } catch (err) {
+      setDetectionError((err as Error).message);
+    }
+  }
+
+  async function handleRevertToModelClass() {
+    if (!selected?.originalClassName) return;
+    setDetectionError(null);
+    try {
+      await onChangeClass(selected.id, selected.originalClassName);
+    } catch (err) {
+      setDetectionError((err as Error).message);
+    }
+  }
+
+  const classDirty = !!selected && classDraft !== selected.className;
+
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
@@ -452,14 +492,88 @@ export default function InspectorPanel({
 
       {!selected ? (
         <div className="px-3 py-4 text-xs text-gray-500">
-          Select a component on the canvas or in the tree to edit its style, geometry, structure and content.
+          Select a component on the canvas or in the tree to edit its class, style, geometry, structure and content.
         </div>
       ) : (
         <div className="flex flex-1 flex-col overflow-auto">
-          <div className="px-3 py-2 text-xs text-gray-600">
-            <div className="font-medium text-gray-900">{selected.className}</div>
-            <div className="text-gray-400">
-              Confidence: {Math.round(selected.confidence * 100)}% · {selected.source}
+          {/* -------- Detection section (§17.3 Detection) -------- */}
+
+          <div className="px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            Detection
+          </div>
+
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-2 text-xs">
+            <label className="text-gray-500" htmlFor="detection-class">class</label>
+            <select
+              id="detection-class"
+              value={classDraft}
+              onChange={(e) => setClassDraft(e.target.value)}
+              disabled={busy}
+              className="rounded border border-gray-300 px-1.5 py-1"
+            >
+              {ALL_CLASSES.map((cls) => (
+                <option key={cls} value={cls}>
+                  {cls}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Confidence is READ-ONLY by design (§17.3): a user can correct the class,
+              never falsify the model's own score. Manual boxes are 1.0 by definition. */}
+          <div className="px-3 pb-2 text-xs text-gray-500">
+            <div>
+              Model confidence:{" "}
+              <span className="font-medium text-gray-700">
+                {Math.round(selected.confidence * 100)}%
+              </span>
+            </div>
+            <div>
+              Source: <span className="font-medium text-gray-700">{selected.source}</span>
+              {selected.modelVersionId && (
+                <>
+                  {" · "}
+                  <span className="font-mono">{selected.modelVersionId}</span>
+                </>
+              )}
+            </div>
+            {selected.originalClassName && (
+              <div>
+                Model originally proposed:{" "}
+                <span className="font-mono">{selected.originalClassName}</span>
+              </div>
+            )}
+          </div>
+
+          {detectionError && (
+            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
+              {detectionError}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
+            <span className="text-[10px] uppercase tracking-wide text-gray-400">
+              {busy ? "Working…" : classDirty ? "Unapplied" : "Saved"}
+            </span>
+            <div className="flex gap-1">
+              {selected.originalClassName && (
+                <button
+                  onClick={handleRevertToModelClass}
+                  disabled={busy}
+                  className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                  title={`Revert to what the model originally proposed: ${selected.originalClassName}`}
+                >
+                  Revert to model
+                </button>
+              )}
+              <button
+                onClick={handleApplyClass}
+                disabled={busy || !classDirty}
+                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+                title="Save this class and regenerate the code"
+              >
+                Apply
+              </button>
             </div>
           </div>
 

@@ -447,4 +447,173 @@ None. Model registry `ui-detector/v1.0.0` untouched.
 **Phase 3 — Detection Inspector.** Not blocked. Ready to start after user
 confirmation.
 
+---
+
+## Phase 3 — Detection Inspector
+
+**Date:** 2026-08-24
+**Goal:** Complete the final missing Inspector group: editable class, plus
+read-only confidence / model version / source display (§17.3 Detection
+group). Confirm all five groups (Detection, Geometry, Structure, Style,
+Content) can coexist on one selected node without state conflicts.
+**Status:** ✅ Complete.
+
+### Key architectural difference from Phases 1-2
+
+Detection is **not an override map**. Style/Content/Geometry/Structure each
+persist a *separate* record keyed on detection UUID, layered onto the
+detection or the UI-IR at generation time. Class is a property of the
+detection itself — the plan is explicit that editing it should not create a
+parallel/duplicate record (§17.3 Detection: "without creating duplicate
+records"). So Phase 3 adds **zero new shared-types validators and zero new
+API routes** — it wires the Inspector's Detection section to the **existing**
+`PATCH /api/projects/:id/detections/:detectionId` route, the same one the
+canvas correction flow (`handleUpdate` in ProjectWorkspace) already uses.
+This is a second UI entry point onto pre-existing, already-tested behavior,
+not new business logic.
+
+### Files added
+
+None.
+
+### Files changed
+
+- `apps/web/src/features/inspector/InspectorPanel.tsx` — replaced the static
+  read-only class/confidence/source summary line with a full Detection
+  section: editable class `<select>` (same `ALL_CLASSES` taxonomy as
+  `ClassPicker`), read-only confidence/source/modelVersionId display,
+  conditional "Model originally proposed: X" line when
+  `originalClassName` is set, Apply/Reset-style Apply button, and a
+  "Revert to model" button that resubmits the original class when available
+- `apps/web/src/pages/ProjectWorkspace.tsx` — added `handleChangeClass()`
+  (PATCH via the existing `api.updateDetection`, then `generateCode` +
+  `refreshVersions`, mirroring the other four groups' Apply flow exactly),
+  added a dedicated `applyingDetection` busy flag, wired
+  `onChangeClass={handleChangeClass}` into `<InspectorPanel>`, and folded
+  the new flag into the panel's combined `busy` prop
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `apps/api/src/modules/detections/detections.routes.ts` and
+  `detections.service.ts` — **completely unchanged**. The model→manual flip,
+  `originalClassName` capture, and confidence lock-to-1.0-on-manual-edit
+  behavior are all pre-existing and untouched.
+- `packages/codegen/*` — unchanged. Class is already part of the `Detection`
+  the layout engine consumes; no new fold-in point was needed.
+- `layout.ts` / `html.ts` / `css.ts` — untouched.
+- Style/Content/Geometry/Structure override modules — untouched.
+
+### Tests
+
+No new automated tests. Rationale: Phase 3 introduces no new validation
+logic, no new API surface, and no new codegen fold-in point — there is
+nothing here that isn't already covered by the pre-existing detection-route
+behavior (unchanged) or by Phases 1-2's override tests (unaffected). Per
+Rule 4 ("one concern per change") and the "do not rewrite working code"
+principle, adding tests for code that was not touched would not improve
+confidence in this phase's actual change, which is UI wiring plus one new
+handler that calls two pre-existing API calls.
+
+| Command | Result | Delta from Phase 2 |
+|---|---|---|
+| `npm run test` (Vitest) | 62 unique tests passing (124 reported — see Phase 2's noted dist/*.test.js duplication) | unchanged |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean | unchanged |
+| `npm run build` | success (95 modules, Vite 645 ms) | unchanged |
+
+### Live smoke test — coexistence verification
+
+This IS where Phase 3's real risk lives: does changing a detection's class
+disturb the four override maps already attached to it? Ran a scripted
+end-to-end:
+
+| Step | Result |
+|---|---|
+| Create detection, class = `text` | ✓ |
+| Apply style override (`padding: 24px`) | ✓ stored |
+| Apply content override (`text: "Hello World"`) — applicable to `text` class | ✓ stored |
+| Apply geometry override (`width: 0.5`) | ✓ stored |
+| Generate code | HTML contains "Hello World", CSS contains `24px` | ✓ |
+| **PATCH class: `text` → `image`** (via the same route the new Inspector button uses) | 200, `className: "image"` | ✓ |
+| Regenerate code | HTML no longer contains "Hello World" (content applicability re-checked: `text` field doesn't apply to `image`) | ✓ **correctly dropped** |
+| Regenerate code (same pass) | CSS still contains `24px` (style override is keyed by detection id, unaffected by class) | ✓ **correctly survived** |
+| GET content-overrides after class change | Override **still stored** (`{"text":"Hello World", ...}`) — not silently deleted, just stopped applying | ✓ matches "never destroy user corrections" rule |
+| GET style-overrides / geometry-overrides after class change | Both still stored and applying | ✓ |
+| GET detections | `className: "image"`, `source: "manual"` | ✓ |
+
+This confirms the existing content-overrides applicability re-check (written
+in Phase 0-era code, untouched by any of Phases 1-3) already does the right
+thing when a class change makes a previously-applicable field inapplicable —
+no new defensive code was needed.
+
+### Manual verification
+
+Not executed as a browser session. Typecheck + build clean; the live smoke
+test above exercises the actual risk surface (cross-group state interaction)
+end-to-end through the real API and codegen pipeline.
+
+### Database changes
+
+None. No new fields on `Project`. Detection's `className` field already
+existed.
+
+### API changes
+
+None. No new routes. The existing `PATCH /api/projects/:id/detections/:detectionId`
+gained a second caller (the Inspector) but no new server-side behavior.
+
+### Frontend changes
+
+- **New section** in `InspectorPanel`: Detection, now the FIRST section
+  (above Style), matching its position as the foundational identity of the
+  node — everything else (style, geometry, structure, content) is a property
+  OF this class. Read-only confidence/source/model-version display replaces
+  the old static summary line one-for-one.
+- "Revert to model" button appears only when `originalClassName` is present
+  (i.e., only after a model detection has been corrected at least once) —
+  gives the user an explicit undo path without a general-purpose undo stack.
+
+### ML changes
+
+None.
+
+### Inspector completeness — final state
+
+| Group | Status |
+|---|---|
+| Detection (class, confidence, model, source) | ✅ Done (Phase 3) |
+| Geometry (x, y, width, height) | ✅ Done (Phase 1) |
+| Structure (parent, display order, re-parenting) | ✅ Done (Phase 2) |
+| Style (display, gap, padding, margin, font-size, alignment) | ✅ Done (pre-existing) |
+| Content (text, alt text, link) | ✅ Done (pre-existing) |
+
+All five groups specified in plan §17.3 are now implemented. This closes the
+Inspector-completeness gap identified as the top priority in
+`PROJECT_STATUS.md` §6.
+
+### Known limitations / open decisions
+
+1. **Confidence remains read-only**, per explicit plan instruction ("do not
+   let users falsify the model's confidence"). No override path exists or is
+   planned for it.
+2. **No E2E test yet** (Playwright is Phase 14). The live smoke test above is
+   the only end-to-end evidence for Phase 3; it is not automated/repeatable
+   without re-running the script manually.
+3. Class change does not re-validate Structure overrides. A parent/child
+   relationship that made semantic sense before a class change (e.g. `card` →
+   `button`, still allowed by `resolveParent`'s permissive containment rules)
+   is not re-checked. This mirrors the plan's Appendix C guidance to
+   distinguish "hard invalid" from "unusual but allowed" rather than
+   over-constrain — worth revisiting only if it proves confusing in practice.
+
+### Next phase
+
+Per the execution plan's phase order, the next item is **Phase 4 —
+Correction history / audit trail**. The Inspector itself (Phases 1-3) is now
+complete; Phase 4 is a cross-cutting concern (traceability of all edits made
+via any of the five groups) rather than a sixth Inspector group.
 
