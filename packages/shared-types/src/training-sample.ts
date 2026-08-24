@@ -19,6 +19,16 @@ export interface TrainingSampleBox {
   source: "manual" | "model" | "imported";
   /** Present when a model version originally proposed this box. */
   modelVersionId?: string;
+  /**
+   * The class the MODEL originally proposed, when a human corrected a model-sourced
+   * detection before it was approved (Detection.originalClassName — plan §36's
+   * "frequently corrected classes" signal). Carried forward here because
+   * TrainingSample.boxes is a frozen snapshot; without this the fact that a box was
+   * ever corrected is lost the moment it's approved — `source: "manual"` alone
+   * cannot distinguish "the user drew this from scratch" from "the user fixed what
+   * the model got wrong."
+   */
+  originalClassName?: string;
 }
 
 export interface TrainingSample {

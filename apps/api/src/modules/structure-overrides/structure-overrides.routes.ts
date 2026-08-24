@@ -4,6 +4,7 @@ import { validateStructureOverride } from "@sketch2ui/shared-types";
 import { db } from "../../db/jsonStore.js";
 import { sendError } from "../../middleware/apiError.js";
 import type { ProjectParams } from "../../types.js";
+import { recordCorrection } from "../corrections/corrections.service.js";
 
 // Per-node structure overrides — plan §17.3 Structure group.
 //
@@ -88,6 +89,30 @@ structureOverridesRouter.put<OverrideParams>("/:detectionId", (req, res) => {
     project.updatedAt = new Date().toISOString();
     db.save();
     return res.json({ detectionId: detection.id, structure: null });
+  }
+
+  // Record parent_changed / order_changed separately — a single PUT can carry both
+  // fields, and the plan's §4.2 taxonomy treats them as distinct correction types
+  // (a reader asking "why did the tree shape change" wants a different answer than
+  // "why did the sibling order change").
+  const previous = existing[detection.id];
+  if (result.override.parentDetectionId !== undefined) {
+    recordCorrection({
+      projectId: project.id,
+      detectionId: detection.id,
+      type: "parent_changed",
+      oldParentDetectionId: previous?.parentDetectionId,
+      newParentDetectionId: result.override.parentDetectionId,
+    });
+  }
+  if (result.override.displayOrder !== undefined) {
+    recordCorrection({
+      projectId: project.id,
+      detectionId: detection.id,
+      type: "order_changed",
+      oldDisplayOrder: previous?.displayOrder,
+      newDisplayOrder: result.override.displayOrder,
+    });
   }
 
   project.structureOverrides[detection.id] = result.override;

@@ -4,6 +4,7 @@ import type {
   BBox,
   CodeVersion,
   ContentOverride,
+  CorrectionRecord,
   DetectionStatus,
   GeometryOverride,
   PageBoundary,
@@ -77,6 +78,10 @@ export default function ProjectWorkspace() {
   // Detection-inspector class change (§17.3 Detection group) — not an override map,
   // a direct PATCH on the detection (same route the canvas correction flow uses).
   const [applyingDetection, setApplyingDetection] = useState(false);
+  // Correction history (§4) — the full project list; InspectorPanel is handed the
+  // slice for whichever detection is selected. Read-only from this component too:
+  // records are written server-side as a side effect of the mutation routes below.
+  const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
 
   const {
     asset,
@@ -156,6 +161,20 @@ export default function ProjectWorkspace() {
     api.listContentOverrides(id).then(setContentOverrides).catch(() => setContentOverrides({}));
     api.listGeometryOverrides(id).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
     api.listStructureOverrides(id).then(setStructureOverrides).catch(() => setStructureOverrides({}));
+    api.listCorrections(id).then(setCorrections).catch(() => setCorrections([]));
+  }, [id]);
+
+  // Correction history (§4) is refreshed after every mutation that can produce a
+  // new record — same "re-fetch after write" pattern the other override maps use.
+  // Best-effort: if this fails the panel's History section just lags one refresh
+  // behind, which is not worth surfacing as an error to the user.
+  const refreshCorrections = useCallback(async () => {
+    if (!id) return;
+    try {
+      setCorrections(await api.listCorrections(id));
+    } catch {
+      // leave the previous list in place
+    }
   }, [id]);
 
   /**
@@ -270,6 +289,7 @@ export default function ProjectWorkspace() {
     if (!id || !asset) return;
     const detection = await api.createDetection(id, { className: activeClass, bbox, sourceAssetId: asset.id });
     addDetection(detection);
+    void refreshCorrections();
   }
 
   async function handleUpdate(detectionId: string, bbox: BBox) {
@@ -280,6 +300,7 @@ export default function ProjectWorkspace() {
     // tree restyle off `source`. Without this the box would stay purple until reload.
     const saved = await api.updateDetection(id, detectionId, bbox);
     updateDetection(detectionId, saved);
+    void refreshCorrections();
     // A canvas drag is the user committing a concrete new geometry directly to the
     // detection. Any prior inspector-authored geometry override would then win over
     // the drag on next render — visually the drag would silently revert. Clear the
@@ -304,6 +325,7 @@ export default function ProjectWorkspace() {
     const target = selectedId;
     removeDetection(target);
     await api.deleteDetection(id, target);
+    void refreshCorrections();
   }
 
   /**
@@ -324,6 +346,7 @@ export default function ProjectWorkspace() {
       updateDetection(detectionId, saved);
       await api.generateCode(id);
       await refreshVersions();
+      void refreshCorrections();
     } finally {
       setApplyingDetection(false);
     }
@@ -525,6 +548,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id);
       await refreshVersions();
+      void refreshCorrections();
     } finally {
       setApplyingGeometry(false);
     }
@@ -570,6 +594,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id);
       await refreshVersions();
+      void refreshCorrections();
     } finally {
       setApplyingStructure(false);
     }
@@ -632,6 +657,13 @@ export default function ProjectWorkspace() {
   const selectedDetection = selectedId
     ? detections.find((d) => d.id === selectedId) ?? null
     : null;
+
+  // Correction history scoped to the selected node — see InspectorPanel's History
+  // section (§4.3).
+  const selectedHistory = useMemo(
+    () => (selectedId ? corrections.filter((c) => c.detectionId === selectedId) : []),
+    [selectedId, corrections]
+  );
 
   if (loading) {
     return <p className="p-6 text-sm text-gray-500">Loading project…</p>;
@@ -898,6 +930,7 @@ export default function ProjectWorkspace() {
                 onApplyStructure={handleApplyStructure}
                 onResetStructure={handleResetStructure}
                 onChangeClass={handleChangeClass}
+                history={selectedHistory}
                 busy={
                   applyingStyle ||
                   applyingContent ||

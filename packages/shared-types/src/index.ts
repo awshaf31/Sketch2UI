@@ -13,3 +13,4 @@ export * from "./taxonomy.js";
 export * from "./content-override.js";
 export * from "./geometry-override.js";
 export * from "./structure-override.js";
+export * from "./correction-record.js";

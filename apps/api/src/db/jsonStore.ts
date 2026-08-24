@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type {
   CodeVersion,
+  CorrectionRecord,
   Detection,
   Job,
   Project,
@@ -26,10 +27,22 @@ interface StoreShape {
   trainingSamples: TrainingSample[];
   exports: ProjectExport[];
   pageBoundaries: PageBoundaryRecord[];
+  /** Correction history / audit trail — plan §4 (execution plan Phase 4). */
+  correctionRecords: CorrectionRecord[];
 }
 
 function emptyStore(): StoreShape {
-  return { projects: [], assets: [], detections: [], codeVersions: [], jobs: [], trainingSamples: [], exports: [], pageBoundaries: [] };
+  return {
+    projects: [],
+    assets: [],
+    detections: [],
+    codeVersions: [],
+    jobs: [],
+    trainingSamples: [],
+    exports: [],
+    pageBoundaries: [],
+    correctionRecords: [],
+  };
 }
 
 function load(): StoreShape {

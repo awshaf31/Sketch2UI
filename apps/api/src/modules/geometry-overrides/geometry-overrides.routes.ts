@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { validateGeometryOverride } from "@sketch2ui/shared-types";
+import { effectiveBBox, validateGeometryOverride } from "@sketch2ui/shared-types";
 import { db } from "../../db/jsonStore.js";
 import { sendError } from "../../middleware/apiError.js";
 import type { ProjectParams } from "../../types.js";
+import { recordCorrection } from "../corrections/corrections.service.js";
 
 // Per-node geometry overrides — plan §17.3 Geometry group.
 //
@@ -59,8 +60,20 @@ geometryOverridesRouter.put<OverrideParams>("/:detectionId", (req, res) => {
     return res.json({ detectionId: detection.id, geometry: null });
   }
 
+  // Correction history records the EFFECTIVE bbox change (base + previous override
+  // -> base + new override), not the raw override object — that is what the box
+  // visually moved from/to, which is what a reader of the history actually wants to
+  // see (plan §4.1 oldBBox/newBBox).
+  const oldEffective = effectiveBBox(detection.bbox, project.geometryOverrides[detection.id]);
   project.geometryOverrides[detection.id] = result.override;
   project.updatedAt = new Date().toISOString();
+  recordCorrection({
+    projectId: project.id,
+    detectionId: detection.id,
+    type: "bbox_changed",
+    oldBBox: oldEffective,
+    newBBox: effectiveBBox(detection.bbox, result.override),
+  });
   db.save();
   res.json({ detectionId: detection.id, geometry: result.override });
 });

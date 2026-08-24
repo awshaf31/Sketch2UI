@@ -48,6 +48,10 @@ trainingRouter.post<AssetParams>("/", (req, res) => {
     bbox: d.bbox,
     source: d.source,
     ...(d.modelVersionId ? { modelVersionId: d.modelVersionId } : {}),
+    // Carry the correction signal forward — see TrainingSampleBox.originalClassName.
+    // Without this, an approved box that was corrected is indistinguishable from one
+    // drawn from scratch once this snapshot is taken.
+    ...(d.originalClassName ? { originalClassName: d.originalClassName } : {}),
   }));
 
   const now = new Date().toISOString();

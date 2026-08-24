@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type {
   ContentOverride,
+  CorrectionRecord,
   Detection,
   GeometryOverride,
   StructureOverride,
@@ -80,6 +81,14 @@ interface InspectorPanelProps {
    * step with every other Inspector group's flow.
    */
   onChangeClass: (detectionId: string, className: string) => Promise<void>;
+  /**
+   * Correction history for the selected detection ONLY (plan §4.3 — "optional but
+   * useful"), oldest first. Read-only: this panel never writes here directly, the
+   * records are a side effect of the routes behind onChangeClass/onApplyGeometry/
+   * onApplyStructure/create/delete. Empty array (not undefined) when there is none
+   * yet, so the section can render a clean "No corrections yet" state.
+   */
+  history: CorrectionRecord[];
   /** Whether an Apply/Reset (any group) is currently in flight. */
   busy?: boolean;
 }
@@ -269,6 +278,45 @@ function parseStructureDraft(
   return { ok: true, override };
 }
 
+// One-line human-readable summary per correction record — plan §4.3's mockup
+// ("10:22  Button class changed"). `bbox_changed` deliberately omits the raw
+// numbers (four decimals each side is noise in a one-line list); the Geometry
+// section already shows the live values for anyone who wants precision.
+function describeCorrection(record: CorrectionRecord): string {
+  switch (record.type) {
+    case "created":
+      return `Created as ${record.newClassName ?? "?"}`;
+    case "deleted":
+      return `Deleted (was ${record.oldClassName ?? "?"})`;
+    case "class_changed":
+      return `Class changed: ${record.oldClassName ?? "?"} → ${record.newClassName ?? "?"}`;
+    case "bbox_changed":
+      return "Geometry updated";
+    case "parent_changed": {
+      const to =
+        record.newParentDetectionId === null
+          ? "root"
+          : record.newParentDetectionId
+            ? `${record.newParentDetectionId.slice(0, 8)}…`
+            : "auto";
+      return `Parent changed to ${to}`;
+    }
+    case "order_changed":
+      return `Display order set to ${record.newDisplayOrder ?? "auto"}`;
+    case "ignored":
+      return "Ignored";
+    default:
+      return record.type;
+  }
+}
+
+function formatCorrectionTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 export default function InspectorPanel({
   selected,
   currentStyle,
@@ -285,6 +333,7 @@ export default function InspectorPanel({
   onApplyStructure,
   onResetStructure,
   onChangeClass,
+  history,
   busy,
 }: InspectorPanelProps) {
   const [styleDraft, setStyleDraft] = useState<Record<StyleFieldKey, string>>(() =>
@@ -971,6 +1020,27 @@ export default function InspectorPanel({
                 </button>
               </div>
             </div>
+          )}
+
+          {/* -------- History section (§4.3 — read-only correction audit trail) -------- */}
+
+          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            History
+          </div>
+
+          {history.length === 0 ? (
+            <div className="px-3 pb-3 text-xs text-gray-500">No corrections recorded yet.</div>
+          ) : (
+            <ul className="space-y-1 px-3 pb-3 text-xs text-gray-600">
+              {history.map((record) => (
+                <li key={record.id} className="flex gap-2">
+                  <span className="shrink-0 font-mono text-gray-400">
+                    {formatCorrectionTime(record.timestamp)}
+                  </span>
+                  <span>{describeCorrection(record)}</span>
+                </li>
+              ))}
+            </ul>
           )}
         </div>
       )}

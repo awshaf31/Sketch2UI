@@ -617,3 +617,237 @@ Correction history / audit trail**. The Inspector itself (Phases 1-3) is now
 complete; Phase 4 is a cross-cutting concern (traceability of all edits made
 via any of the five groups) rather than a sixth Inspector group.
 
+---
+
+## Phase 4 — Correction History and Audit Trail
+
+**Date:** 2026-08-24
+**Goal:** Make user corrections traceable (plan §4). Record class, geometry,
+structure, create/delete events with old/new values and timestamps — not
+just the final state. Connect approved correction snapshots to the existing
+training export behavior. Add an optional read-only history UI once the data
+path works.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `packages/shared-types/src/correction-record.ts` — `CorrectionType` union
+  (`created`, `deleted`, `class_changed`, `bbox_changed`, `parent_changed`,
+  `order_changed`, `ignored` — the last reserved, unused, see limitations),
+  flat `CorrectionRecord` interface matching plan §4.1's field list literally
+  (old/new pairs for class, bbox, parent, order)
+- `apps/api/src/modules/corrections/corrections.service.ts` —
+  `recordCorrection()` (append-only, caller owns `db.save()`),
+  `listCorrections(projectId, detectionId?)`
+- `apps/api/src/modules/corrections/corrections.routes.ts` — read-only
+  `GET /api/projects/:id/corrections?detectionId=...`
+
+### Files changed
+
+- `packages/shared-types/src/index.ts` — re-export correction-record
+- `packages/shared-types/src/training-sample.ts` — add
+  `TrainingSampleBox.originalClassName?: string` (plan §4.4: connect
+  correction signal to the training snapshot)
+- `apps/api/src/db/jsonStore.ts` — add `correctionRecords: CorrectionRecord[]`
+  to `StoreShape` + `emptyStore()`. Existing `store.json` files without the
+  field get `[]` via the `load()` function's `{ ...emptyStore(), ...parsed }`
+  spread — no migration script needed.
+- `apps/api/src/server.ts` — mount `correctionsRouter`
+- `apps/api/src/modules/detections/detections.routes.ts` — POST records
+  `created`; PATCH records `class_changed` and/or `bbox_changed` (captures
+  `previousBBox`/`previousClassName` before mutating); DELETE records
+  `deleted` with a final snapshot before the row is spliced out
+- `apps/api/src/modules/geometry-overrides/geometry-overrides.routes.ts` —
+  PUT records `bbox_changed` using `effectiveBBox()` (old effective vs new
+  effective, not the raw override object — what the box visually moved
+  from/to). DELETE (Reset) records nothing — see design decision below.
+- `apps/api/src/modules/structure-overrides/structure-overrides.routes.ts` —
+  PUT records `parent_changed` and/or `order_changed` independently (a
+  single PUT can carry both fields). DELETE records nothing.
+- `apps/api/src/modules/training/training.routes.ts` — carry
+  `d.originalClassName` into each `TrainingSampleBox` when present
+- `apps/web/src/services/api.ts` — add `listCorrections(projectId)`
+- `apps/web/src/features/inspector/InspectorPanel.tsx` — new read-only
+  History section at the bottom of the panel; `describeCorrection()` /
+  `formatCorrectionTime()` helpers render each record as a one-line
+  human-readable entry (plan §4.3's mockup format); new `history` prop
+- `apps/web/src/pages/ProjectWorkspace.tsx` — `corrections` state loaded on
+  mount, `refreshCorrections()` called after every correction-producing
+  action (create, canvas bbox update, delete, class change, geometry Apply,
+  structure Apply — NOT the Reset variants), `selectedHistory` memo scoping
+  the full list to the selected detection, wired into `<InspectorPanel>`
+
+### Files removed
+
+None.
+
+### Design decisions
+
+1. **Flat schema, not a discriminated union.** The plan's §4.1 field list is
+   literally flat (`oldClass`, `newClass`, `oldBBox`, ...). Matching it
+   directly keeps every append call site a simple object literal — no type
+   narrowing gymnastics per `type`.
+2. **Reset does not produce a correction record.** Only the four Apply-style
+   mutations (create, PATCH, geometry PUT, structure PUT) and DELETE record.
+   Reverting an override is un-correcting, not a new correction to learn
+   from — consistent with the Phase 2/3 reports' established reasoning about
+   what counts as "traceable user intent."
+3. **Style/Content overrides are explicitly OUT of scope for correction
+   history.** The plan's §4.1/§4.2 vocabulary (class/bbox/parent/order) maps
+   to what feeds the ML training loop (§4.4/§36) — style and content never
+   reach `ml/dataset`. Recording them would blur the "this closes the ML
+   feedback gap" purpose of Phase 4 with general edit-tracking, which the
+   plan does not ask for. Documented directly in the schema file's header
+   comment so a future maintainer sees the boundary and its reason.
+4. **`source: "user"` is a fixed literal**, not a five-way UI-surface enum
+   (canvas vs. Detection-inspector vs. Geometry-inspector, etc.). An earlier
+   design considered inferring the UI surface from which fields a PATCH body
+   contained, but that is a fragile heuristic (both the canvas drag and the
+   Inspector's class-change call the same `PATCH /detections/:id` route with
+   different but not mutually-exclusive field sets). The plan's own field
+   name — "user/source" — is honestly satisfied by a constant today, since
+   this app has exactly one correction-producing actor (a human, through the
+   web client) and no automated correction pipeline. The field stays typed
+   as a string literal union of one value so a future automated path (e.g.
+   an active-learning auto-accept) has somewhere to record itself without a
+   schema change.
+5. **`bbox_changed` via geometry override records the EFFECTIVE bbox
+   (`effectiveBBox(base, override)`), not the raw override object.** A
+   partial override (e.g. `{width: 0.5}`) alone is meaningless in a history
+   list without the base — the reader wants "the box went from (x,y,w,h) to
+   (x,y,w,h)," which is what `describeCorrection()` and any future detail
+   view would need.
+6. **`originalClassName` on `TrainingSampleBox`** closes a real gap: before
+   this change, an approved training sample's `source: "manual"` could not
+   distinguish "the user drew this from scratch" from "the user corrected
+   what the model got wrong" — exactly the signal plan §36's "frequently
+   corrected classes" active-learning report wants. This is additive (an
+   optional field, populated only when the detection has one) and required
+   no change to `scripts/src/active-learning-report.ts` or the exporter for
+   this phase (a future phase could use it to sharpen that report).
+
+### Tests
+
+No new Vitest suite. `CorrectionRecord` is a passive data shape (no
+validation logic — every field is optional, there is nothing to reject).
+`recordCorrection`/`listCorrections` are two straightforward
+filter/sort/append functions over the API-layer JSON store, which has no
+existing test harness (consistent with Phase 3's precedent: apps/api has no
+unit tests today — see PROJECT_STATUS.md §2.6 / the Phase 0 baseline's
+Known Gaps #11). Correctness was instead verified end-to-end through a live
+smoke test (below), which is the same evidence bar Phase 1-3 correction
+codegen used for anything that could not be isolated as a pure function.
+
+| Command | Result | Delta from Phase 3 |
+|---|---|---|
+| `npm run test` (Vitest) | 62 unique tests passing (124 reported, unchanged dist/*.test.js duplication noted in Phase 2) | unchanged |
+| `npm run test:py` (Pytest) | 19 passed / 0 failed | unchanged |
+| `npm run typecheck` | clean | unchanged |
+| `npm run build` | success (96 modules, Vite 694 ms) | +1 module |
+
+### Live smoke test
+
+Ran a scripted end-to-end exercising every record-producing route and the
+two things most likely to be wrong: (a) did Reset correctly NOT log a
+correction, and (b) does `originalClassName` actually reach the training
+snapshot.
+
+| Step | Result |
+|---|---|
+| Create 2 detections | 2× `created` records | ✓ |
+| PATCH class change | `class_changed` old→new | ✓ |
+| PATCH bbox change (canvas-style) | `bbox_changed` old→new | ✓ |
+| PUT geometry override | `bbox_changed` old→new (EFFECTIVE bbox, confirmed via `effectiveBBox`) | ✓ |
+| PUT structure override (`parentDetectionId` + `displayOrder` together) | Both `parent_changed` AND `order_changed` recorded from one PUT | ✓ |
+| `GET /corrections` (project-wide) | 7 records in creation order | ✓ |
+| `GET /corrections?detectionId=X` | Scoped correctly (6 of 7 belonged to the first detection) | ✓ |
+| DELETE a detection | `deleted` record appended (8th), with the final className snapshotted | ✓ |
+| **DELETE a geometry override (Reset)** | Correction count **unchanged** (8 before, 8 after) | ✓ confirms design decision #2 |
+| Simulate a model-corrected detection (`source: "model"`, `originalClassName: "input"`) via direct store edit + server restart, then `approve-training` | `TrainingSampleBox` in the resulting snapshot carries `source: "model"`, `modelVersionId`, **and `originalClassName: "input"`** | ✓ confirms design decision #6 |
+
+The `originalClassName` verification required restarting the API process
+after a direct store edit — the JSON store loads once at boot and holds
+state in memory, so a same-process file edit is invisible until restart.
+This is expected behavior of the existing store (documented in its own
+header comment), not a Phase 4 concern, but worth noting for anyone
+reproducing this test.
+
+### Manual verification
+
+Not executed as a browser session. The live smoke test above exercises the
+full round-trip through the real API and JSON store; the InspectorPanel
+History section renders directly off the same `CorrectionRecord[]` shape
+the smoke test validated, and `npm run build` confirms it compiles and
+bundles without type errors.
+
+### Database changes
+
+- `StoreShape.correctionRecords: CorrectionRecord[]` — new field, defaults
+  to `[]` for existing store files via the load-time spread. Unbounded
+  growth (consistent with every other table in this JSON store — no
+  pruning/retention policy exists anywhere in the current persistence
+  layer; this is a pre-existing property of the architecture, not something
+  Phase 4 introduces or needs to solve before Phase 8's Postgres migration).
+
+### API changes
+
+- **New route:** `GET /api/projects/:id/corrections[?detectionId=...]` —
+  read-only.
+- No new write routes — recording is a side effect of five EXISTING routes
+  (detections POST/PATCH/DELETE, geometry-overrides PUT, structure-overrides
+  PUT), each of which already had a single `db.save()` call that the new
+  `recordCorrection()` call rides along with.
+
+### Frontend changes
+
+- New **History** section at the bottom of `InspectorPanel`, below Content.
+  Read-only list, oldest-first, one line per record:
+  `HH:MM  <human-readable description>`. Empty state: "No corrections
+  recorded yet."
+- `ProjectWorkspace` fetches the project's full correction list once on
+  mount and re-fetches after any of the six correction-producing actions,
+  matching the existing "re-fetch after write" pattern the four override
+  maps already use.
+
+### ML changes
+
+- `TrainingSample.boxes[].originalClassName` — see design decision #6.
+  `scripts/src/active-learning-report.ts` was NOT modified this phase (out
+  of scope — Phase 4's job was to make the data available, not to change
+  what the report does with it).
+
+### Known limitations / open decisions
+
+1. **`ignored` correction type is defined but never emitted.** No route in
+   this app sets a detection to a deliberately-ignored state — `status:
+   "rejected"` is always the automatic result of page-boundary filtering
+   (§10.4), never a per-box user action. The type stays in the union per the
+   plan's §4.2 taxonomy so a future explicit "ignore this box" UI action has
+   somewhere to record itself.
+2. **No pagination or retention policy** on `correctionRecords`. A
+   long-lived project could accumulate a large list. Matches the existing
+   unbounded-growth property of every other table in the JSON store (Phase 0
+   baseline's Known Gap #3 already flags Postgres/Prisma — Phase 8 — as the
+   place this gets addressed generally, not per-table).
+3. **History section shows only the selected detection's records**, not a
+   project-wide timeline. The plan's §4.3 mockup shows exactly this scope
+   (per-node history in the Inspector), so this matches spec; a project-wide
+   audit view was not requested and was not built.
+4. **`source: "user"` cannot currently distinguish which UI surface
+   triggered a correction** (canvas drag vs. Inspector class-change both hit
+   the same PATCH route). See design decision #4 — deliberate, not an
+   oversight; revisit only if multi-actor provenance becomes a real product
+   need (e.g. after Phase 10 auth).
+5. **No automated test coverage** for `corrections.service.ts` — apps/api
+   has no unit test harness at all today (pre-existing gap, not introduced
+   by this phase). Verified via live smoke test instead; see Tests section.
+
+### Next phase
+
+Per the execution plan's phase order, the next item is **Phase 5 — Dataset
+expansion and ML quality program**: run the existing active-learning report,
+build a dataset-quality matrix, and identify P0/P1/P2 gaps before any
+retraining. This is a data/ML-investigation phase, not a code-implementation
+phase — Claude Code should read the current `report:active-learning` output
+before writing anything.
+

@@ -4,6 +4,7 @@ import { db } from "../../db/jsonStore.js";
 import type { DetectionParams, ProjectParams } from "../../types.js";
 import { createDetection, listDetections } from "./detections.service.js";
 import { sendError } from "../../middleware/apiError.js";
+import { recordCorrection } from "../corrections/corrections.service.js";
 
 export const detectionsRouter = Router({ mergeParams: true });
 
@@ -31,6 +32,13 @@ detectionsRouter.post<ProjectParams>("/", (req, res) => {
     bbox,
     source: "manual",
   });
+  recordCorrection({
+    projectId: project.id,
+    detectionId: detection.id,
+    type: "created",
+    newClassName: detection.className,
+    newBBox: detection.bbox,
+  });
   db.save();
   res.status(201).json(detection);
 });
@@ -45,6 +53,7 @@ detectionsRouter.patch<DetectionParams>("/:detectionId", (req, res) => {
   const { className, x, y, width, height, status } = req.body ?? {};
 
   const previousClassName = detection.className;
+  const previousBBox = detection.bbox;
   const editedClass = typeof className === "string" && className !== detection.className;
   const editedBox = [x, y, width, height].every((v) => typeof v === "number");
 
@@ -72,6 +81,29 @@ detectionsRouter.patch<DetectionParams>("/:detectionId", (req, res) => {
 
   detection.updatedAt = new Date().toISOString();
 
+  // Recorded AFTER the flip above so class_changed/bbox_changed correction rows
+  // reflect the corrected detection's final className/bbox, not an intermediate
+  // state — matches what a reader of the history would expect "what did this
+  // become" to mean.
+  if (editedClass) {
+    recordCorrection({
+      projectId: detection.projectId,
+      detectionId: detection.id,
+      type: "class_changed",
+      oldClassName: previousClassName,
+      newClassName: detection.className,
+    });
+  }
+  if (editedBox) {
+    recordCorrection({
+      projectId: detection.projectId,
+      detectionId: detection.id,
+      type: "bbox_changed",
+      oldBBox: previousBBox,
+      newBBox: detection.bbox,
+    });
+  }
+
   db.save();
   res.json(detection);
 });
@@ -82,6 +114,17 @@ detectionsRouter.delete<DetectionParams>("/:detectionId", (req, res) => {
     (d) => d.id === req.params.detectionId && d.projectId === req.params.id
   );
   if (index === -1) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
+
+  const deleted = db.state.detections[index];
+  // Snapshot the final className/bbox as "old" — once the splice below runs, the
+  // detection row is gone, so this is the last chance to capture what it was.
+  recordCorrection({
+    projectId: deleted.projectId,
+    detectionId: deleted.id,
+    type: "deleted",
+    oldClassName: deleted.className,
+    oldBBox: deleted.bbox,
+  });
 
   db.state.detections.splice(index, 1);
   db.save();

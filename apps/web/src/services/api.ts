@@ -1,6 +1,7 @@
 import type {
   CodeVersion,
   ContentOverride,
+  CorrectionRecord,
   Detection,
   GeometryOverride,
   Job,
@@ -303,6 +304,13 @@ export const api = {
     return request(`/api/projects/${projectId}/structure-overrides/${detectionId}`, {
       method: "DELETE",
     });
+  },
+
+  // Correction history / audit trail (§4). Read-only from the client — records are
+  // written server-side as a side effect of the detections/geometry/structure
+  // routes above, never posted directly.
+  listCorrections(projectId: string): Promise<CorrectionRecord[]> {
+    return request(`/api/projects/${projectId}/corrections`);
   },
 };
 
