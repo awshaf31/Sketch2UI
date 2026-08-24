@@ -1,0 +1,405 @@
+{
+  "schemaVersion": "1.0",
+  "modelVersion": "v1.0.0",
+  "generatedUtc": "2026-08-23T19:31:53.333Z",
+  "corpus": {
+    "name": "sample_images_object_detataction_expectation",
+    "images": 5
+  },
+  "summary": {
+    "endToEndUsablePreviewRate": 1,
+    "endToEndUsable": "5/5",
+    "boundaryMeanIoU": 0.8701,
+    "boundaryFoundCount": 4,
+    "layoutAssertionsPassed": "10/10",
+    "codeAllParse": true,
+    "codeDuplicateIdsTotal": 0,
+    "codeUnmappedTypesTotal": 0
+  },
+  "21.2_pageBoundaryIoU": {
+    "5d0083a7": {
+      "method": "contour",
+      "confidence": 0.9989,
+      "applied": true,
+      "iou": 0.9935,
+      "groundTruth": [
+        [
+          0.01,
+          0.005
+        ],
+        [
+          0.985,
+          0.005
+        ],
+        [
+          0.985,
+          0.995
+        ],
+        [
+          0.01,
+          0.995
+        ]
+      ],
+      "predicted": [
+        [
+          0.009775,
+          0.002602
+        ],
+        [
+          0.986315,
+          0.017567
+        ],
+        [
+          0.986315,
+          0.993494
+        ],
+        [
+          0.008798,
+          0.993494
+        ]
+      ]
+    },
+    "642be96a": {
+      "method": "contour",
+      "confidence": 0.9075,
+      "applied": true,
+      "iou": 0.7764,
+      "groundTruth": [
+        [
+          0.052,
+          0.008
+        ],
+        [
+          0.765,
+          0.008
+        ],
+        [
+          0.765,
+          0.975
+        ],
+        [
+          0.052,
+          0.975
+        ]
+      ],
+      "predicted": [
+        [
+          0.05196,
+          0.012552
+        ],
+        [
+          0.763902,
+          0.029289
+        ],
+        [
+          0.961714,
+          0.889819
+        ],
+        [
+          0.05196,
+          0.980474
+        ]
+      ]
+    },
+    "6de3567a": {
+      "method": "none",
+      "confidence": 0,
+      "applied": false,
+      "iou": 0.5917,
+      "groundTruth": [
+        [
+          0.07,
+          0.005
+        ],
+        [
+          0.68,
+          0.005
+        ],
+        [
+          0.68,
+          0.975
+        ],
+        [
+          0.07,
+          0.975
+        ]
+      ],
+      "predicted": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          1,
+          1
+        ],
+        [
+          0,
+          1
+        ]
+      ]
+    },
+    "881ceb2a": {
+      "method": "contour",
+      "confidence": 0.9312,
+      "applied": true,
+      "iou": 0.9954,
+      "groundTruth": [
+        [
+          0.105,
+          0.033
+        ],
+        [
+          0.9,
+          0.033
+        ],
+        [
+          0.9,
+          0.95
+        ],
+        [
+          0.105,
+          0.95
+        ]
+      ],
+      "predicted": [
+        [
+          0.107888,
+          0.032959
+        ],
+        [
+          0.900272,
+          0.051192
+        ],
+        [
+          0.900272,
+          0.951613
+        ],
+        [
+          0.106981,
+          0.950912
+        ]
+      ]
+    },
+    "cf91f277": {
+      "method": "contour",
+      "confidence": 0.9977,
+      "applied": true,
+      "iou": 0.9934,
+      "groundTruth": [
+        [
+          0.012,
+          0.008
+        ],
+        [
+          0.982,
+          0.008
+        ],
+        [
+          0.982,
+          0.99
+        ],
+        [
+          0.012,
+          0.99
+        ]
+      ],
+      "predicted": [
+        [
+          0.012667,
+          0.007626
+        ],
+        [
+          0.977333,
+          0.020019
+        ],
+        [
+          0.978,
+          0.988561
+        ],
+        [
+          0.011333,
+          0.988561
+        ]
+      ]
+    }
+  },
+  "21.3_layoutStructure": {
+    "wildcard": {
+      "passed": 3,
+      "total": 3,
+      "assertions": [
+        {
+          "kind": "min-top-level",
+          "passed": true,
+          "detail": "8 top-level children (need >=4)",
+          "why": "header, hero, cards row, content, portfolio, footer"
+        },
+        {
+          "kind": "siblings-under",
+          "passed": true,
+          "detail": "a <section> containing text + image: found",
+          "why": "the hero band holds body text beside an image"
+        },
+        {
+          "kind": "reading-order-monotonic",
+          "passed": true,
+          "detail": "0 cross-row inversion(s) across 8 top-level children (tolerance 0.03)",
+          "why": "bands top-to-bottom"
+        }
+      ]
+    },
+    "community": {
+      "passed": 4,
+      "total": 4,
+      "assertions": [
+        {
+          "kind": "min-top-level",
+          "passed": true,
+          "detail": "5 top-level children (need >=4)",
+          "why": "the sketch has >=4 stacked content bands"
+        },
+        {
+          "kind": "has-grid-of",
+          "passed": true,
+          "detail": "largest image grid = 4 columns (need >=3)",
+          "why": "a row of >=3 repeated card thumbnails should become one grid, not stacked siblings"
+        },
+        {
+          "kind": "reading-order-monotonic",
+          "passed": true,
+          "detail": "0 cross-row inversion(s) across 5 top-level children (tolerance 0.03)",
+          "why": "top-level bands must come out top-to-bottom"
+        },
+        {
+          "kind": "max-depth",
+          "passed": true,
+          "detail": "max depth 3 (limit 5)",
+          "why": "a flat page of bands should not produce deep nesting"
+        }
+      ]
+    },
+    "carsale": {
+      "passed": 3,
+      "total": 3,
+      "assertions": [
+        {
+          "kind": "min-top-level",
+          "passed": true,
+          "detail": "5 top-level children (need >=3)",
+          "why": "header band, hero, featured-cars row, footer"
+        },
+        {
+          "kind": "has-grid-of",
+          "passed": true,
+          "detail": "largest image grid = 3 columns (need >=3)",
+          "why": "the 4 featured-car thumbnails sit in one row"
+        },
+        {
+          "kind": "reading-order-monotonic",
+          "passed": true,
+          "detail": "0 cross-row inversion(s) across 5 top-level children (tolerance 0.03)",
+          "why": "bands top-to-bottom"
+        }
+      ]
+    }
+  },
+  "21.4_codeMetrics": {
+    "5d0083a7": {
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": [],
+      "unmappedComponentTypes": [],
+      "htmlBytes": 1399,
+      "cssBytes": 933
+    },
+    "642be96a": {
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": [],
+      "unmappedComponentTypes": [],
+      "htmlBytes": 8109,
+      "cssBytes": 1508
+    },
+    "6de3567a": {
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": [],
+      "unmappedComponentTypes": [],
+      "htmlBytes": 2719,
+      "cssBytes": 986
+    },
+    "881ceb2a": {
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": [],
+      "unmappedComponentTypes": [],
+      "htmlBytes": 1989,
+      "cssBytes": 982
+    },
+    "cf91f277": {
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": [],
+      "unmappedComponentTypes": [],
+      "htmlBytes": 3518,
+      "cssBytes": 1583
+    }
+  },
+  "21.7_endToEnd": {
+    "5d0083a7": {
+      "usablePreview": true,
+      "acceptedDetections": 13,
+      "rejectedDetections": 0,
+      "topLevelNodes": 8,
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": 0
+    },
+    "642be96a": {
+      "usablePreview": true,
+      "acceptedDetections": 23,
+      "rejectedDetections": 0,
+      "topLevelNodes": 5,
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": 0
+    },
+    "6de3567a": {
+      "usablePreview": true,
+      "acceptedDetections": 12,
+      "rejectedDetections": 0,
+      "topLevelNodes": 7,
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": 0
+    },
+    "881ceb2a": {
+      "usablePreview": true,
+      "acceptedDetections": 14,
+      "rejectedDetections": 1,
+      "topLevelNodes": 9,
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": 0
+    },
+    "cf91f277": {
+      "usablePreview": true,
+      "acceptedDetections": 21,
+      "rejectedDetections": 0,
+      "topLevelNodes": 5,
+      "htmlParses": true,
+      "cssParses": true,
+      "duplicateIds": 0
+    }
+  },
+  "notCovered": {
+    "21.1_detectionMetrics": "produced at training time; see ml/models/ui-detector/v1.0.0/metrics.json",
+    "21.5_visualSimilarity": "OUT OF SCOPE: no reference-design benchmark exists — only sketches. Building one would mean inventing 'correct' target renders, which is not a real evaluation.",
+    "21.6_humanEvaluation": "OUT OF SCOPE: requires actual human evaluators. Not simulated or approximated."
+  }
+}

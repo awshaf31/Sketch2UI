@@ -1,0 +1,27 @@
+{
+  "name": "sketch2ui",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "scripts"
+  ],
+  "scripts": {
+    "dev:web": "npm run dev -w apps/web",
+    "dev:api": "npm run dev -w apps/api",
+    "build": "npm run build -w packages/shared-types && npm run build -w packages/codegen && npm run build -w apps/api && npm run build -w apps/web",
+    "typecheck": "npm run typecheck -w apps/web && npm run typecheck -w apps/api && npm run typecheck -w scripts",
+    "export:dataset": "tsx scripts/src/export-yolo-dataset.ts",
+    "import:external": "tsx scripts/src/import-external-datasets.ts",
+    "build:v1": "tsx scripts/src/build-v1-subset.ts",
+    "report:active-learning": "tsx scripts/src/active-learning-report.ts",
+    "eval": "tsx scripts/src/evaluate.ts",
+    "test": "npm run test -w packages/shared-types",
+    "test:py": "cd services/cv-worker && .venv/bin/python -m pytest -q"
+  },
+  "devDependencies": {
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  }
+}

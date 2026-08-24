@@ -1,0 +1,16 @@
+section
+footer
+navbar
+form
+table
+heading
+text
+link
+image
+carousel
+button
+input
+textarea
+select
+checkbox
+radio_button

@@ -1,0 +1,6 @@
+# Sketch2UI v1 detector training — plan sections 9.8-9.10.
+# Python 3.9+ (the repo's system interpreter is 3.9.6; torch 2.8 has wheels for it).
+ultralytics==8.3.0
+torch==2.8.0
+torchvision==0.23.0
+pyyaml>=6.0

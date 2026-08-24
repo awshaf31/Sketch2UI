@@ -1,0 +1,14 @@
+# Sketch2UI CV worker — plan sections 7.1, 51 step 9.
+# Python 3.9+ (repo's system interpreter is 3.9.6; torch 2.8 has wheels for it).
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9      # required by FastAPI for multipart/form-data uploads
+pydantic==2.9.2
+
+# Inference. Pinned to match ml/training/requirements.txt so the weights frozen by
+# training load under the exact same stack.
+ultralytics==8.3.0
+torch==2.8.0
+torchvision==0.23.0
+pytest>=8.0

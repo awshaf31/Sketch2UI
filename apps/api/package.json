@@ -1,0 +1,33 @@
+{
+  "name": "@sketch2ui/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@sketch2ui/codegen": "*",
+    "@sketch2ui/shared-types": "*",
+    "@types/archiver": "^6.0.4",
+    "archiver": "^7.0.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "image-size": "^1.1.1",
+    "multer": "^2.0.0",
+    "sharp": "^0.35.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.14.10",
+    "@types/uuid": "^9.0.8",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  }
+}

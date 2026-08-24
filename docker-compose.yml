@@ -1,0 +1,24 @@
+# Postgres + Redis for the phases after the skeleton (dataset/job-queue work).
+# The apps/api skeleton currently uses a local JSON file store and runs without
+# this file — see apps/api/src/db/jsonStore.ts.
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sketch2ui
+      POSTGRES_PASSWORD: sketch2ui
+      POSTGRES_DB: sketch2ui
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:

@@ -1,0 +1,23 @@
+{
+  "name": "@sketch2ui/scripts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "export:dataset": "tsx src/export-yolo-dataset.ts",
+    "import:external": "tsx src/import-external-datasets.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build:v1": "tsx src/build-v1-subset.ts",
+    "report:active-learning": "tsx src/active-learning-report.ts",
+    "eval": "tsx src/evaluate.ts"
+  },
+  "dependencies": {
+    "@sketch2ui/shared-types": "*",
+    "@sketch2ui/codegen": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4"
+  }
+}

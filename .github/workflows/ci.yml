@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: Lint, Type-check & Test
+    runs-on: ubuntu-latest
+
+    services:
+      # CV worker tests do not need a live model, but the Python test suite runs
+      # the boundary-overlap parity fixture which is pure-compute.
+      # No Postgres or Redis yet — those gates arrive with Phase 5A/5B.
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared packages
+        run: |
+          npm run build -w packages/shared-types
+          npm run build -w packages/codegen
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Run TypeScript tests
+        run: npm run test
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python dependencies
+        working-directory: services/cv-worker
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Run Python tests
+        run: npm run test:py
+
+  build:
+    name: Production Build
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Full production build
+        run: npm run build
