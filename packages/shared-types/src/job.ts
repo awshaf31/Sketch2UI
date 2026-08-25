@@ -27,6 +27,10 @@ export interface Job {
   status: JobStatus;
   stage: JobStage;
   progress: number; // 0-100
+  /** The page this job ran against, mirroring sourceAssetId's optionality — a
+   * detect/codegen job is page-scoped, a hypothetical whole-project export job
+   * would not be. */
+  pageId?: string;
   /** The asset this job ran against — detect jobs are per-asset. */
   sourceAssetId?: string;
   /** Set when status === "failed". Codes match the section 7.6 error model. */

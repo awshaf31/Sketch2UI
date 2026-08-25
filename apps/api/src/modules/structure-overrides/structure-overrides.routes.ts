@@ -2,9 +2,11 @@ import { Router } from "express";
 import type { StructureOverride } from "@sketch2ui/shared-types";
 import { validateStructureOverride } from "@sketch2ui/shared-types";
 import { sendError } from "../../middleware/apiError.js";
-import type { ProjectParams } from "../../types.js";
+import type { PageParams } from "../../types.js";
 import { getRepositories } from "../../repositories/index.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 // Per-node structure overrides — plan §17.3 Structure group.
 //
@@ -19,18 +21,18 @@ import { asyncHandler } from "../../middleware/asyncHandler.js";
 // runs against the pending state (existing map merged with the proposed edit).
 
 export const structureOverridesRouter = Router({ mergeParams: true });
+structureOverridesRouter.use(requireProjectOwnership);
+structureOverridesRouter.use(requirePageInProject);
 
-interface OverrideParams extends ProjectParams {
+interface OverrideParams extends PageParams {
   detectionId: string;
 }
 
-// GET /api/projects/:id/structure-overrides — full map for the project.
-structureOverridesRouter.get<ProjectParams>(
+// GET /api/projects/:id/pages/:pageId/structure-overrides — full map for the page.
+structureOverridesRouter.get<PageParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    res.json(await getRepositories().structureOverrides.mapForProject(project.id));
+    res.json(await getRepositories().structureOverrides.mapForPage(req.params.pageId));
   })
 );
 
@@ -45,15 +47,12 @@ structureOverridesRouter.get<ProjectParams>(
 structureOverridesRouter.put<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
-    const detection = await getRepositories().detections.findInProject(project.id, req.params.detectionId);
-    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found in this project.");
+    const detection = await getRepositories().detections.findInPage(req.params.pageId, req.params.detectionId);
+    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found on this page.");
 
     const [activeDetections, existing] = await Promise.all([
-      getRepositories().detections.listActiveByProject(project.id),
-      getRepositories().structureOverrides.mapForProject(project.id),
+      getRepositories().detections.listActiveByPage(req.params.pageId),
+      getRepositories().structureOverrides.mapForPage(req.params.pageId),
     ]);
 
     // Build the projected state — existing map plus this PUT overlaid — so the cycle
@@ -88,7 +87,7 @@ structureOverridesRouter.put<OverrideParams>(
       result.override.displayOrder !== undefined;
     if (!hasFields) {
       // The repository detects this itself (put with an empty object).
-      await getRepositories().structureOverrides.put(project.id, detection.id, result.override);
+      await getRepositories().structureOverrides.put(req.params.id, req.params.pageId, detection.id, result.override);
       return res.json({ detectionId: detection.id, structure: null });
     }
 
@@ -100,7 +99,8 @@ structureOverridesRouter.put<OverrideParams>(
     const previous = existing[detection.id];
     if (result.override.parentDetectionId !== undefined) {
       await getRepositories().corrections.append({
-        projectId: project.id,
+        projectId: req.params.id,
+        pageId: req.params.pageId,
         detectionId: detection.id,
         type: "parent_changed",
         oldParentDetectionId: previous?.parentDetectionId,
@@ -109,7 +109,8 @@ structureOverridesRouter.put<OverrideParams>(
     }
     if (result.override.displayOrder !== undefined) {
       await getRepositories().corrections.append({
-        projectId: project.id,
+        projectId: req.params.id,
+        pageId: req.params.pageId,
         detectionId: detection.id,
         type: "order_changed",
         oldDisplayOrder: previous?.displayOrder,
@@ -117,19 +118,17 @@ structureOverridesRouter.put<OverrideParams>(
       });
     }
 
-    const stored = await getRepositories().structureOverrides.put(project.id, detection.id, result.override);
+    const stored = await getRepositories().structureOverrides.put(req.params.id, req.params.pageId, detection.id, result.override);
     res.json({ detectionId: detection.id, structure: stored });
   })
 );
 
-// DELETE /api/projects/:id/structure-overrides/:detectionId — revert to auto
-// inference. Idempotent: absent map or absent key both return 204.
+// DELETE /api/projects/:id/pages/:pageId/structure-overrides/:detectionId — revert to
+// auto inference. Idempotent: absent map or absent key both return 204.
 structureOverridesRouter.delete<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    await getRepositories().structureOverrides.remove(project.id, req.params.detectionId);
+    await getRepositories().structureOverrides.remove(req.params.id, req.params.detectionId);
     res.status(204).send();
   })
 );

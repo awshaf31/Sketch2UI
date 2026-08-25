@@ -18,6 +18,7 @@ function toRecord(row: PrismaCodeVersion): CodeVersion {
   return {
     id: row.id,
     projectId: row.projectId,
+    pageId: row.pageId,
     versionNumber: row.versionNumber,
     source: row.source as CodeVersion["source"],
     html: row.html,
@@ -39,18 +40,34 @@ export class PrismaCodeVersionRepository implements CodeVersionRepository {
     return rows.map(toRecord);
   }
 
+  async listByPage(pageId: string): Promise<CodeVersion[]> {
+    const rows = await this.prisma.codeVersion.findMany({
+      where: { pageId },
+      orderBy: { versionNumber: "desc" },
+    });
+    return rows.map(toRecord);
+  }
+
   async findById(projectId: string, versionId: string): Promise<CodeVersion | null> {
     const row = await this.prisma.codeVersion.findFirst({ where: { id: versionId, projectId } });
     return row ? toRecord(row) : null;
   }
 
+  async findByPage(pageId: string, versionId: string): Promise<CodeVersion | null> {
+    const row = await this.prisma.codeVersion.findFirst({ where: { id: versionId, pageId } });
+    return row ? toRecord(row) : null;
+  }
+
   async create(input: CreateCodeVersionInput): Promise<CodeVersion> {
+    // Version numbers are per-PAGE (Phase D3): count scoped to pageId, matching the
+    // schema's @@unique([pageId, versionNumber]).
     return this.prisma.$transaction(async (tx) => {
-      const count = await tx.codeVersion.count({ where: { projectId: input.projectId } });
+      const count = await tx.codeVersion.count({ where: { pageId: input.pageId } });
       const row = await tx.codeVersion.create({
         data: {
           id: uuid(),
           projectId: input.projectId,
+          pageId: input.pageId,
           versionNumber: count + 1,
           source: input.source,
           html: input.html,
@@ -77,6 +94,26 @@ export class PrismaCodeVersionRepository implements CodeVersionRepository {
 
     const latest = await this.prisma.codeVersion.findFirst({
       where: { projectId },
+      orderBy: { versionNumber: "desc" },
+    });
+    return latest ? toRecord(latest) : null;
+  }
+
+  async resolveActiveForPage(pageId: string): Promise<CodeVersion | null> {
+    const page = await this.prisma.page.findUnique({
+      where: { id: pageId },
+      select: { activeCodeVersionId: true },
+    });
+
+    if (page?.activeCodeVersionId) {
+      const pinned = await this.prisma.codeVersion.findFirst({
+        where: { id: page.activeCodeVersionId, pageId },
+      });
+      if (pinned) return toRecord(pinned);
+    }
+
+    const latest = await this.prisma.codeVersion.findFirst({
+      where: { pageId },
       orderBy: { versionNumber: "desc" },
     });
     return latest ? toRecord(latest) : null;

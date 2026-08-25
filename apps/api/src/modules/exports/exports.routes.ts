@@ -9,9 +9,11 @@ import { env } from "../../config/env.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { CropError, cropDetection } from "../crops/crop.service.js";
-import { resolveActiveVersion } from "../codegen/code-versions.routes.js";
+import { resolveActiveVersionForPage } from "../codegen/code-versions.routes.js";
 import type { ProjectParams } from "../../types.js";
+import type { CodeVersion, Page } from "@sketch2ui/shared-types";
 import { getRepositories } from "../../repositories/index.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
 
 // Export packages — plan §3.9 (FR-09), §18.8, §8.1/§43 (exports table),
 // §38 MVP item 13.
@@ -20,6 +22,7 @@ import { getRepositories } from "../../repositories/index.js";
 // re-downloading v1 after the project has changed still yields exactly what v1 was.
 
 export const exportsRouter = Router({ mergeParams: true });
+exportsRouter.use(requireProjectOwnership);
 
 interface ExportParams extends ProjectParams {
   exportId: string;
@@ -76,17 +79,32 @@ function referencedAssetPaths(html: string): string[] {
   return [...found];
 }
 
-function buildReadme(project: { name: string }, version: number, codeVersionNumber: number): string {
+/** Page 1 (lowest `order`) exports as index.html; every other page exports as
+ * page-{order}.html — Phase D3's "index.html, page-2.html, page-3.html" convention. */
+function pageFilename(page: Page): string {
+  return page.order === 1 ? "index.html" : `page-${page.order}.html`;
+}
+
+function buildReadme(
+  project: { name: string },
+  version: number,
+  pages: Array<{ page: Page; codeVersion: CodeVersion }>
+): string {
+  const pageLines = pages
+    .map(({ page, codeVersion }) => `  ${pageFilename(page).padEnd(20)} "${page.name}" (code version ${codeVersion.versionNumber})`)
+    .join("\n");
+
   return `${project.name} — Sketch2UI export v${version}
-Generated from code version ${codeVersionNumber}.
 
 CONTENTS
-  index.html          the generated page
-  styles.css          the generated stylesheet
+${pageLines}
+  styles.css          shared stylesheet for every page above
   assets/             placeholder images (see note below)
-  source-sketch.*     the original uploaded sketch, for reference
+  source-sketch-*.*   each page's original uploaded sketch, for reference
 
-Open index.html directly in a browser — no server needed.
+Open index.html directly in a browser — no server needed. Pages link to each other
+with plain relative paths (e.g. <a href="./page-2.html">), the same way any of the
+files above link to styles.css or assets/.
 
 NOTE ON IMAGES
   The images in assets/ are PLACEHOLDERS, not content from your sketch.
@@ -97,36 +115,61 @@ NOTE ON IMAGES
   these placeholder files exist so the page renders without broken-image icons.
 
   Replace them with your own artwork, keeping the filenames, and the layout will pick
-  them up unchanged. The original sketch is included as source-sketch.* so you can see
-  what each region was.
+  them up unchanged. Each page's original sketch is included as source-sketch-*.* so
+  you can see what each region was.
 `;
 }
 
-// POST /api/projects/:id/exports — plan §18.8
+/** Append one page's real image crops (or the neutral placeholder) at the paths its
+ * HTML references. Shared assets/ folder across pages is collision-safe because
+ * codegen's per-page idPrefix makes every referenced path globally unique. */
+async function appendPageAssets(archive: ReturnType<typeof createArchive>, codeVersion: CodeVersion): Promise<void> {
+  const assetMap = codeVersion.metadata?.assets ?? {};
+  for (const assetPath of referencedAssetPaths(codeVersion.html)) {
+    const detectionId = assetMap[assetPath];
+    const detection = detectionId ? await getRepositories().detections.findById(detectionId) : undefined;
+    const cropAsset = detection ? await getRepositories().assets.findById(detection.sourceAssetId) : undefined;
+
+    let bytes: Buffer = PLACEHOLDER_PNG;
+    if (detection && cropAsset) {
+      try {
+        bytes = Buffer.from(await cropDetection(detection, cropAsset));
+      } catch (cause) {
+        // A crop that cannot be produced (missing source, degenerate box) falls back to
+        // the neutral placeholder rather than failing the whole export.
+        if (!(cause instanceof CropError)) throw cause;
+      }
+    }
+    archive.append(bytes, { name: assetPath });
+  }
+}
+
+// POST /api/projects/:id/exports — plan §18.8, extended for multi-page (Phase D3).
+// Bundles EVERY page: one HTML file per page (index.html for the lowest `order`,
+// page-{order}.html for the rest), one shared styles.css, and every page's own
+// crops/source sketch. An export is built from each page's immutable active
+// CodeVersion, never a live regeneration, so re-downloading v1 after the project has
+// changed still yields exactly what v1 was.
 exportsRouter.post<ProjectParams>(
   "/",
   asyncHandler(async (req, res, next) => {
     const project = await getRepositories().projects.findById(req.params.id);
     if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
-    // Optional body.codeVersionId pins a specific version; default is the active one
-    // (a user-pinned pick if set, otherwise the latest). Using resolveActiveVersion keeps
-    // export in step with preview — activating a version through the code-versions API is
-    // the single control for "this is the current version".
-    const requestedId = (req.body ?? {}).codeVersionId as string | undefined;
-    const codeVersion = requestedId
-      ? await getRepositories().codeVersions.findById(project.id, requestedId)
-      : await resolveActiveVersion(project.id);
+    const pages = await getRepositories().pages.listByProject(project.id);
 
-    if (!codeVersion) {
-      return sendError(
-        res,
-        400,
-        "VALIDATION_FAILED",
-        requestedId
-          ? "That code version does not belong to this project."
-          : "No generated code yet — save a code version before exporting."
-      );
+    const pageBundles: Array<{ page: Page; codeVersion: CodeVersion }> = [];
+    for (const page of pages) {
+      const codeVersion = await resolveActiveVersionForPage(page.id);
+      if (!codeVersion) {
+        return sendError(
+          res,
+          400,
+          "VALIDATION_FAILED",
+          `"${page.name}" has no generated code yet — save a code version for every page before exporting.`
+        );
+      }
+      pageBundles.push({ page, codeVersion });
     }
 
     // Computed BEFORE the ZIP is streamed to disk, since the path depends on it — see
@@ -151,11 +194,16 @@ exportsRouter.post<ProjectParams>(
     archive.on("error", failWith);
     output.on("error", failWith);
 
+    // The home page's (lowest order) version is the representative record — the export
+    // row is a bookkeeping/history pointer, not something the download route
+    // reconstructs from, so pointing it at one page's version is sufficient.
+    const homeCodeVersion = pageBundles[0].codeVersion;
+
     output.on("close", () => {
       void getRepositories()
         .exports.create({
           projectId: project.id,
-          codeVersionId: codeVersion.id,
+          codeVersionId: homeCodeVersion.id,
           versionNumber,
           storagePath: relPath,
           fileSize: archive.pointer(),
@@ -170,45 +218,36 @@ exportsRouter.post<ProjectParams>(
     });
 
     archive.pipe(output);
-    archive.append(codeVersion.html, { name: "index.html" });
-    archive.append(codeVersion.css, { name: "styles.css" });
 
-    // Real crops from the source sketch (plan §15.5), placed at exactly the paths the
-    // stored HTML references. The map was recorded at code-generation time so an export
-    // built from an older immutable version still crops the right regions.
-    const assetMap = codeVersion.metadata?.assets ?? {};
-    for (const assetPath of referencedAssetPaths(codeVersion.html)) {
-      const detectionId = assetMap[assetPath];
-      const detection = detectionId
-        ? await getRepositories().detections.findById(detectionId)
-        : undefined;
-      const cropAsset = detection
-        ? await getRepositories().assets.findById(detection.sourceAssetId)
-        : undefined;
+    // One shared styles.css — simple concatenation, not a byte-level dedup: identical
+    // component/base blocks repeating across pages are harmless (same declarations,
+    // same class name), and the id-selector layout/override blocks are collision-safe
+    // by construction (each page's ids are namespaced by codegen's idPrefix).
+    const combinedCss = pageBundles
+      .map(({ page, codeVersion }) => `/* ---- ${page.name} ---- */\n${codeVersion.css}`)
+      .join("\n\n");
+    archive.append(combinedCss, { name: "styles.css" });
 
-      let bytes: Buffer = PLACEHOLDER_PNG;
-      if (detection && cropAsset) {
-        try {
-          bytes = Buffer.from(await cropDetection(detection, cropAsset));
-        } catch (cause) {
-          // A crop that cannot be produced (missing source, degenerate box) falls back to
-          // the neutral placeholder rather than failing the whole export.
-          if (!(cause instanceof CropError)) throw cause;
+    for (const { page, codeVersion } of pageBundles) {
+      archive.append(codeVersion.html, { name: pageFilename(page) });
+
+      // Real crops from the source sketch (plan §15.5), placed at exactly the paths the
+      // stored HTML references. The map was recorded at code-generation time so an
+      // export built from an older immutable version still crops the right regions.
+      await appendPageAssets(archive, codeVersion);
+
+      // Bundle each page's own source sketch so the package is self-explanatory about
+      // what it came from.
+      const asset = await getRepositories().assets.findLatestForPage(page.id);
+      if (asset) {
+        const source = path.join(env.uploadsDir, asset.storageKey);
+        if (fs.existsSync(source)) {
+          archive.file(source, { name: `source-sketch-${pageFilename(page).replace(/\.html$/, "")}${path.extname(asset.storageKey)}` });
         }
       }
-      archive.append(bytes, { name: assetPath });
     }
 
-    // Bundle the source sketch so the package is self-explanatory about what it came from.
-    const asset = await getRepositories().assets.findLatestForProject(project.id);
-    if (asset) {
-      const source = path.join(env.uploadsDir, asset.storageKey);
-      if (fs.existsSync(source)) {
-        archive.file(source, { name: `source-sketch${path.extname(asset.storageKey)}` });
-      }
-    }
-
-    archive.append(buildReadme(project, versionNumber, codeVersion.versionNumber), {
+    archive.append(buildReadme(project, versionNumber, pageBundles), {
       name: "README.txt",
     });
 

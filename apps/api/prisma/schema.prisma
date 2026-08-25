@@ -122,11 +122,43 @@ enum CorrectionType {
 // Core entities
 // ---------------------------------------------------------------------------
 
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  /// Reserved for future RBAC — no route reads this yet in Phase D1.
+  role         String   @default("user")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  projects Project[]
+  sessions Session[]
+
+  @@map("users")
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  /// sha256(cookie token) — the raw token is never stored, same reasoning as a
+  /// password hash: a database read/leak must not hand out a usable bearer token.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
 model Project {
   id          String        @id
   name        String
   description String?
   status      ProjectStatus @default(draft)
+  ownerId     String
+  owner       User          @relation(fields: [ownerId], references: [id])
 
   /// Which CodeVersion preview and export use. Unset means "the latest".
   /// Deliberately NOT a Prisma relation: CodeVersion already points at Project, and
@@ -139,6 +171,7 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  pages              Page[]
   assets             ProjectAsset[]
   detections         Detection[]
   codeVersions       CodeVersion[]
@@ -153,12 +186,52 @@ model Project {
   structureOverrides StructureOverride[]
 
   @@index([activeCodeVersionId])
+  @@index([ownerId])
   @@map("projects")
+}
+
+/// Phase D3 minimum-viable multi-page. A Page owns one source asset, its
+/// detections, boundary, the four override groups, corrections, and code
+/// versions — see packages/shared-types/src/page.ts. Every existing project gets
+/// exactly one Page ("Page 1") via an automatic JSON-store backfill or the
+/// explicit apps/api/scripts/backfill-pages.ts for Postgres.
+model Page {
+  id      String @id @default(uuid())
+  projectId String
+  name    String
+  /// Sort position, and the export filename suffix (order 1 -> index.html,
+  /// order N -> page-N.html).
+  order   Int
+
+  /// Same NOT-a-relation pattern as Project.activeCodeVersionId, and for the
+  /// same reason (avoids a CodeVersion <-> Page creation cycle).
+  activeCodeVersionId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assets             ProjectAsset[]
+  detections         Detection[]
+  codeVersions       CodeVersion[]
+  jobs               Job[]
+  pageBoundaries     PageBoundaryRecord[]
+  correctionRecords  CorrectionRecord[]
+  styleOverrides     StyleOverride[]
+  contentOverrides   ContentOverride[]
+  geometryOverrides  GeometryOverride[]
+  structureOverrides StructureOverride[]
+
+  @@unique([projectId, order])
+  @@index([activeCodeVersionId])
+  @@map("pages")
 }
 
 model ProjectAsset {
   id        String @id
   projectId String
+  pageId    String
   /// Filename under data/uploads/ — the storage convention, not a filesystem path.
   storageKey String
   mimeType   String
@@ -168,18 +241,21 @@ model ProjectAsset {
   createdAt  DateTime @default(now())
 
   project        Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page           Page                 @relation(fields: [pageId], references: [id], onDelete: Cascade)
   detections     Detection[]
   jobs           Job[]
   trainingSample TrainingSample?
   pageBoundary   PageBoundaryRecord?
 
   @@index([projectId])
+  @@index([pageId])
   @@map("project_assets")
 }
 
 model Detection {
   id            String @id
   projectId     String
+  pageId        String
   sourceAssetId String
   className     String
 
@@ -210,6 +286,7 @@ model Detection {
   updatedAt DateTime @updatedAt
 
   project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page        Page         @relation(fields: [pageId], references: [id], onDelete: Cascade)
   sourceAsset ProjectAsset @relation(fields: [sourceAssetId], references: [id], onDelete: Cascade)
 
   styleOverride     StyleOverride?
@@ -224,14 +301,17 @@ model Detection {
   childStructureOverrides StructureOverride[] @relation("StructureParent")
 
   @@index([projectId])
+  @@index([pageId])
   @@index([sourceAssetId])
   @@index([projectId, status])
+  @@index([pageId, status])
   @@map("detections")
 }
 
 model CodeVersion {
   id            String            @id
   projectId     String
+  pageId        String
   versionNumber Int
   source        CodeVersionSource
   html          String
@@ -246,20 +326,25 @@ model CodeVersion {
   createdAt DateTime @default(now())
 
   project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page    Page            @relation(fields: [pageId], references: [id], onDelete: Cascade)
   exports ProjectExport[]
 
-  /// Version numbers are per-project and assigned as `existing.length + 1`. A unique
-  /// constraint turns that into a real guarantee — under concurrent writes the JSON
-  /// store could hand out the same number twice, which is exactly the class of bug
-  /// §8.3 wants transactions for.
-  @@unique([projectId, versionNumber])
+  /// Version numbers are per-PAGE (Phase D3) and assigned as `existing.length + 1`.
+  /// A unique constraint turns that into a real guarantee — under concurrent writes
+  /// the JSON store could hand out the same number twice, which is exactly the
+  /// class of bug §8.3 wants transactions for.
+  @@unique([pageId, versionNumber])
   @@index([projectId])
+  @@index([pageId])
   @@map("code_versions")
 }
 
 model Job {
   id            String    @id
   projectId     String
+  /// Optional, mirroring sourceAssetId's optionality: a detect/codegen job is
+  /// page-scoped, a hypothetical whole-project export job would not be.
+  pageId        String?
   type          JobType
   status        JobStatus
   stage         JobStage
@@ -282,9 +367,11 @@ model Job {
   updatedAt DateTime @updatedAt
 
   project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page        Page?         @relation(fields: [pageId], references: [id], onDelete: SetNull)
   sourceAsset ProjectAsset? @relation(fields: [sourceAssetId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([pageId])
   @@index([status])
   @@map("jobs")
 }
@@ -343,6 +430,7 @@ model ProjectExport {
 model PageBoundaryRecord {
   id        String @id
   projectId String
+  pageId    String
   assetId   String
 
   /// PagePolygon = [x, y][] — an ordered coordinate list. Json is correct here: it is a
@@ -364,17 +452,20 @@ model PageBoundaryRecord {
   updatedAt DateTime @updatedAt
 
   project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page    Page         @relation(fields: [pageId], references: [id], onDelete: Cascade)
   asset   ProjectAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   /// "One boundary per asset — this is the key" (page-boundary-record.ts).
   @@unique([assetId])
   @@index([projectId])
+  @@index([pageId])
   @@map("page_boundaries")
 }
 
 model CorrectionRecord {
   id          String         @id
   projectId   String
+  pageId      String
   detectionId String
   type        CorrectionType
 
@@ -409,6 +500,7 @@ model CorrectionRecord {
   newDisplayOrder Int?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page    Page    @relation(fields: [pageId], references: [id], onDelete: Cascade)
 
   /// Cascade: a correction record describes an edit to a detection. If the detection is
   /// hard-deleted the record loses its subject. This mirrors the current JSON behaviour,
@@ -417,6 +509,7 @@ model CorrectionRecord {
   detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([pageId])
   @@index([detectionId])
   @@index([projectId, timestamp])
   @@map("correction_records")
@@ -439,6 +532,7 @@ model CorrectionRecord {
 model StyleOverride {
   id          String @id @default(uuid())
   projectId   String
+  pageId      String
   detectionId String
 
   /// Record<string, string> over a hard-allowlisted six-property set
@@ -448,16 +542,19 @@ model StyleOverride {
   style Json
 
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
   detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
 
   @@unique([detectionId])
   @@index([projectId])
+  @@index([pageId])
   @@map("style_overrides")
 }
 
 model ContentOverride {
   id          String @id @default(uuid())
   projectId   String
+  pageId      String
   detectionId String
 
   text         String?
@@ -466,16 +563,19 @@ model ContentOverride {
   contentState ContentState @default(user_edited)
 
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
   detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
 
   @@unique([detectionId])
   @@index([projectId])
+  @@index([pageId])
   @@map("content_overrides")
 }
 
 model GeometryOverride {
   id          String @id @default(uuid())
   projectId   String
+  pageId      String
   detectionId String
 
   /// All four are optional: a partial override (nudge width only) is legal and inherits
@@ -486,16 +586,19 @@ model GeometryOverride {
   height Float?
 
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
   detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
 
   @@unique([detectionId])
   @@index([projectId])
+  @@index([pageId])
   @@map("geometry_overrides")
 }
 
 model StructureOverride {
   id          String @id @default(uuid())
   projectId   String
+  pageId      String
   detectionId String
 
   /// null = root, absent = keep auto-inferred parent. Same null-vs-undefined problem as
@@ -506,6 +609,7 @@ model StructureOverride {
   displayOrder Int?
 
   project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  page      Page      @relation(fields: [pageId], references: [id], onDelete: Cascade)
   detection Detection @relation(fields: [detectionId], references: [id], onDelete: Cascade)
 
   /// The FK that makes validateStructureOverride's "parent must be an active detection"
@@ -516,6 +620,7 @@ model StructureOverride {
 
   @@unique([detectionId])
   @@index([projectId])
+  @@index([pageId])
   @@index([parentDetectionId])
   @@map("structure_overrides")
 }

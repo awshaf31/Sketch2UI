@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { registerAndLogin } from "./auth.js";
 
 // Golden-path E2E — plan §24: Sketch → Detect → Correct → Generate → Preview → Export.
 //
@@ -11,6 +12,8 @@ import { expect, test } from "@playwright/test";
 const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");
 
 test("sketch to export golden path", async ({ page }) => {
+  await registerAndLogin(page, `golden-path-${Date.now()}@e2e.local`);
+
   // 1. Create project
   await page.goto("/");
   await page.getByPlaceholder("New project name").fill("E2E Golden Path");

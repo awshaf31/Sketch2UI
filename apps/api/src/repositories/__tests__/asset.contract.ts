@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, ProjectRepository } from "../types.js";
+import type { AssetRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * AssetRepository CONTRACT — Phase 8 amendment §10.
@@ -8,22 +8,25 @@ import type { AssetRepository, ProjectRepository } from "../types.js";
  * Not a *.test.ts file and registers nothing on import — each adapter has its own thin
  * test file that calls this once.
  *
- * Assets need a parent project to exist (Postgres enforces the FK, JSON does not), so
- * the harness is given a ProjectRepository to create one.
+ * Assets need a parent project AND page to exist (Postgres enforces the FK, JSON does
+ * not), so the harness is given Project/Page repositories to create them.
  */
 
 export function runAssetRepositoryContract(
   name: string,
-  makeRepositories: () => Promise<{ assets: AssetRepository; projects: ProjectRepository }>,
+  makeRepositories: () => Promise<{ assets: AssetRepository; projects: ProjectRepository; pages: PageRepository }>,
   reset: () => Promise<void> | void
 ): void {
   describe(`AssetRepository contract — ${name}`, () => {
     let assets: AssetRepository;
     let projects: ProjectRepository;
+    let pages: PageRepository;
     let projectId: string;
+    let pageId: string;
 
     const input = (over: Partial<Parameters<AssetRepository["create"]>[0]> = {}) => ({
       projectId,
+      pageId,
       storageKey: "abc.png",
       mimeType: "image/png",
       width: 800,
@@ -37,7 +40,9 @@ export function runAssetRepositoryContract(
       const repos = await makeRepositories();
       assets = repos.assets;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host project" })).id;
+      pages = repos.pages;
+      projectId = (await projects.create({ name: "Host project", ownerId: "test-owner" })).id;
+      pageId = (await pages.create({ projectId, name: "Page 1" })).id;
     });
 
     describe("create", () => {
@@ -82,9 +87,10 @@ export function runAssetRepositoryContract(
 
     describe("listByProject", () => {
       it("returns only that project's assets", async () => {
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
+        const otherPageId = (await pages.create({ projectId: other.id, name: "Page 1" })).id;
         await assets.create(input({ storageKey: "mine.png" }));
-        await assets.create(input({ projectId: other.id, storageKey: "theirs.png" }));
+        await assets.create(input({ projectId: other.id, pageId: otherPageId, storageKey: "theirs.png" }));
 
         const mine = await assets.listByProject(projectId);
         expect(mine.map((a) => a.storageKey)).toEqual(["mine.png"]);
@@ -128,8 +134,9 @@ export function runAssetRepositoryContract(
       });
 
       it("ignores other projects' assets", async () => {
-        const other = await projects.create({ name: "Other" });
-        await assets.create(input({ projectId: other.id, storageKey: "theirs.png" }));
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
+        const otherPageId = (await pages.create({ projectId: other.id, name: "Page 1" })).id;
+        await assets.create(input({ projectId: other.id, pageId: otherPageId, storageKey: "theirs.png" }));
         expect(await assets.findLatestForProject(projectId)).toBeNull();
       });
     });

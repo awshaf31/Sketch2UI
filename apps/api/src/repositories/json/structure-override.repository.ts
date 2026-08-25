@@ -25,6 +25,19 @@ export class JsonStructureOverrideRepository implements StructureOverrideReposit
     return project?.structureOverrides ? detach(project.structureOverrides) : {};
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, StructureOverride>> {
+    const page = db.state.pages.find((p) => p.id === pageId);
+    if (!page) return {};
+    const project = db.state.projects.find((p) => p.id === page.projectId);
+    const fullMap = project?.structureOverrides ?? {};
+    const pageDetectionIds = new Set(
+      db.state.detections.filter((d) => d.pageId === pageId).map((d) => d.id)
+    );
+    return detach(
+      Object.fromEntries(Object.entries(fullMap).filter(([detectionId]) => pageDetectionIds.has(detectionId)))
+    );
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<StructureOverride | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     const value = project?.structureOverrides?.[detectionId];
@@ -33,6 +46,7 @@ export class JsonStructureOverrideRepository implements StructureOverrideReposit
 
   async put(
     projectId: string,
+    _pageId: string,
     detectionId: string,
     value: StructureOverride
   ): Promise<StructureOverride | null> {

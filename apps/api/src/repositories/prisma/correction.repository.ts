@@ -25,6 +25,7 @@ function toRecord(row: PrismaCorrectionRecord): CorrectionRecord {
   return {
     id: row.id,
     projectId: row.projectId,
+    pageId: row.pageId,
     detectionId: row.detectionId,
     type: row.type as CorrectionType,
     source: "user",
@@ -58,6 +59,14 @@ export class PrismaCorrectionRepository implements CorrectionRepository {
     return rows.map(toRecord);
   }
 
+  async listByPage(pageId: string, detectionId?: string): Promise<CorrectionRecord[]> {
+    const rows = await this.prisma.correctionRecord.findMany({
+      where: { pageId, ...(detectionId ? { detectionId } : {}) },
+      orderBy: [{ timestamp: "asc" }, { id: "asc" }],
+    });
+    return rows.map(toRecord);
+  }
+
   async append(
     record: Omit<CorrectionRecord, "id" | "timestamp" | "source">
   ): Promise<CorrectionRecord> {
@@ -65,6 +74,7 @@ export class PrismaCorrectionRepository implements CorrectionRepository {
       data: {
         id: uuid(),
         projectId: record.projectId,
+        pageId: record.pageId,
         detectionId: record.detectionId,
         type: record.type,
         timestamp: new Date(),

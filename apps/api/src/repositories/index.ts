@@ -26,12 +26,16 @@ import type {
   ExportRepository,
   GeometryOverrideRepository,
   JobRepository,
+  PageRepository,
   ProjectRepository,
+  SessionRepository,
   StructureOverrideRepository,
   StyleOverrideRepository,
   TrainingRepository,
+  UserRepository,
 } from "./types.js";
 import { JsonProjectRepository } from "./json/project.repository.js";
+import { JsonPageRepository } from "./json/page.repository.js";
 import { JsonAssetRepository } from "./json/asset.repository.js";
 import { JsonDetectionRepository } from "./json/detection.repository.js";
 import { JsonBoundaryRepository } from "./json/boundary.repository.js";
@@ -44,7 +48,10 @@ import { JsonTrainingRepository } from "./json/training.repository.js";
 import { JsonCorrectionRepository } from "./json/correction.repository.js";
 import { JsonExportRepository } from "./json/export.repository.js";
 import { JsonJobRepository } from "./json/job.repository.js";
+import { JsonUserRepository } from "./json/user.repository.js";
+import { JsonSessionRepository } from "./json/session.repository.js";
 import { PrismaProjectRepository } from "./prisma/project.repository.js";
+import { PrismaPageRepository } from "./prisma/page.repository.js";
 import { PrismaAssetRepository } from "./prisma/asset.repository.js";
 import { PrismaDetectionRepository } from "./prisma/detection.repository.js";
 import { PrismaBoundaryRepository } from "./prisma/boundary.repository.js";
@@ -57,12 +64,15 @@ import { PrismaTrainingRepository } from "./prisma/training.repository.js";
 import { PrismaCorrectionRepository } from "./prisma/correction.repository.js";
 import { PrismaExportRepository } from "./prisma/export.repository.js";
 import { PrismaJobRepository } from "./prisma/job.repository.js";
+import { PrismaUserRepository } from "./prisma/user.repository.js";
+import { PrismaSessionRepository } from "./prisma/session.repository.js";
 
 export * from "./types.js";
 
 /** Domains migrated to the repository layer so far. Grows per Phase 8 increment. */
 export interface MigratedRepositories {
   projects: ProjectRepository;
+  pages: PageRepository;
   assets: AssetRepository;
   detections: DetectionRepository;
   boundaries: BoundaryRepository;
@@ -75,6 +85,8 @@ export interface MigratedRepositories {
   corrections: CorrectionRepository;
   exports: ExportRepository;
   jobs: JobRepository;
+  users: UserRepository;
+  sessions: SessionRepository;
 }
 
 let cached: MigratedRepositories | undefined;
@@ -83,6 +95,7 @@ function build(): MigratedRepositories {
   if (env.persistenceDriver === "postgres") {
     return {
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
       assets: new PrismaAssetRepository(),
       detections: new PrismaDetectionRepository(),
       boundaries: new PrismaBoundaryRepository(),
@@ -95,10 +108,13 @@ function build(): MigratedRepositories {
       corrections: new PrismaCorrectionRepository(),
       exports: new PrismaExportRepository(),
       jobs: new PrismaJobRepository(),
+      users: new PrismaUserRepository(),
+      sessions: new PrismaSessionRepository(),
     };
   }
   return {
     projects: new JsonProjectRepository(),
+    pages: new JsonPageRepository(),
     assets: new JsonAssetRepository(),
     detections: new JsonDetectionRepository(),
     boundaries: new JsonBoundaryRepository(),
@@ -111,6 +127,8 @@ function build(): MigratedRepositories {
     corrections: new JsonCorrectionRepository(),
     exports: new JsonExportRepository(),
     jobs: new JsonJobRepository(),
+    users: new JsonUserRepository(),
+    sessions: new JsonSessionRepository(),
   };
 }
 

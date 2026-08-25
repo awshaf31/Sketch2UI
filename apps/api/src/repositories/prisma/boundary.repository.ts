@@ -26,6 +26,7 @@ function toRecord(row: PrismaBoundary): PageBoundaryRecord {
   return {
     id: row.id,
     projectId: row.projectId,
+    pageId: row.pageId,
     assetId: row.assetId,
     polygon: row.polygon as PagePolygon,
     confidence: row.confidence,
@@ -49,6 +50,7 @@ export class PrismaBoundaryRepository implements BoundaryRepository {
 
   async saveRespectingManual(
     projectId: string,
+    pageId: string,
     assetId: string,
     boundary: PageBoundary,
     source: PageBoundarySource
@@ -73,7 +75,7 @@ export class PrismaBoundaryRepository implements BoundaryRepository {
       const row = existing
         ? await tx.pageBoundaryRecord.update({ where: { assetId }, data })
         : await tx.pageBoundaryRecord.create({
-            data: { id: uuid(), projectId, assetId, ...data },
+            data: { id: uuid(), projectId, pageId, assetId, ...data },
           });
 
       return { record: toRecord(row), preservedManual: false };

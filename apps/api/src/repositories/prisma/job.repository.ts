@@ -15,6 +15,7 @@ function toRecord(row: PrismaJob): Job {
     status: row.status as JobStatus,
     stage: row.stage as JobStage,
     progress: row.progress,
+    ...(row.pageId === null ? {} : { pageId: row.pageId }),
     ...(row.sourceAssetId === null ? {} : { sourceAssetId: row.sourceAssetId }),
     ...(row.errorCode === null ? {} : { errorCode: row.errorCode }),
     ...(row.errorMessage === null ? {} : { errorMessage: row.errorMessage }),
@@ -41,6 +42,7 @@ export class PrismaJobRepository implements JobRepository {
       data: {
         id: uuid(),
         projectId: input.projectId,
+        pageId: input.pageId ?? null,
         type: input.type,
         status: "queued",
         stage: "queued",

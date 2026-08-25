@@ -9,6 +9,7 @@ import type {
   PageBoundary,
   ProjectAsset,
   ProjectExport,
+  PublicUser,
   StructureOverride,
 } from "@sketch2ui/shared-types";
 
@@ -57,6 +58,9 @@ function toApiError(status: number, body: unknown): ApiError {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    // Required for the session cookie to be sent/stored: apps/web and apps/api are
+    // different origins in dev (:5173 vs :4000), so credentials are never implied.
+    credentials: "include",
     headers:
       init?.body && !(init.body instanceof FormData)
         ? { "Content-Type": "application/json", ...init.headers }
@@ -72,6 +76,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   assetUrl(storageKey: string): string {
     return `${API_URL}/uploads/${storageKey}`;
+  },
+
+  register(email: string, password: string): Promise<PublicUser> {
+    return request("/api/auth/register", { method: "POST", body: JSON.stringify({ email, password }) });
+  },
+  login(email: string, password: string): Promise<PublicUser> {
+    return request("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+  },
+  logout(): Promise<void> {
+    return request("/api/auth/logout", { method: "POST" });
+  },
+  me(): Promise<PublicUser> {
+    return request("/api/auth/me");
   },
 
   listProjects(): Promise<Project[]> {

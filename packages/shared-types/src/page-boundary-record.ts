@@ -12,6 +12,7 @@ export type PageBoundarySource = "auto" | "manual";
 export interface PageBoundaryRecord {
   id: string;
   projectId: string;
+  pageId: string;
   /** One boundary per asset — this is the key. */
   assetId: string;
   polygon: PageBoundary["polygon"];

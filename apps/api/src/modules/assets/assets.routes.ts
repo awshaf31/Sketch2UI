@@ -5,10 +5,12 @@ import multer from "multer";
 import imageSize from "image-size";
 import { v4 as uuid } from "uuid";
 import { env } from "../../config/env.js";
-import type { ProjectParams } from "../../types.js";
+import type { PageParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { getRepositories } from "../../repositories/index.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 const ALLOWED_MIME: Record<string, string> = {
   "image/png": ".png",
@@ -51,13 +53,14 @@ const upload = multer({
 });
 
 export const assetsRouter = Router({ mergeParams: true });
+assetsRouter.use(requireProjectOwnership);
+assetsRouter.use(requirePageInProject);
 
-// POST /api/projects/:id/assets — plan section 18.2 & 19.1: validate upload, never trust the
-// original filename, generate a server-side storage key, and decode dimensions before trusting them.
-assetsRouter.post<ProjectParams>("/", upload.single("file"), asyncHandler(async (req, res) => {
+// POST /api/projects/:id/pages/:pageId/assets — plan section 18.2 & 19.1: validate
+// upload, never trust the original filename, generate a server-side storage key, and
+// decode dimensions before trusting them.
+assetsRouter.post<PageParams>("/", upload.single("file"), asyncHandler(async (req, res) => {
   const repos = getRepositories();
-  const project = await repos.projects.findById(req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
   const file = req.file;
   if (!file) return sendError(res, 400, "VALIDATION_FAILED", "A file is required.");
@@ -87,7 +90,8 @@ assetsRouter.post<ProjectParams>("/", upload.single("file"), asyncHandler(async 
   fs.writeFileSync(path.join(env.uploadsDir, storageKey), file.buffer);
 
   const asset = await repos.assets.create({
-    projectId: project.id,
+    projectId: req.params.id,
+    pageId: req.params.pageId,
     storageKey,
     mimeType: file.mimetype,
     width: dimensions.width,
@@ -98,10 +102,7 @@ assetsRouter.post<ProjectParams>("/", upload.single("file"), asyncHandler(async 
   res.status(201).json(asset);
 }));
 
-// GET /api/projects/:id/assets
-//
-// Deliberately NOT guarded by a project lookup: the original filtered the array and
-// returned [] for an unknown project rather than 404, and clients depend on that.
-assetsRouter.get<ProjectParams>("/", asyncHandler(async (req, res) => {
-  res.json(await getRepositories().assets.listByProject(req.params.id));
+// GET /api/projects/:id/pages/:pageId/assets
+assetsRouter.get<PageParams>("/", asyncHandler(async (req, res) => {
+  res.json(await getRepositories().assets.listByPage(req.params.pageId));
 }));

@@ -23,6 +23,13 @@ export class JsonCorrectionRepository implements CorrectionRepository {
       .map(detach);
   }
 
+  async listByPage(pageId: string, detectionId?: string): Promise<CorrectionRecord[]> {
+    return db.state.correctionRecords
+      .filter((r) => r.pageId === pageId && (!detectionId || r.detectionId === detectionId))
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+      .map(detach);
+  }
+
   async append(
     record: Omit<CorrectionRecord, "id" | "timestamp" | "source">
   ): Promise<CorrectionRecord> {

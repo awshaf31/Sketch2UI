@@ -26,7 +26,7 @@ memory — file paths and route registrations are named so they can be checked d
 | Background jobs | **In-process execution, Postgres-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
 | E2E test coverage | **Two Playwright suites** — `e2e/golden-path.spec.ts` (create → upload → detect (mocked) → correct → generate → preview → export) and `e2e/inspector-overrides.spec.ts` (Geometry override + Content XSS rejection), both against isolated throwaway storage |
 | Frontend design system | **Done** (Phase 2, 2026-08-25) — token system, primitive component library, rebuilt workspace shell, restyled canvas/tree/Inspector/code panel/preview, responsive (desktop/tablet/mobile) + keyboard/ARIA coverage. See `docs/frontend/README.md` (spec) and `docs/execution/phase-log.md` Phases 10–20 (implementation record). Zero behavior changes — same detection/override/codegen/persistence this table describes throughout, just restyled and reorganized. |
-| Auth / accounts | **Not started** (no users, no login, single implicit workspace) |
+| Auth / accounts | **Done** (Phase D1, 2026-08-25) — email/password registration, HTTP-only session cookies, `Project.ownerId`, and authorization enforced on every project-scoped route (see §2.9 and `docs/execution/phase-log.md`'s Phase D1 entry) |
 | Multi-page projects | **Not started** |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
 | Everything V3 (layout transformer, OCR, active learning ML) | **Not started** |
@@ -44,7 +44,7 @@ so itself (`ml/models/ui-detector/v1.0.0/metrics.json` calls it a `"smoke_test"`
 
 All 12 steps are implemented and wired together:
 
-1. **Project CRUD** — `apps/api/src/modules/projects/projects.routes.ts`. Create/list/get/patch/delete. No auth gate — any request can act on any project.
+1. **Project CRUD** — `apps/api/src/modules/projects/projects.routes.ts`. Create/list/get/patch/delete, scoped to the authenticated caller's `ownerId` since Phase D1 (see §2.9).
 2. **Image upload** — `apps/api/src/modules/assets/assets.routes.ts`. Validates file type/size/decode, stores to `data/uploads/`.
 3. **Annotation canvas** — `apps/web/src/features/annotation/AnnotationCanvas.tsx` + `ClassPicker.tsx`. Draw boxes, pick a class, drag/resize/delete. This is the manual detection path and also the dataset-labeling tool.
 4. **Page boundary** — `apps/api/src/modules/boundaries/`, `packages/shared-types/src/boundary-geometry.ts`, `apps/web/src/features/detection/PageBoundaryOverlay.tsx`. Auto-detected via the CV worker OR manually dragged; boxes outside the boundary are filtered client-side with live re-partitioning as the boundary moves (§10.4).
@@ -165,6 +165,39 @@ and responsive/accessibility coverage changed.
   two components (`ClassPicker.tsx`, `UploadDropzone.tsx`) that had escaped every
   earlier phase's scope.
 
+### 2.9 Authentication (Phase D1 — complete)
+
+Converts the single implicit workspace into `authenticated user → owned projects →
+authorized resources`, per the deadline execution plan. See
+`docs/execution/phase-log.md`'s Phase D1 entry for the full file list.
+
+- **Backend**: `User`/`Session` Prisma models (migration `20260825000000_add_auth`),
+  `Project.ownerId`; a new `auth` module (`POST /api/auth/{register,login,logout}`,
+  `GET /api/auth/me`) using Node's built-in `crypto.scrypt` for password hashing and
+  an opaque, sha256-hashed session token in an httpOnly cookie (real server-side
+  revocation on logout — not a stateless JWT).
+- **Authorization**: `requireAuth` (global gate in `server.ts`) and
+  `requireProjectOwnership` (one line on each of the 13 nested project-scoped
+  routers) enforce ownership on every project-owned resource — projects, assets,
+  detections, boundaries, code versions, all four override groups, training,
+  corrections, exports, and jobs (the latter via an inline fetch-then-check, since
+  `/api/jobs/:jobId` carries no project id in its own path). Ownership mismatches
+  return `404`, not `403`, to avoid an existence-enumeration oracle.
+- **Legacy data**: pre-auth projects are assigned to a well-known
+  `legacy-owner@sketch2ui.local` account via an explicit, idempotent script
+  (`apps/api/scripts/backfill-legacy-owner.ts`), not an automatic on-boot mutation.
+- **Frontend**: `/login` and `/register` pages, an `AuthContext`/`ProtectedRoute`
+  gating the Dashboard and Workspace routes, `AppHeader` showing the current user +
+  logout.
+- **Not implemented** (explicitly out of scope for this phase): OAuth, SSO, MFA,
+  password-reset email, collaboration/sharing, RBAC beyond a reserved `role` field.
+  `/uploads` static file serving is gated by login but not by per-asset ownership
+  (storage keys are unguessable UUIDs) — a deliberate, documented residual gap.
+- **Tests**: repository contract tests for `User`/`Session`; the first HTTP-
+  integration test file in `apps/api` (`modules/auth/auth.routes.test.ts`, via
+  `supertest`) covering register/login/logout/`me` and cross-user ownership; both
+  Playwright e2e specs updated to register+login before exercising the golden path.
+
 ---
 
 ## 3. What's PARTIALLY done / working-but-flagged
@@ -214,7 +247,6 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 - Automatic conversion to every frontend framework
 
 ### 4.2 Named V1 items not yet built
-- **User accounts / auth** — no login, no password hashing, no session, no per-user project scoping. Every project is visible to anyone who can reach the API. (The plan's §19 does call this "optional/lightweight for a project like this," so this may be intentional, not an oversight — worth confirming with whoever owns product scope.)
 - **Multi-page projects** (§10.5) — the plan explicitly names this "a later implementation." One asset per project workspace today; no page-to-page navigation model, no `Project → Page[]` hierarchy.
 - **Camera capture** — upload is file-picker/drag-drop only, no in-browser camera capture flow.
 - **Perspective correction** — page boundary can be manually adjusted (quad drag) but there's no actual perspective-warp transform applied to the image before detection.
@@ -272,15 +304,22 @@ Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in roug
 1. **More labeled training data + a `v1.1.0` retrain** — the detector is the one piece
    self-flagged as not production-ready; `report:active-learning` already tells you
    what to label next. See `docs/ml/model-decision.md` for why a v1.1 retrain on the
-   same corpus was judged not worth doing without new data.
-2. **Decide the auth question explicitly** — either confirm "no auth is fine for this
-   project's scope" or scope out what "lightweight" (§19) means, since right now
-   *anyone* can read/write/delete *any* project. Confirmed still true after a manual
-   security review of the persistence migration (2026-08-25) — this is a known,
-   deliberately deferred gap, not an oversight.
-3. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
+   same corpus was judged not worth doing without new data. Re-confirmed on
+   2026-08-25 (Phase D2 of the deadline plan): the corpus is still exactly 162
+   images / 2,917 label instances, unchanged since the 2026-08-24 dataset-quality
+   report, so retraining remains "theater, not progress" until new annotation work
+   lands. `npm run eval` reproduces `docs/eval/baseline-v1.0.0.json` exactly;
+   qualitative prediction overlays for all 5 sample sketches are in
+   `docs/eval/qualitative-v1.0.0/`.
+2. ~~Decide the auth question explicitly~~ — **done, see §2.9** (Phase D1,
+   2026-08-25).
+3. **CI/CD** — no `.github/workflows` exists yet (plan §30); the deadline plan's
+   Phase D4.
+4. **Multi-page projects** — the deadline plan's Phase D3; a genuine usage ceiling
+   (one asset per project today).
+5. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
    mitigated (startup orphan-reaping is now an atomic Postgres update) but still not a
    durable queue; `docker-compose.yml` already provisions Redis, unused.
-4. **Broader test coverage** — one Playwright E2E test exists (`e2e/golden-path.spec.ts`)
-   covering the golden path with a mocked detector; no React component/unit tests, no
-   CI pipeline to run any of this automatically.
+6. **Broader test coverage** — two Playwright E2E specs exist (golden path +
+   Inspector overrides), both now auth-aware; still no React component/unit tests,
+   no CI pipeline to run any of this automatically (see item 3).

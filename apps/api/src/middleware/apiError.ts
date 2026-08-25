@@ -16,7 +16,14 @@ export type ErrorCode =
   | "MODEL_UNAVAILABLE"
   | "WORKER_UNREACHABLE"
   | "INFERENCE_FAILED"
-  | "INTERNAL";
+  | "INTERNAL"
+  // Phase D1 authentication. Ownership mismatches deliberately use NOT_FOUND instead
+  // of FORBIDDEN (see requireProjectOwnership.ts) to avoid an existence-enumeration
+  // oracle — FORBIDDEN is reserved here for a future case that needs it.
+  | "UNAUTHENTICATED"
+  | "FORBIDDEN"
+  | "EMAIL_IN_USE"
+  | "INVALID_CREDENTIALS";
 
 export interface ApiErrorBody {
   error: {

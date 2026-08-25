@@ -30,6 +30,7 @@ export class JsonJobRepository implements JobRepository {
       status: "queued",
       stage: "queued",
       progress: 0,
+      ...(input.pageId ? { pageId: input.pageId } : {}),
       ...(input.sourceAssetId ? { sourceAssetId: input.sourceAssetId } : {}),
       createdAt: now,
       updatedAt: now,

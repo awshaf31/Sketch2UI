@@ -10,10 +10,10 @@ import type { UINode } from "@sketch2ui/shared-types";
  * origin and therefore no base URL to resolve a relative path against — the exact reason
  * the old `./assets/<id>.png` paths rendered as broken images.
  */
-export function previewAssetResolver(apiBaseUrl: string, projectId: string): AssetResolver {
+export function previewAssetResolver(apiBaseUrl: string, projectId: string, pageId: string): AssetResolver {
   return (node: UINode) =>
     node.sourceDetectionId
-      ? `${apiBaseUrl}/api/projects/${projectId}/detections/${node.sourceDetectionId}/crop.png`
+      ? `${apiBaseUrl}/api/projects/${projectId}/pages/${pageId}/detections/${node.sourceDetectionId}/crop.png`
       : null;
 }
 

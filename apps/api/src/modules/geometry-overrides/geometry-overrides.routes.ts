@@ -1,9 +1,11 @@
 import { Router } from "express";
 import { effectiveBBox, validateGeometryOverride } from "@sketch2ui/shared-types";
 import { sendError } from "../../middleware/apiError.js";
-import type { ProjectParams } from "../../types.js";
+import type { PageParams } from "../../types.js";
 import { getRepositories } from "../../repositories/index.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 // Per-node geometry overrides — plan §17.3 Geometry group.
 //
@@ -17,23 +19,23 @@ import { asyncHandler } from "../../middleware/asyncHandler.js";
 // values.
 
 export const geometryOverridesRouter = Router({ mergeParams: true });
+geometryOverridesRouter.use(requireProjectOwnership);
+geometryOverridesRouter.use(requirePageInProject);
 
-interface OverrideParams extends ProjectParams {
+interface OverrideParams extends PageParams {
   detectionId: string;
 }
 
-// GET /api/projects/:id/geometry-overrides — the full map for the project. Small
-// enough to send at once and needed on workspace load, so no pagination.
-geometryOverridesRouter.get<ProjectParams>(
+// GET /api/projects/:id/pages/:pageId/geometry-overrides — the full map for the page.
+// Small enough to send at once and needed on workspace load, so no pagination.
+geometryOverridesRouter.get<PageParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    res.json(await getRepositories().geometryOverrides.mapForProject(project.id));
+    res.json(await getRepositories().geometryOverrides.mapForPage(req.params.pageId));
   })
 );
 
-// PUT /api/projects/:id/geometry-overrides/:detectionId — upsert.
+// PUT /api/projects/:id/pages/:pageId/geometry-overrides/:detectionId — upsert.
 // Body: { x?, y?, width?, height? }. Empty write (all fields blank/absent) is a
 // delete, matching style/content Reset. Strict normalized validation runs against
 // the detection's stored bbox so a partial override still satisfies the
@@ -41,11 +43,8 @@ geometryOverridesRouter.get<ProjectParams>(
 geometryOverridesRouter.put<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
-    const detection = await getRepositories().detections.findInProject(project.id, req.params.detectionId);
-    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found in this project.");
+    const detection = await getRepositories().detections.findInPage(req.params.pageId, req.params.detectionId);
+    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found on this page.");
 
     const result = validateGeometryOverride(req.body ?? {}, detection.bbox);
     if (!result.ok) {
@@ -57,7 +56,7 @@ geometryOverridesRouter.put<OverrideParams>(
       // Empty write → clear. Symmetric with the style/content Reset flow so a
       // client that sends `{}` gets a predictable revert to the raw detection bbox.
       // The repository detects this itself (put with an empty object).
-      await getRepositories().geometryOverrides.put(project.id, detection.id, result.override);
+      await getRepositories().geometryOverrides.put(req.params.id, req.params.pageId, detection.id, result.override);
       return res.json({ detectionId: detection.id, geometry: null });
     }
 
@@ -66,13 +65,14 @@ geometryOverridesRouter.put<OverrideParams>(
     // visually moved from/to, which is what a reader of the history actually wants to
     // see (plan §4.1 oldBBox/newBBox). Fetched BEFORE the write, since it is the
     // pre-write state the correction needs.
-    const previous = await getRepositories().geometryOverrides.findByDetection(project.id, detection.id);
+    const previous = await getRepositories().geometryOverrides.findByDetection(req.params.id, detection.id);
     const oldEffective = effectiveBBox(detection.bbox, previous);
 
-    const stored = await getRepositories().geometryOverrides.put(project.id, detection.id, result.override);
+    const stored = await getRepositories().geometryOverrides.put(req.params.id, req.params.pageId, detection.id, result.override);
 
     await getRepositories().corrections.append({
-      projectId: project.id,
+      projectId: req.params.id,
+      pageId: req.params.pageId,
       detectionId: detection.id,
       type: "bbox_changed",
       oldBBox: oldEffective,
@@ -82,14 +82,12 @@ geometryOverridesRouter.put<OverrideParams>(
   })
 );
 
-// DELETE /api/projects/:id/geometry-overrides/:detectionId — revert to the raw
-// detection bbox. Idempotent: absent map or absent key both return 204.
+// DELETE /api/projects/:id/pages/:pageId/geometry-overrides/:detectionId — revert to
+// the raw detection bbox. Idempotent: absent map or absent key both return 204.
 geometryOverridesRouter.delete<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    await getRepositories().geometryOverrides.remove(project.id, req.params.detectionId);
+    await getRepositories().geometryOverrides.remove(req.params.id, req.params.detectionId);
     res.status(204).send();
   })
 );

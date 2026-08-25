@@ -36,6 +36,7 @@ function toRecord(row: PrismaProject): ProjectRecord {
     // emitting an explicit null would change the response body shape.
     ...(row.description === null ? {} : { description: row.description }),
     status: row.status as ProjectStatus,
+    ownerId: row.ownerId,
     ...(row.activeCodeVersionId === null
       ? {}
       : { activeCodeVersionId: row.activeCodeVersionId }),
@@ -49,6 +50,11 @@ export class PrismaProjectRepository implements ProjectRepository {
 
   async list(): Promise<ProjectRecord[]> {
     const rows = await this.prisma.project.findMany();
+    return rows.map(toRecord);
+  }
+
+  async listByOwner(ownerId: string): Promise<ProjectRecord[]> {
+    const rows = await this.prisma.project.findMany({ where: { ownerId } });
     return rows.map(toRecord);
   }
 
@@ -67,6 +73,7 @@ export class PrismaProjectRepository implements ProjectRepository {
         name: input.name,
         description: input.description ?? null,
         status: "draft",
+        ownerId: input.ownerId,
       },
     });
     return toRecord(row);
@@ -110,6 +117,7 @@ export class PrismaProjectRepository implements ProjectRepository {
         assets: assetRows.map((a) => ({
           id: a.id,
           projectId: a.projectId,
+          pageId: a.pageId,
           storageKey: a.storageKey,
           mimeType: a.mimeType,
           width: a.width,

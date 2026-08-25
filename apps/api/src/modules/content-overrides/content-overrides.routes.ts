@@ -2,9 +2,11 @@ import { Router } from "express";
 import type { ContentOverride } from "@sketch2ui/shared-types";
 import { contentFieldsFor } from "@sketch2ui/shared-types";
 import { sendError } from "../../middleware/apiError.js";
-import type { ProjectParams } from "../../types.js";
+import type { PageParams } from "../../types.js";
 import { getRepositories } from "../../repositories/index.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 // Per-node content overrides — plan §17.3 Content group, Appendix Q.
 //
@@ -14,8 +16,10 @@ import { asyncHandler } from "../../middleware/asyncHandler.js";
 // injection surface needs a hard boundary at the write, not only at render.
 
 export const contentOverridesRouter = Router({ mergeParams: true });
+contentOverridesRouter.use(requireProjectOwnership);
+contentOverridesRouter.use(requirePageInProject);
 
-interface OverrideParams extends ProjectParams {
+interface OverrideParams extends PageParams {
   detectionId: string;
 }
 
@@ -59,28 +63,23 @@ function validateProseValue(prop: string, raw: unknown): string | { error: strin
   return raw;
 }
 
-// GET /api/projects/:id/content-overrides — full map for the project.
-contentOverridesRouter.get<ProjectParams>(
+// GET /api/projects/:id/pages/:pageId/content-overrides — full map for the page.
+contentOverridesRouter.get<PageParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    res.json(await getRepositories().contentOverrides.mapForProject(project.id));
+    res.json(await getRepositories().contentOverrides.mapForPage(req.params.pageId));
   })
 );
 
-// PUT /api/projects/:id/content-overrides/:detectionId — upsert.
+// PUT /api/projects/:id/pages/:pageId/content-overrides/:detectionId — upsert.
 // Body: { text?, altText?, href? } — contentState is server-controlled, always
 // "user-edited" whenever this endpoint stores anything. An empty write (all fields
 // blank or absent) is a delete, matching the style-overrides Reset flow.
 contentOverridesRouter.put<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
-    const detection = await getRepositories().detections.findInProject(project.id, req.params.detectionId);
-    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found in this project.");
+    const detection = await getRepositories().detections.findInPage(req.params.pageId, req.params.detectionId);
+    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found on this page.");
 
     const applicable = new Set(contentFieldsFor(detection.className));
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -126,18 +125,17 @@ contentOverridesRouter.put<OverrideParams>(
 
     // No text/altText/href set → the repository's own emptiness check deletes and
     // returns null, matching the pre-migration Reset behaviour.
-    const stored = await getRepositories().contentOverrides.put(project.id, detection.id, cleaned);
+    const stored = await getRepositories().contentOverrides.put(req.params.id, req.params.pageId, detection.id, cleaned);
     res.json({ detectionId: detection.id, override: stored });
   })
 );
 
-// DELETE /api/projects/:id/content-overrides/:detectionId — revert to placeholder.
+// DELETE /api/projects/:id/pages/:pageId/content-overrides/:detectionId — revert to
+// placeholder.
 contentOverridesRouter.delete<OverrideParams>(
   "/:detectionId",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    await getRepositories().contentOverrides.remove(project.id, req.params.detectionId);
+    await getRepositories().contentOverrides.remove(req.params.id, req.params.detectionId);
     res.status(204).send();
   })
 );

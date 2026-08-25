@@ -1,18 +1,22 @@
 import { Router } from "express";
+import type { PageParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { getRepositories } from "../../repositories/index.js";
 import { createJob } from "../jobs/jobs.service.js";
 import { runDetectJob } from "./detect.job.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 export const detectRouter = Router({ mergeParams: true });
+detectRouter.use(requireProjectOwnership);
+detectRouter.use(requirePageInProject);
 
-interface DetectParams extends Record<string, string> {
-  id: string;
+interface DetectParams extends PageParams {
   assetId: string;
 }
 
-// POST /api/projects/:id/assets/:assetId/detect — plan section 7.4 shape:
+// POST /api/projects/:id/pages/:pageId/assets/:assetId/detect — plan section 7.4 shape:
 //   { "jobId": "...", "status": "queued" }
 //
 // Returns immediately; the work runs in-process afterwards. The client polls
@@ -20,17 +24,17 @@ interface DetectParams extends Record<string, string> {
 detectRouter.post<DetectParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) {
-      return sendError(res, 404, "NOT_FOUND", "Project not found.");
-    }
-
     const asset = await getRepositories().assets.findById(req.params.assetId);
-    if (!asset || asset.projectId !== project.id) {
-      return sendError(res, 404, "NOT_FOUND", "Asset not found for this project.");
+    if (!asset || asset.pageId !== req.params.pageId) {
+      return sendError(res, 404, "NOT_FOUND", "Asset not found for this page.");
     }
 
-    const job = await createJob({ projectId: project.id, type: "detect", sourceAssetId: asset.id });
+    const job = await createJob({
+      projectId: req.params.id,
+      pageId: req.params.pageId,
+      type: "detect",
+      sourceAssetId: asset.id,
+    });
 
     // Respond first, THEN start work. The response body's "queued" is a literal, not
     // read back off the job record, so there is nothing for a later mutation to race —

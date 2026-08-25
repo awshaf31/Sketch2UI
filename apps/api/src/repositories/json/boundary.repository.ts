@@ -26,6 +26,7 @@ export class JsonBoundaryRepository implements BoundaryRepository {
 
   async saveRespectingManual(
     projectId: string,
+    pageId: string,
     assetId: string,
     boundary: PageBoundary,
     source: PageBoundarySource
@@ -57,6 +58,7 @@ export class JsonBoundaryRepository implements BoundaryRepository {
     const record: PageBoundaryRecord = {
       id: uuid(),
       projectId,
+      pageId,
       assetId,
       polygon: boundary.polygon,
       confidence: boundary.confidence,

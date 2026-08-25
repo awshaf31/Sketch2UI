@@ -2,21 +2,25 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import type { TrainingSample, TrainingSampleBox } from "@sketch2ui/shared-types";
 import { splitForKey } from "@sketch2ui/shared-types";
+import type { PageParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
 import { getRepositories } from "../../repositories/index.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 // Training feedback loop — plan section 36, FR-11 (§3.11), section 8.8
 // (training_samples), section 22.1 (quality-check before a dataset version).
 
 export const trainingRouter = Router({ mergeParams: true });
+trainingRouter.use(requireProjectOwnership);
+trainingRouter.use(requirePageInProject);
 
-interface AssetParams extends Record<string, string> {
-  id: string;
+interface AssetParams extends PageParams {
   assetId: string;
 }
 
-// POST /api/projects/:id/assets/:assetId/approve-training
+// POST /api/projects/:id/pages/:pageId/assets/:assetId/approve-training
 //
 // Explicit human approval — section 8.8's `approved` flag exists precisely so this is a
 // deliberate action, not inferred from data state. Both manual and model detections are
@@ -25,12 +29,9 @@ interface AssetParams extends Record<string, string> {
 trainingRouter.post<AssetParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
     const asset = await getRepositories().assets.findById(req.params.assetId);
-    if (!asset || asset.projectId !== project.id) {
-      return sendError(res, 404, "NOT_FOUND", "Asset not found for this project.");
+    if (!asset || asset.pageId !== req.params.pageId) {
+      return sendError(res, 404, "NOT_FOUND", "Asset not found for this page.");
     }
 
     const active = await getRepositories().detections.listActiveByAsset(asset.id);
@@ -58,7 +59,7 @@ trainingRouter.post<AssetParams>(
     const now = new Date().toISOString();
     const sample: TrainingSample = {
       id: uuid(),
-      projectId: project.id,
+      projectId: req.params.id,
       imageAssetId: asset.id,
       storageKey: asset.storageKey,
       approved: true,

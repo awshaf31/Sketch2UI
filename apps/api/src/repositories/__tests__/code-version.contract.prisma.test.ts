@@ -14,6 +14,7 @@ const reachable = await databaseReachable();
 if (reachable) {
   const { PrismaCodeVersionRepository } = await import("../prisma/code-version.repository.js");
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
+  const { PrismaPageRepository } = await import("../prisma/page.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
   const { afterAll } = await import("vitest");
 
@@ -22,6 +23,7 @@ if (reachable) {
     async () => ({
       codeVersions: new PrismaCodeVersionRepository(),
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
     }),
     async () => {
       // Code versions cascade from projects, so clearing projects is sufficient.

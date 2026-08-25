@@ -32,6 +32,11 @@ export class PrismaStructureOverrideRepository implements StructureOverrideRepos
     return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, StructureOverride>> {
+    const rows = await this.prisma.structureOverride.findMany({ where: { pageId } });
+    return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<StructureOverride | null> {
     const row = await this.prisma.structureOverride.findFirst({ where: { detectionId, projectId } });
     return row ? toValue(row) : null;
@@ -39,6 +44,7 @@ export class PrismaStructureOverrideRepository implements StructureOverrideRepos
 
   async put(
     projectId: string,
+    pageId: string,
     detectionId: string,
     value: StructureOverride
   ): Promise<StructureOverride | null> {
@@ -53,7 +59,7 @@ export class PrismaStructureOverrideRepository implements StructureOverrideRepos
     };
     const row = await this.prisma.structureOverride.upsert({
       where: { detectionId },
-      create: { projectId, detectionId, ...data },
+      create: { projectId, pageId, detectionId, ...data },
       update: data,
     });
     return toValue(row);

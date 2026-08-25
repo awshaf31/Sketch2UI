@@ -8,6 +8,7 @@ if (reachable) {
   const { PrismaTrainingRepository } = await import("../prisma/training.repository.js");
   const { PrismaAssetRepository } = await import("../prisma/asset.repository.js");
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
+  const { PrismaPageRepository } = await import("../prisma/page.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
   const { afterAll } = await import("vitest");
 
@@ -17,6 +18,7 @@ if (reachable) {
       training: new PrismaTrainingRepository(),
       assets: new PrismaAssetRepository(),
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
     }),
     async () => {
       await getPrismaClient().project.deleteMany({});

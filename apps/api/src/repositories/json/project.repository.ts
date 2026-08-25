@@ -54,6 +54,10 @@ export class JsonProjectRepository implements ProjectRepository {
     return db.state.projects.map(toRecord);
   }
 
+  async listByOwner(ownerId: string): Promise<ProjectRecord[]> {
+    return db.state.projects.filter((p) => p.ownerId === ownerId).map(toRecord);
+  }
+
   async findById(id: string): Promise<ProjectRecord | null> {
     const project = db.state.projects.find((p) => p.id === id);
     return project ? toRecord(project) : null;
@@ -66,6 +70,7 @@ export class JsonProjectRepository implements ProjectRepository {
       name: input.name,
       description: input.description,
       status: "draft",
+      ownerId: input.ownerId,
       createdAt: now,
       updatedAt: now,
     };
@@ -100,6 +105,7 @@ export class JsonProjectRepository implements ProjectRepository {
     const exports = db.state.exports.filter((e) => e.projectId === id).map(detach);
 
     db.state.projects.splice(index, 1);
+    db.state.pages = db.state.pages.filter((p) => p.projectId !== id);
     db.state.assets = db.state.assets.filter((a) => a.projectId !== id);
     db.state.detections = db.state.detections.filter((d) => d.projectId !== id);
     db.state.codeVersions = db.state.codeVersions.filter((c) => c.projectId !== id);

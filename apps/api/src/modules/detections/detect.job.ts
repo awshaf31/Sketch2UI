@@ -124,6 +124,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
     if (result.pageBoundary) {
       const saved = await getRepositories().boundaries.saveRespectingManual(
         asset.projectId,
+        asset.pageId,
         asset.id,
         result.pageBoundary,
         "auto"
@@ -141,6 +142,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
     const created = await getRepositories().detections.createMany(
       result.detections.map((d) => ({
         projectId: asset.projectId,
+        pageId: asset.pageId,
         sourceAssetId: asset.id,
         className: d.className,
         bbox: d.bbox,

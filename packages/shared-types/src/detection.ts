@@ -12,6 +12,7 @@ export type DetectionStatus = "active" | "deleted" | "rejected";
 export interface Detection {
   id: string;
   projectId: string;
+  pageId: string;
   sourceAssetId: string;
   className: string;
   confidence: number; // 1.0 for manual annotations

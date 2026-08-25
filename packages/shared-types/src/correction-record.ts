@@ -36,6 +36,7 @@ export type CorrectionType =
 export interface CorrectionRecord {
   id: string;
   projectId: string;
+  pageId: string;
   detectionId: string;
   type: CorrectionType;
   /**

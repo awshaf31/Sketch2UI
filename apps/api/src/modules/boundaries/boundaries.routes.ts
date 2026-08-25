@@ -1,16 +1,21 @@
 import { Router } from "express";
 import type { PageBoundary } from "@sketch2ui/shared-types";
+import type { PageParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { getRepositories } from "../../repositories/index.js";
 import { toPageBoundary } from "./boundaries.service.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
-// GET/PUT /api/projects/:id/assets/:assetId/page-boundary — plan §10.6 Strategy C.
+// GET/PUT /api/projects/:id/pages/:pageId/assets/:assetId/page-boundary — plan §10.6
+// Strategy C.
 
 export const boundariesRouter = Router({ mergeParams: true });
+boundariesRouter.use(requireProjectOwnership);
+boundariesRouter.use(requirePageInProject);
 
-interface AssetParams extends Record<string, string> {
-  id: string;
+interface AssetParams extends PageParams {
   assetId: string;
 }
 
@@ -27,12 +32,9 @@ boundariesRouter.get<AssetParams>(
 boundariesRouter.put<AssetParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
     const asset = await getRepositories().assets.findById(req.params.assetId);
-    if (!asset || asset.projectId !== project.id) {
-      return sendError(res, 404, "NOT_FOUND", "Asset not found for this project.");
+    if (!asset || asset.pageId !== req.params.pageId) {
+      return sendError(res, 404, "NOT_FOUND", "Asset not found for this page.");
     }
 
     const body = req.body as Partial<PageBoundary> | undefined;
@@ -61,7 +63,8 @@ boundariesRouter.put<AssetParams>(
     }
 
     const { record } = await getRepositories().boundaries.saveRespectingManual(
-      project.id,
+      req.params.id,
+      req.params.pageId,
       asset.id,
       {
         polygon,

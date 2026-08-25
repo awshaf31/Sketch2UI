@@ -272,9 +272,15 @@ function inferLayout(children: UINode[]): UINode["layout"] {
 }
 
 let idCounter = 0;
+// Phase D3 multi-page: distinguishes one page's generated ids from another's so a
+// multi-page export's shared styles.css (concatenating every page's id-selector
+// layout/override rules) cannot have one page's rule apply to another's document.
+// Empty by default — zero behavior change for every existing single-generation caller
+// (e.g. scripts/src/evaluate.ts) that never passes it.
+let idNamespace = "";
 function nextId(prefix: string): string {
   idCounter += 1;
-  return `${prefix}-${idCounter}`;
+  return `${idNamespace}${prefix}-${idCounter}`;
 }
 
 function toUINode(detection: Detection): UINode {
@@ -305,9 +311,12 @@ export function buildUITree(
     name?: string;
     viewport: { width: number; height: number };
     structureOverrides?: StructureOverridesByDetection;
+    /** Prefixes every generated node id — see idNamespace above. Defaults to "". */
+    idPrefix?: string;
   }
 ): UIRoot {
   idCounter = 0;
+  idNamespace = options.idPrefix ?? "";
   // Rejected boxes (section 10.7) never reach layout; then collapse duplicate readings
   // of the same stroke before any structure is inferred from them.
   const active = resolveOverlappingDetections(

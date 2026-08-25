@@ -27,6 +27,10 @@ export class JsonAssetRepository implements AssetRepository {
     return db.state.assets.filter((a) => a.projectId === projectId).map(detach);
   }
 
+  async listByPage(pageId: string): Promise<ProjectAsset[]> {
+    return db.state.assets.filter((a) => a.pageId === pageId).map(detach);
+  }
+
   async findById(id: string): Promise<ProjectAsset | null> {
     const asset = db.state.assets.find((a) => a.id === id);
     return asset ? detach(asset) : null;
@@ -38,10 +42,17 @@ export class JsonAssetRepository implements AssetRepository {
     return latest ? detach(latest) : null;
   }
 
+  async findLatestForPage(pageId: string): Promise<ProjectAsset | null> {
+    const list = db.state.assets.filter((a) => a.pageId === pageId);
+    const latest = list[list.length - 1];
+    return latest ? detach(latest) : null;
+  }
+
   async create(input: CreateAssetInput): Promise<ProjectAsset> {
     const asset: ProjectAsset = {
       id: uuid(),
       projectId: input.projectId,
+      pageId: input.pageId,
       storageKey: input.storageKey,
       mimeType: input.mimeType,
       width: input.width,

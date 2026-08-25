@@ -8,6 +8,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../../..");
 
 export const env = {
   port: Number(process.env.PORT ?? 4000),
+  nodeEnv: process.env.NODE_ENV ?? "development",
   dataDir: process.env.DATA_DIR ?? path.join(REPO_ROOT, "data"),
   uploadsDir: process.env.UPLOADS_DIR ?? path.join(REPO_ROOT, "data", "uploads"),
   // Export ZIPs live beside uploads under data/, the same local-filesystem convention

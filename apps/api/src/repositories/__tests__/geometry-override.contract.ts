@@ -3,6 +3,7 @@ import type {
   AssetRepository,
   DetectionRepository,
   GeometryOverrideRepository,
+  PageRepository,
   ProjectRepository,
 } from "../types.js";
 
@@ -21,6 +22,7 @@ export function runGeometryOverrideRepositoryContract(
     detections: DetectionRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -28,6 +30,7 @@ export function runGeometryOverrideRepositoryContract(
     let geometryOverrides: GeometryOverrideRepository;
     let projects: ProjectRepository;
     let projectId: string;
+    let pageId: string;
     let detectionId: string;
 
     beforeEach(async () => {
@@ -36,10 +39,12 @@ export function runGeometryOverrideRepositoryContract(
       geometryOverrides = repos.geometryOverrides;
       projects = repos.projects;
 
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       const assetId = (
         await repos.assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
@@ -50,6 +55,7 @@ export function runGeometryOverrideRepositoryContract(
       detectionId = (
         await repos.detections.create({
           projectId,
+          pageId,
           sourceAssetId: assetId,
           className: "button",
           bbox: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
@@ -60,7 +66,7 @@ export function runGeometryOverrideRepositoryContract(
 
     describe("put", () => {
       it("stores a full override", async () => {
-        const result = await geometryOverrides.put(projectId, detectionId, {
+        const result = await geometryOverrides.put(projectId, pageId, detectionId, {
           x: 0.2,
           y: 0.3,
           width: 0.4,
@@ -70,7 +76,7 @@ export function runGeometryOverrideRepositoryContract(
       });
 
       it("stores a PARTIAL override — only the given field is set, others stay absent", async () => {
-        const result = await geometryOverrides.put(projectId, detectionId, { width: 0.5 });
+        const result = await geometryOverrides.put(projectId, pageId, detectionId, { width: 0.5 });
         expect(result).toEqual({ width: 0.5 });
         expect(result?.x).toBeUndefined();
         expect(result?.y).toBeUndefined();
@@ -78,21 +84,21 @@ export function runGeometryOverrideRepositoryContract(
       });
 
       it("an empty object deletes and returns null", async () => {
-        await geometryOverrides.put(projectId, detectionId, { x: 0.5 });
-        const result = await geometryOverrides.put(projectId, detectionId, {});
+        await geometryOverrides.put(projectId, pageId, detectionId, { x: 0.5 });
+        const result = await geometryOverrides.put(projectId, pageId, detectionId, {});
         expect(result).toBeNull();
         expect(await geometryOverrides.findByDetection(projectId, detectionId)).toBeNull();
       });
 
       it("a second put fully REPLACES the stored value — a prior field not repeated disappears", async () => {
-        await geometryOverrides.put(projectId, detectionId, { x: 0.2, width: 0.4 });
-        await geometryOverrides.put(projectId, detectionId, { y: 0.3 });
+        await geometryOverrides.put(projectId, pageId, detectionId, { x: 0.2, width: 0.4 });
+        await geometryOverrides.put(projectId, pageId, detectionId, { y: 0.3 });
         const stored = await geometryOverrides.findByDetection(projectId, detectionId);
         expect(stored).toEqual({ y: 0.3 });
       });
 
       it("round-trips a zero value (falsy but meaningful)", async () => {
-        const result = await geometryOverrides.put(projectId, detectionId, { x: 0 });
+        const result = await geometryOverrides.put(projectId, pageId, detectionId, { x: 0 });
         expect(result?.x).toBe(0);
       });
     });
@@ -103,7 +109,7 @@ export function runGeometryOverrideRepositoryContract(
       });
 
       it("returns a DETACHED copy", async () => {
-        await geometryOverrides.put(projectId, detectionId, { x: 0.2 });
+        await geometryOverrides.put(projectId, pageId, detectionId, { x: 0.2 });
         const found = await geometryOverrides.findByDetection(projectId, detectionId);
         (found as { x: number }).x = 0.9;
         expect((await geometryOverrides.findByDetection(projectId, detectionId))?.x).toBe(0.2);
@@ -112,14 +118,14 @@ export function runGeometryOverrideRepositoryContract(
 
     describe("mapForProject", () => {
       it("returns the whole project's map", async () => {
-        await geometryOverrides.put(projectId, detectionId, { x: 0.2 });
+        await geometryOverrides.put(projectId, pageId, detectionId, { x: 0.2 });
         expect(await geometryOverrides.mapForProject(projectId)).toEqual({ [detectionId]: { x: 0.2 } });
       });
     });
 
     describe("cascade", () => {
       it("deleting the project removes its geometry overrides", async () => {
-        await geometryOverrides.put(projectId, detectionId, { x: 0.2 });
+        await geometryOverrides.put(projectId, pageId, detectionId, { x: 0.2 });
         await projects.delete(projectId);
         expect(await geometryOverrides.findByDetection(projectId, detectionId)).toBeNull();
       });

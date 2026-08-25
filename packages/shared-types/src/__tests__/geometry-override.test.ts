@@ -18,6 +18,7 @@ function makeDetection(bbox: BBox): Detection {
   return {
     id: "det-1",
     projectId: "proj-1",
+    pageId: "page-1",
     sourceAssetId: "asset-1",
     className: "button",
     confidence: 1,

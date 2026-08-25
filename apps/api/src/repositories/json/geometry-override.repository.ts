@@ -17,13 +17,31 @@ export class JsonGeometryOverrideRepository implements GeometryOverrideRepositor
     return project?.geometryOverrides ? detach(project.geometryOverrides) : {};
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, GeometryOverride>> {
+    const page = db.state.pages.find((p) => p.id === pageId);
+    if (!page) return {};
+    const project = db.state.projects.find((p) => p.id === page.projectId);
+    const fullMap = project?.geometryOverrides ?? {};
+    const pageDetectionIds = new Set(
+      db.state.detections.filter((d) => d.pageId === pageId).map((d) => d.id)
+    );
+    return detach(
+      Object.fromEntries(Object.entries(fullMap).filter(([detectionId]) => pageDetectionIds.has(detectionId)))
+    );
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<GeometryOverride | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     const value = project?.geometryOverrides?.[detectionId];
     return value ? detach(value) : null;
   }
 
-  async put(projectId: string, detectionId: string, value: GeometryOverride): Promise<GeometryOverride | null> {
+  async put(
+    projectId: string,
+    _pageId: string,
+    detectionId: string,
+    value: GeometryOverride
+  ): Promise<GeometryOverride | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     if (!project) return null;
 

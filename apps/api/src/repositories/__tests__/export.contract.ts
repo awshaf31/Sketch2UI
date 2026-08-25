@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CodeVersionRepository, ExportRepository, ProjectRepository } from "../types.js";
+import type { CodeVersionRepository, ExportRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * ExportRepository CONTRACT — Phase 8 amendment §15.
@@ -15,6 +15,7 @@ export function runExportRepositoryContract(
     exports: ExportRepository;
     codeVersions: CodeVersionRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -30,10 +31,12 @@ export function runExportRepositoryContract(
       exportsRepo = repos.exports;
       projects = repos.projects;
 
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      const pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       codeVersionId = (
         await repos.codeVersions.create({
           projectId,
+          pageId,
           source: "generated",
           html: "<div></div>",
           css: "",
@@ -61,7 +64,7 @@ export function runExportRepositoryContract(
       });
 
       it("numbers each project independently", async () => {
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         await exportsRepo.create(input({ versionNumber: 1 }));
         expect(await exportsRepo.nextVersionNumber(other.id)).toBe(1);
       });
@@ -102,7 +105,7 @@ export function runExportRepositoryContract(
       });
 
       it("scopes to the project", async () => {
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         await exportsRepo.create(input({ versionNumber: 1 }));
         await exportsRepo.create(input({ projectId: other.id, versionNumber: 1 }));
         expect(await exportsRepo.listByProject(projectId)).toHaveLength(1);

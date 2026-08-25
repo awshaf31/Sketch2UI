@@ -3,6 +3,7 @@ import { JsonAssetRepository } from "../json/asset.repository.js";
 import { JsonCorrectionRepository } from "../json/correction.repository.js";
 import { JsonDetectionRepository } from "../json/detection.repository.js";
 import { JsonProjectRepository } from "../json/project.repository.js";
+import { JsonPageRepository } from "../json/page.repository.js";
 import { runCorrectionRepositoryContract } from "./correction.contract.js";
 
 /** JSON arm — always runs; needs no external service. */
@@ -13,6 +14,7 @@ runCorrectionRepositoryContract(
     detections: new JsonDetectionRepository(),
     assets: new JsonAssetRepository(),
     projects: new JsonProjectRepository(),
+    pages: new JsonPageRepository(),
   }),
   () => {
     db.reset();

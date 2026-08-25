@@ -1,6 +1,7 @@
 export * from "./detection.js";
 export * from "./ui-ir.js";
 export * from "./project.js";
+export * from "./page.js";
 export * from "./job.js";
 export * from "./page-boundary.js";
 export * from "./page-boundary-record.js";
@@ -14,3 +15,5 @@ export * from "./content-override.js";
 export * from "./geometry-override.js";
 export * from "./structure-override.js";
 export * from "./correction-record.js";
+export * from "./user.js";
+export * from "./session.js";

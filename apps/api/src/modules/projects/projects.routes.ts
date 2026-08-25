@@ -5,6 +5,7 @@ import type { Project } from "@sketch2ui/shared-types";
 import { env } from "../../config/env.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
 import { getRepositories } from "../../repositories/index.js";
 
 // Project CRUD — MIGRATED to the repository layer (Phase 8 amendment, step 1 of the
@@ -33,22 +34,29 @@ projectsRouter.post(
     const project = await getRepositories().projects.create({
       name,
       description: typeof description === "string" ? description : undefined,
+      ownerId: req.userId!,
     });
+    // Phase D3: every project always has at least one page — a brand-new project gets
+    // "Page 1" immediately, the same invariant the JSON-store backfill maintains for
+    // pre-D3 projects.
+    await getRepositories().pages.create({ projectId: project.id, name: "Page 1" });
     res.status(201).json(project);
   })
 );
 
-// GET /api/projects
+// GET /api/projects — scoped to the authenticated caller. A project list was never
+// meant to be global once accounts exist.
 projectsRouter.get(
   "/",
-  asyncHandler(async (_req, res) => {
-    res.json(await getRepositories().projects.list());
+  asyncHandler(async (req, res) => {
+    res.json(await getRepositories().projects.listByOwner(req.userId!));
   })
 );
 
 // GET /api/projects/:id
 projectsRouter.get<{ id: string }>(
   "/:id",
+  requireProjectOwnership,
   asyncHandler(async (req, res) => {
     const project = await getRepositories().projects.findById(req.params.id);
     if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
@@ -59,6 +67,7 @@ projectsRouter.get<{ id: string }>(
 // PATCH /api/projects/:id
 projectsRouter.patch<{ id: string }>(
   "/:id",
+  requireProjectOwnership,
   asyncHandler(async (req, res) => {
     const { name, description, status } = req.body ?? {};
 
@@ -79,6 +88,7 @@ projectsRouter.patch<{ id: string }>(
 // DELETE /api/projects/:id
 projectsRouter.delete<{ id: string }>(
   "/:id",
+  requireProjectOwnership,
   asyncHandler(async (req, res) => {
     // The repository cascades the database side and hands back the rows that own files,
     // because after the cascade those rows are gone and the paths with them.

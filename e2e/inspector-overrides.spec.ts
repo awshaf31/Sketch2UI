@@ -1,5 +1,6 @@
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { registerAndLogin } from "./auth.js";
 
 // Targeted Inspector coverage — plan §24 (F19), items C (Geometry) and E (Content
 // security). The golden path already proves the full pipeline end to end and the
@@ -13,6 +14,8 @@ import { expect, test } from "@playwright/test";
 const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");
 
 async function createProjectAndDetect(page: import("@playwright/test").Page, name: string) {
+  await registerAndLogin(page, `${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}@e2e.local`);
+
   await page.goto("/");
   await page.getByPlaceholder("New project name").fill(name);
   await page.getByRole("button", { name: "Create project" }).click();

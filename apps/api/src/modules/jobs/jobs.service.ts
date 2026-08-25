@@ -7,6 +7,7 @@ import { getRepositories } from "../../repositories/index.js";
 
 export function createJob(input: {
   projectId: string;
+  pageId?: string;
   type: JobType;
   sourceAssetId?: string;
 }): Promise<Job> {

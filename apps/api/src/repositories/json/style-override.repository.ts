@@ -19,6 +19,19 @@ export class JsonStyleOverrideRepository implements StyleOverrideRepository {
     return project?.styleOverrides ? detach(project.styleOverrides) : {};
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, Record<string, string>>> {
+    const page = db.state.pages.find((p) => p.id === pageId);
+    if (!page) return {};
+    const project = db.state.projects.find((p) => p.id === page.projectId);
+    const fullMap = project?.styleOverrides ?? {};
+    const pageDetectionIds = new Set(
+      db.state.detections.filter((d) => d.pageId === pageId).map((d) => d.id)
+    );
+    return detach(
+      Object.fromEntries(Object.entries(fullMap).filter(([detectionId]) => pageDetectionIds.has(detectionId)))
+    );
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<Record<string, string> | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     const value = project?.styleOverrides?.[detectionId];
@@ -27,6 +40,7 @@ export class JsonStyleOverrideRepository implements StyleOverrideRepository {
 
   async put(
     projectId: string,
+    _pageId: string,
     detectionId: string,
     value: Record<string, string>
   ): Promise<Record<string, string> | null> {

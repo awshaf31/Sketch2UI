@@ -26,16 +26,28 @@ export class JsonCodeVersionRepository implements CodeVersionRepository {
     return sortNewestFirst(db.state.codeVersions.filter((c) => c.projectId === projectId)).map(detach);
   }
 
+  async listByPage(pageId: string): Promise<CodeVersion[]> {
+    return sortNewestFirst(db.state.codeVersions.filter((c) => c.pageId === pageId)).map(detach);
+  }
+
   async findById(projectId: string, versionId: string): Promise<CodeVersion | null> {
     const found = db.state.codeVersions.find((c) => c.id === versionId && c.projectId === projectId);
     return found ? detach(found) : null;
   }
 
+  async findByPage(pageId: string, versionId: string): Promise<CodeVersion | null> {
+    const found = db.state.codeVersions.find((c) => c.id === versionId && c.pageId === pageId);
+    return found ? detach(found) : null;
+  }
+
   async create(input: CreateCodeVersionInput): Promise<CodeVersion> {
-    const existing = db.state.codeVersions.filter((c) => c.projectId === input.projectId);
+    // Version numbers are per-PAGE (Phase D3) — the schema's unique constraint moved
+    // from [projectId, versionNumber] to [pageId, versionNumber] to match.
+    const existing = db.state.codeVersions.filter((c) => c.pageId === input.pageId);
     const version: CodeVersion = {
       id: uuid(),
       projectId: input.projectId,
+      pageId: input.pageId,
       versionNumber: existing.length + 1,
       source: input.source,
       html: input.html,
@@ -54,6 +66,17 @@ export class JsonCodeVersionRepository implements CodeVersionRepository {
 
     if (project?.activeCodeVersionId) {
       const pinned = versions.find((v) => v.id === project.activeCodeVersionId);
+      if (pinned) return detach(pinned);
+    }
+    return versions[0] ? detach(versions[0]) : null;
+  }
+
+  async resolveActiveForPage(pageId: string): Promise<CodeVersion | null> {
+    const page = db.state.pages.find((p) => p.id === pageId);
+    const versions = sortNewestFirst(db.state.codeVersions.filter((c) => c.pageId === pageId));
+
+    if (page?.activeCodeVersionId) {
+      const pinned = versions.find((v) => v.id === page.activeCodeVersionId);
       if (pinned) return detach(pinned);
     }
     return versions[0] ? detach(versions[0]) : null;

@@ -2,7 +2,10 @@ import express from "express";
 import cors from "cors";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
+import { requireAuth } from "./middleware/requireAuth.js";
+import { authRouter } from "./modules/auth/auth.routes.js";
 import { projectsRouter } from "./modules/projects/projects.routes.js";
+import { pagesRouter } from "./modules/pages/pages.routes.js";
 import { assetsRouter } from "./modules/assets/assets.routes.js";
 import { detectionsRouter } from "./modules/detections/detections.routes.js";
 import { detectRouter } from "./modules/detections/detect.routes.js";
@@ -22,30 +25,41 @@ import { correctionsRouter } from "./modules/corrections/corrections.routes.js";
 
 const app = express();
 
-app.use(cors({ origin: env.corsOrigin }));
+app.use(cors({ origin: env.corsOrigin, credentials: true }));
 app.use(express.json());
-app.use("/uploads", express.static(env.uploadsDir));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/api/projects/:id/assets/:assetId/detect", detectRouter);
-app.use("/api/projects/:id/assets/:assetId/approve-training", trainingRouter);
-app.use("/api/projects/:id/assets/:assetId/page-boundary", boundariesRouter);
-app.use("/api/projects/:id/assets", assetsRouter);
-app.use("/api/projects/:id/detections/:detectionId/crop.png", cropsRouter);
-app.use("/api/projects/:id/detections", detectionsRouter);
+// register/login are public; every route below requireAuth needs a session. /me
+// applies requireAuth itself (auth.routes.ts), since it lives before the global gate.
+app.use("/api/auth", authRouter);
+app.use(requireAuth);
+
+app.use("/uploads", express.static(env.uploadsDir));
+
+// Page-owned resources — Phase D3. Nested under /pages/:pageId; each router is
+// gated by requireProjectOwnership then requirePageInProject (see each router file).
+app.use("/api/projects/:id/pages/:pageId/assets/:assetId/detect", detectRouter);
+app.use("/api/projects/:id/pages/:pageId/assets/:assetId/approve-training", trainingRouter);
+app.use("/api/projects/:id/pages/:pageId/assets/:assetId/page-boundary", boundariesRouter);
+app.use("/api/projects/:id/pages/:pageId/assets", assetsRouter);
+app.use("/api/projects/:id/pages/:pageId/detections/:detectionId/crop.png", cropsRouter);
+app.use("/api/projects/:id/pages/:pageId/detections", detectionsRouter);
+app.use("/api/projects/:id/pages/:pageId/code-generation-jobs", codegenRouter);
+app.use("/api/projects/:id/pages/:pageId/code-versions", codeVersionsRouter);
+app.use("/api/projects/:id/pages/:pageId/code", latestCodeRouter);
+app.use("/api/projects/:id/pages/:pageId/style-overrides", styleOverridesRouter);
+app.use("/api/projects/:id/pages/:pageId/content-overrides", contentOverridesRouter);
+app.use("/api/projects/:id/pages/:pageId/geometry-overrides", geometryOverridesRouter);
+app.use("/api/projects/:id/pages/:pageId/structure-overrides", structureOverridesRouter);
+app.use("/api/projects/:id/pages/:pageId/corrections", correctionsRouter);
+app.use("/api/projects/:id/pages", pagesRouter);
+
+// Project-level resources — span every page, not nested under one.
 app.use("/api/projects/:id/exports", exportsRouter);
 app.use("/api/jobs", jobsRouter);
-app.use("/api/projects/:id/code-generation-jobs", codegenRouter);
-app.use("/api/projects/:id/code-versions", codeVersionsRouter);
-app.use("/api/projects/:id/code", latestCodeRouter);
-app.use("/api/projects/:id/style-overrides", styleOverridesRouter);
-app.use("/api/projects/:id/content-overrides", contentOverridesRouter);
-app.use("/api/projects/:id/geometry-overrides", geometryOverridesRouter);
-app.use("/api/projects/:id/structure-overrides", structureOverridesRouter);
-app.use("/api/projects/:id/corrections", correctionsRouter);
 app.use("/api/projects", projectsRouter);
 
 app.use(errorHandler);

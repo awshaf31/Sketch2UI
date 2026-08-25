@@ -3555,3 +3555,172 @@ None — Phase 2 is complete. Any further frontend work (a visual-regression har
 automated accessibility tooling, the `data-testid` selector migration flagged as
 insurance in Phase 16, or a new design-spec phase) would begin a new, separately
 scoped effort.
+
+---
+
+## Phase D1 — Authentication (Deadline Execution Plan)
+
+**Date:** 2026-08-25
+**Goal:** Convert the single implicit workspace into `authenticated user → owned
+projects → authorized resources`, per
+`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §4. Smallest defensible
+scope: register/login/logout/session, password hashing, project ownership,
+authorization on every project-owned route, protected frontend routes. No OAuth/
+SSO/MFA/password-reset/collaboration/RBAC.
+**Status:** ✅ Complete.
+
+### Files added
+- `apps/api/prisma/migrations/20260825000000_add_auth/` — `User`, `Session`,
+  `Project.ownerId`. Generated via `prisma migrate diff` against schema datamodels
+  directly (no live database needed — same approach the existing `20260824000000_init`
+  migration used, per its own header comment).
+- `apps/api/src/modules/auth/` — `auth.routes.ts` (register/login/logout/me),
+  `password.ts` (scrypt hash/verify — Node's built-in `crypto.scrypt`, zero new native
+  dependencies), `token.ts` (session token generate/hash), `cookies.ts` (manual `sid`
+  cookie reader/writer — no `cookie-parser` needed since the token is a high-entropy
+  opaque value, not a signed payload), `legacy-owner.ts` (the well-known backfill
+  account's fixed id/email), `auth.routes.test.ts` (first HTTP-integration test file in
+  `apps/api`, via a new dev-only `supertest` dependency).
+- `apps/api/src/middleware/requireAuth.ts`, `requireProjectOwnership.ts`,
+  `apps/api/src/types/express.d.ts` (ambient `req.userId` augmentation).
+- `apps/api/src/repositories/{json,prisma}/{user,session}.repository.ts` +
+  `__tests__/{user,session}.contract.ts` + their `.json.test.ts`/`.prisma.test.ts` arms.
+- `apps/api/scripts/backfill-legacy-owner.ts` — explicit, idempotent, run-by-hand
+  (deliberately not automatic on server boot — see "Legacy data" below).
+- `packages/shared-types/src/{user,session}.ts`.
+- `apps/web/src/context/AuthContext.tsx`, `apps/web/src/components/ProtectedRoute.tsx`,
+  `apps/web/src/pages/{Login,Register}.tsx`.
+- `e2e/auth.ts` — `registerAndLogin(page, email)` helper.
+
+### Files changed
+- `apps/api/src/server.ts` — mount `authRouter` before a global `requireAuth` gate;
+  `cors({ ..., credentials: true })`; `/uploads` moved below the auth gate.
+- `apps/api/src/modules/projects/projects.routes.ts` — `POST /` stamps
+  `ownerId: req.userId`; `GET /` calls the new `listByOwner`; `GET|PATCH|DELETE /:id`
+  gated by `requireProjectOwnership`.
+- `apps/api/src/modules/jobs/jobs.routes.ts` — inline fetch-job-then-check-owner,
+  since `GET /api/jobs/:jobId` carries no project id in its own path (the one route
+  the shared middleware can't cover).
+- 13 nested project-scoped routers (assets, detections, detect, boundaries, training,
+  exports, crops, codegen + latestCode, code-versions, the four override groups,
+  corrections) — one `router.use(requireProjectOwnership)` line each, no per-handler
+  changes.
+- `apps/api/src/repositories/types.ts`, `repositories/index.ts`,
+  `repositories/json/project.repository.ts`, `repositories/prisma/project.repository.ts`
+  — `ownerId` on `CreateProjectInput`/`ProjectRecord`, new `listByOwner`.
+- `apps/api/src/middleware/apiError.ts` — `ErrorCode` gains `UNAUTHENTICATED`,
+  `FORBIDDEN` (reserved, unused this phase), `EMAIL_IN_USE`, `INVALID_CREDENTIALS`.
+- `apps/api/src/db/jsonStore.ts` (`users`/`sessions` arrays),
+  `apps/api/src/db/migrate-json-to-postgres.ts` (upserts the legacy owner and maps
+  `ownerId` in its `project.createMany`).
+- `apps/web/src/App.tsx` (route table gated by `AuthProvider`/`ProtectedRoute`),
+  `apps/web/src/services/api.ts` (`credentials: "include"` +
+  `register/login/logout/me`), `apps/web/src/components/AppHeader.tsx` (user email +
+  logout).
+- `e2e/golden-path.spec.ts`, `e2e/inspector-overrides.spec.ts` — call
+  `registerAndLogin` before the existing flow, since `/` is now behind
+  `ProtectedRoute`.
+- 12 existing repository-contract test files — every `projects.create({ name })` call
+  site updated to supply the now-required `ownerId`.
+
+### Security decisions
+- **Session strategy: server-side `Session` table + opaque random-token httpOnly
+  cookie**, not JWT or a stateless signed cookie — logout must actually revoke
+  something, and a `Session` table costs no more than a stateless scheme would need
+  for equivalent revocation, while matching the existing repository pattern exactly.
+  Cookie stores the raw token; the database stores only `sha256(token)`, so a
+  database read/leak cannot hand out a usable bearer value.
+- **Ownership mismatches return `404`, not `403`**, uniformly with "doesn't exist" —
+  avoids an existence-enumeration oracle. Login failures return an identical `401` for
+  both "unknown email" and "wrong password."
+- **Legacy data**: rather than a silent mutation on server boot, backfilling
+  pre-auth projects onto a well-known `legacy-owner@sketch2ui.local` account is an
+  explicit, idempotent, run-by-hand script — matching the source plan's own wording
+  ("controlled migration," "seeded/configured legacy owner").
+
+### Tests
+| Command | Result |
+|---|---|
+| `npm run typecheck` | clean (web, api, scripts) |
+| `npm run test` | 124 (shared-types) + 218 passed / 15 skipped — Prisma contract arms skip cleanly with no reachable test database (`apps/api`) |
+| `npm run test:py` | 19 passed |
+| `npm run build` | success, all 4 workspaces |
+| `npm run test:e2e` | 3 passed (both specs, now auth-aware) |
+
+Plus a manual browser walkthrough: register → dashboard (empty, correctly scoped to
+the new account) → logout → redirected to `/login` → log back in → dashboard again.
+
+### Known limitations
+1. `/uploads` static file serving is gated by `requireAuth` (must be logged in) but
+   not by per-asset project ownership — would need a custom handler resolving
+   `storageKey → asset → project → ownerId` on every image request. Deliberate,
+   documented residual gap: storage keys are unguessable UUIDs.
+2. The legacy-owner backfill script has not been run against this machine's real dev
+   data yet (there is currently no `apps/api/data/store.json` in this environment at
+   all — see Phase D2's entry). Run `npx tsx apps/api/scripts/backfill-legacy-owner.ts`
+   whenever real pre-auth project data exists to backfill.
+3. No password-reset flow — consistent with the phase's explicit scope, but means a
+   forgotten password has no recovery path today.
+
+### Next phase
+D2 — Detector Quality/Evaluation (see next entry, same date).
+
+---
+
+## Phase D2 — Detector Quality / Evaluation (Deadline Execution Plan)
+
+**Date:** 2026-08-25
+**Goal:** Per the deadline plan §5: determine whether meaningful new labeled data
+exists; if not, do not retrain — evaluate v1.0.0, produce qualitative examples,
+document limitations, keep v1.0.0 active.
+**Status:** ✅ Complete — no retrain (correctly, per the decision rule below).
+
+### What was checked
+- `ml/dataset/{images,labels}/` — still **162 images / 162 label files / 2,917 label
+  instances**, byte-identical in count to the 2026-08-24 dataset-quality report
+  (`docs/ml/dataset-quality-v1.1.md`). No new annotation work has landed.
+- `apps/api/data/store.json` does not exist in this environment (no live project
+  data at all here), so `npm run report:active-learning` has nothing to report —
+  consistent with "no new data," not a separate finding.
+- `docs/ml/model-decision.md` (Phase 6 prep, 2026-08-24) already states the
+  preconditions for any v1.1 run are unmet and explicitly identifies the blocker as
+  human annotation work: new P0-class examples (`select`, `radio_button`,
+  `carousel`), first-ever evaluable `card`/`page` coverage, and genuine hard
+  negatives (none exist in the corpus).
+
+### Decision
+**Do not retrain.** Re-confirms the Phase 6 prep decision — nothing has changed
+since that document was written that would alter it. `ml/models/ui-detector/`
+contains only `v1.0.0`; it stays active and immutable.
+
+### Evaluation performed
+- Re-ran `npm run eval` against the live `services/cv-worker` (v1.0.0 loaded) and the
+  same 5-image corpus as the committed baseline. **Every number reproduced exactly**:
+  `endToEndUsablePreviewRate` 1 (5/5), `boundaryMeanIoU` 0.8701, identical per-image
+  boundary IoUs, 10/10 layout assertions, all HTML/CSS parses, 0 duplicate ids.
+  Written to a scratch file, not overwriting `docs/eval/baseline-v1.0.0.json` (no
+  reason to touch the frozen regression benchmark when nothing changed).
+- Generated qualitative prediction overlays for all 5 sample sketches
+  (`docs/eval/qualitative-v1.0.0/`, via `ultralytics`' own `Results.save()`) —
+  visually confirms the model README's confusion-matrix analysis: strong, confident
+  boxes on structural classes (`section`/`navbar`/`footer`/`image`), and the
+  documented weak classes (`select`, `radio_button`, `carousel`) either missing,
+  low-confidence, or mislabeled as a visually similar rectangle class.
+
+### Files added
+- `docs/eval/qualitative-v1.0.0/*.pred.jpg` (5 images) + `README.md` explaining how
+  they were produced and how to read them.
+
+### Files changed
+- `PROJECT_STATUS.md` — §2.9 added (Phase D1 summary), TL;DR and §4.2/§6 updated to
+  reflect auth being done and the detector re-confirmation.
+
+### Known limitations
+Unchanged from `docs/ml/dataset-quality-v1.1.md` and `model-decision.md` — both
+documents already state the situation accurately; this phase found nothing new to
+add. The corpus's 4 zero-example classes (`avatar`, `list_item`, `map`, `newsletter`),
+25-of-41 unevaluable classes, and complete absence of hard negatives are all still
+true and still require human annotation work to fix.
+
+### Next phase
+D3 — Minimum Viable Multi-Page, per the deadline plan's sequencing.

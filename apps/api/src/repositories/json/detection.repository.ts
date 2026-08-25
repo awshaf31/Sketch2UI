@@ -32,6 +32,7 @@ function build(input: CreateDetectionInput): Detection {
   return {
     id: uuid(),
     projectId: input.projectId,
+    pageId: input.pageId,
     sourceAssetId: input.sourceAssetId,
     className: input.className,
     // Manual annotations are certain by definition; model ones carry the model's score.
@@ -50,9 +51,19 @@ export class JsonDetectionRepository implements DetectionRepository {
     return db.state.detections.filter((d) => d.projectId === projectId).map(detach);
   }
 
+  async listByPage(pageId: string): Promise<Detection[]> {
+    return db.state.detections.filter((d) => d.pageId === pageId).map(detach);
+  }
+
   async listActiveByProject(projectId: string): Promise<Detection[]> {
     return db.state.detections
       .filter((d) => d.projectId === projectId && d.status === "active")
+      .map(detach);
+  }
+
+  async listActiveByPage(pageId: string): Promise<Detection[]> {
+    return db.state.detections
+      .filter((d) => d.pageId === pageId && d.status === "active")
       .map(detach);
   }
 
@@ -69,6 +80,11 @@ export class JsonDetectionRepository implements DetectionRepository {
 
   async findInProject(projectId: string, id: string): Promise<Detection | null> {
     const found = db.state.detections.find((d) => d.id === id && d.projectId === projectId);
+    return found ? detach(found) : null;
+  }
+
+  async findInPage(pageId: string, id: string): Promise<Detection | null> {
+    const found = db.state.detections.find((d) => d.id === id && d.pageId === pageId);
     return found ? detach(found) : null;
   }
 
@@ -94,6 +110,22 @@ export class JsonDetectionRepository implements DetectionRepository {
     const detection = db.state.detections.find(
       (d) => d.id === id && d.projectId === projectId
     );
+    return this.applyUpdate(detection, patch);
+  }
+
+  async updateInPage(
+    pageId: string,
+    id: string,
+    patch: UpdateDetectionInput
+  ): Promise<DetectionUpdateResult | null> {
+    const detection = db.state.detections.find((d) => d.id === id && d.pageId === pageId);
+    return this.applyUpdate(detection, patch);
+  }
+
+  private applyUpdate(
+    detection: Detection | undefined,
+    patch: UpdateDetectionInput
+  ): DetectionUpdateResult | null {
     if (!detection) return null;
 
     const previous = detach(detection);
@@ -131,6 +163,15 @@ export class JsonDetectionRepository implements DetectionRepository {
     const index = db.state.detections.findIndex(
       (d) => d.id === id && d.projectId === projectId
     );
+    return this.removeAt(index);
+  }
+
+  async deleteInPage(pageId: string, id: string): Promise<Detection | null> {
+    const index = db.state.detections.findIndex((d) => d.id === id && d.pageId === pageId);
+    return this.removeAt(index);
+  }
+
+  private removeAt(index: number): Detection | null {
     if (index === -1) return null;
     const [removed] = db.state.detections.splice(index, 1);
     db.save();

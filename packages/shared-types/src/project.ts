@@ -5,6 +5,9 @@ export interface Project {
   name: string;
   description?: string;
   status: ProjectStatus;
+  /** The account that owns this project. Every project-scoped resource is authorized
+   * by resolving back to this field. */
+  ownerId: string;
   /**
    * Which CodeVersion preview and export use. Unset means "the latest", which is the
    * behaviour that existed before hand-editing — so old projects keep working.
@@ -47,6 +50,7 @@ export interface Project {
 export interface ProjectAsset {
   id: string;
   projectId: string;
+  pageId: string;
   storageKey: string;
   mimeType: string;
   width: number;
@@ -58,6 +62,7 @@ export interface ProjectAsset {
 export interface CodeVersion {
   id: string;
   projectId: string;
+  pageId: string;
   versionNumber: number;
   /**
    * How this version came to exist. Both kinds are immutable rows in the same table —

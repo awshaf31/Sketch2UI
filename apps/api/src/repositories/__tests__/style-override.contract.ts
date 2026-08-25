@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, DetectionRepository, ProjectRepository, StyleOverrideRepository } from "../types.js";
+import type {
+  AssetRepository,
+  DetectionRepository,
+  PageRepository,
+  ProjectRepository,
+  StyleOverrideRepository,
+} from "../types.js";
 
 /**
  * StyleOverrideRepository CONTRACT — Phase 8 amendment §13.
@@ -16,6 +22,7 @@ export function runStyleOverrideRepositoryContract(
     detections: DetectionRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -23,6 +30,7 @@ export function runStyleOverrideRepositoryContract(
     let styleOverrides: StyleOverrideRepository;
     let projects: ProjectRepository;
     let projectId: string;
+    let pageId: string;
     let detectionId: string;
 
     beforeEach(async () => {
@@ -33,10 +41,12 @@ export function runStyleOverrideRepositoryContract(
       const detections = repos.detections;
       const assets = repos.assets;
 
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       const assetId = (
         await assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
@@ -47,6 +57,7 @@ export function runStyleOverrideRepositoryContract(
       detectionId = (
         await detections.create({
           projectId,
+          pageId,
           sourceAssetId: assetId,
           className: "button",
           bbox: { x: 0, y: 0, width: 0.1, height: 0.1 },
@@ -57,20 +68,20 @@ export function runStyleOverrideRepositoryContract(
 
     describe("put", () => {
       it("stores and returns the value", async () => {
-        const result = await styleOverrides.put(projectId, detectionId, { display: "flex" });
+        const result = await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
         expect(result).toEqual({ display: "flex" });
       });
 
       it("an empty object deletes and returns null", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex" });
-        const result = await styleOverrides.put(projectId, detectionId, {});
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
+        const result = await styleOverrides.put(projectId, pageId, detectionId, {});
         expect(result).toBeNull();
         expect(await styleOverrides.findByDetection(projectId, detectionId)).toBeNull();
       });
 
       it("a second put fully REPLACES the stored value, not merges", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex", gap: "8px" });
-        await styleOverrides.put(projectId, detectionId, { padding: "4px" });
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex", gap: "8px" });
+        await styleOverrides.put(projectId, pageId, detectionId, { padding: "4px" });
         expect(await styleOverrides.findByDetection(projectId, detectionId)).toEqual({ padding: "4px" });
       });
     });
@@ -81,7 +92,7 @@ export function runStyleOverrideRepositoryContract(
       });
 
       it("returns a DETACHED copy", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex" });
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
         const found = await styleOverrides.findByDetection(projectId, detectionId);
         (found as Record<string, string>).display = "grid";
         expect((await styleOverrides.findByDetection(projectId, detectionId))?.display).toBe("flex");
@@ -90,7 +101,7 @@ export function runStyleOverrideRepositoryContract(
 
     describe("mapForProject", () => {
       it("returns the whole project's map keyed on detection id", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex" });
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
         const map = await styleOverrides.mapForProject(projectId);
         expect(map).toEqual({ [detectionId]: { display: "flex" } });
       });
@@ -102,7 +113,7 @@ export function runStyleOverrideRepositoryContract(
 
     describe("remove", () => {
       it("deletes the stored value", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex" });
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
         await styleOverrides.remove(projectId, detectionId);
         expect(await styleOverrides.findByDetection(projectId, detectionId)).toBeNull();
       });
@@ -114,7 +125,7 @@ export function runStyleOverrideRepositoryContract(
 
     describe("cascade", () => {
       it("deleting the project removes its style overrides", async () => {
-        await styleOverrides.put(projectId, detectionId, { display: "flex" });
+        await styleOverrides.put(projectId, pageId, detectionId, { display: "flex" });
         await projects.delete(projectId);
         expect(await styleOverrides.findByDetection(projectId, detectionId)).toBeNull();
       });

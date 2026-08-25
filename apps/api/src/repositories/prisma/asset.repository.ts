@@ -23,6 +23,7 @@ function toRecord(row: PrismaAsset): ProjectAsset {
   return {
     id: row.id,
     projectId: row.projectId,
+    pageId: row.pageId,
     storageKey: row.storageKey,
     mimeType: row.mimeType,
     width: row.width,
@@ -48,9 +49,25 @@ export class PrismaAssetRepository implements AssetRepository {
     return row ? toRecord(row) : null;
   }
 
+  async listByPage(pageId: string): Promise<ProjectAsset[]> {
+    const rows = await this.prisma.projectAsset.findMany({
+      where: { pageId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    return rows.map(toRecord);
+  }
+
   async findLatestForProject(projectId: string): Promise<ProjectAsset | null> {
     const row = await this.prisma.projectAsset.findFirst({
       where: { projectId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+    return row ? toRecord(row) : null;
+  }
+
+  async findLatestForPage(pageId: string): Promise<ProjectAsset | null> {
+    const row = await this.prisma.projectAsset.findFirst({
+      where: { pageId },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     });
     return row ? toRecord(row) : null;
@@ -63,6 +80,7 @@ export class PrismaAssetRepository implements AssetRepository {
         // identifier and stored references stay valid across the migration.
         id: uuid(),
         projectId: input.projectId,
+        pageId: input.pageId,
         storageKey: input.storageKey,
         mimeType: input.mimeType,
         width: input.width,

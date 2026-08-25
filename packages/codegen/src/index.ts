@@ -36,6 +36,11 @@ export function generateCode(
     viewport: { width: number; height: number };
     /** Supplies real crop srcs for drawn regions — see AssetResolver. */
     resolveAsset?: AssetResolver;
+    /** Phase D3 multi-page: namespaces every generated UI-IR node id (see
+     * layout.ts's idNamespace) so a multi-page export's shared styles.css cannot have
+     * one page's id-selector rule bleed into another page's document. Defaults to ""
+     * — zero behavior change for any single-generation caller that omits it. */
+    idPrefix?: string;
     /**
      * Manual per-node style tweaks from the inspector (§6.7 / §17.3), keyed on the
      * detection uuid of the node. Layered on top of the auto-inferred layout — see

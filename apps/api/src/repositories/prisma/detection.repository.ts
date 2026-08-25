@@ -30,6 +30,7 @@ function toRecord(row: PrismaDetection): Detection {
   return {
     id: row.id,
     projectId: row.projectId,
+    pageId: row.pageId,
     sourceAssetId: row.sourceAssetId,
     className: row.className,
     confidence: row.confidence,
@@ -47,6 +48,7 @@ function toCreateData(input: CreateDetectionInput) {
   return {
     id: uuid(),
     projectId: input.projectId,
+    pageId: input.pageId,
     sourceAssetId: input.sourceAssetId,
     className: input.className,
     confidence: input.confidence ?? 1,
@@ -75,9 +77,25 @@ export class PrismaDetectionRepository implements DetectionRepository {
     return rows.map(toRecord);
   }
 
+  async listByPage(pageId: string): Promise<Detection[]> {
+    const rows = await this.prisma.detection.findMany({
+      where: { pageId },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    return rows.map(toRecord);
+  }
+
   async listActiveByProject(projectId: string): Promise<Detection[]> {
     const rows = await this.prisma.detection.findMany({
       where: { projectId, status: "active" },
+      orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    });
+    return rows.map(toRecord);
+  }
+
+  async listActiveByPage(pageId: string): Promise<Detection[]> {
+    const rows = await this.prisma.detection.findMany({
+      where: { pageId, status: "active" },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     });
     return rows.map(toRecord);
@@ -98,6 +116,11 @@ export class PrismaDetectionRepository implements DetectionRepository {
 
   async findInProject(projectId: string, id: string): Promise<Detection | null> {
     const row = await this.prisma.detection.findFirst({ where: { id, projectId } });
+    return row ? toRecord(row) : null;
+  }
+
+  async findInPage(pageId: string, id: string): Promise<Detection | null> {
+    const row = await this.prisma.detection.findFirst({ where: { id, pageId } });
     return row ? toRecord(row) : null;
   }
 
@@ -125,8 +148,23 @@ export class PrismaDetectionRepository implements DetectionRepository {
     id: string,
     patch: UpdateDetectionInput
   ): Promise<DetectionUpdateResult | null> {
+    return this.applyUpdate({ id, projectId }, patch);
+  }
+
+  async updateInPage(
+    pageId: string,
+    id: string,
+    patch: UpdateDetectionInput
+  ): Promise<DetectionUpdateResult | null> {
+    return this.applyUpdate({ id, pageId }, patch);
+  }
+
+  private applyUpdate(
+    where: { id: string; projectId?: string; pageId?: string },
+    patch: UpdateDetectionInput
+  ): Promise<DetectionUpdateResult | null> {
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.detection.findFirst({ where: { id, projectId } });
+      const existing = await tx.detection.findFirst({ where });
       if (!existing) return null;
 
       const previous = toRecord(existing);
@@ -140,7 +178,7 @@ export class PrismaDetectionRepository implements DetectionRepository {
         flip && classChanged && previous.originalClassName === undefined;
 
       const row = await tx.detection.update({
-        where: { id },
+        where: { id: existing.id },
         data: {
           className: patch.className,
           ...(patch.bbox
@@ -164,10 +202,18 @@ export class PrismaDetectionRepository implements DetectionRepository {
   }
 
   async delete(projectId: string, id: string): Promise<Detection | null> {
+    return this.removeMatching({ id, projectId });
+  }
+
+  async deleteInPage(pageId: string, id: string): Promise<Detection | null> {
+    return this.removeMatching({ id, pageId });
+  }
+
+  private removeMatching(where: { id: string; projectId?: string; pageId?: string }): Promise<Detection | null> {
     return this.prisma.$transaction(async (tx) => {
-      const existing = await tx.detection.findFirst({ where: { id, projectId } });
+      const existing = await tx.detection.findFirst({ where });
       if (!existing) return null;
-      await tx.detection.delete({ where: { id } });
+      await tx.detection.delete({ where: { id: existing.id } });
       return toRecord(existing);
     });
   }

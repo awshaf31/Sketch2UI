@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, BoundaryRepository, ProjectRepository } from "../types.js";
+import type { AssetRepository, BoundaryRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * BoundaryRepository CONTRACT — Phase 8 amendment §11.
@@ -17,6 +17,7 @@ export function runBoundaryRepositoryContract(
     boundaries: BoundaryRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -24,7 +25,9 @@ export function runBoundaryRepositoryContract(
     let boundaries: BoundaryRepository;
     let assets: AssetRepository;
     let projects: ProjectRepository;
+    let pages: PageRepository;
     let projectId: string;
+    let pageId: string;
     let assetId: string;
 
     const AUTO_POLYGON: [number, number][] = [
@@ -66,10 +69,13 @@ export function runBoundaryRepositoryContract(
       boundaries = repos.boundaries;
       assets = repos.assets;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host" })).id;
+      pages = repos.pages;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await pages.create({ projectId, name: "Page 1" })).id;
       assetId = (
         await assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
@@ -85,12 +91,12 @@ export function runBoundaryRepositoryContract(
       });
 
       it("returns the saved record", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto(), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto(), "auto");
         expect((await boundaries.findByAsset(assetId))?.assetId).toBe(assetId);
       });
 
       it("returns a DETACHED copy", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto(), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto(), "auto");
         const found = await boundaries.findByAsset(assetId);
         (found as { method: string }).method = "manual";
         expect((await boundaries.findByAsset(assetId))?.method).toBe("contour");
@@ -101,6 +107,7 @@ export function runBoundaryRepositoryContract(
       it("creates a new record for an auto write", async () => {
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           auto(),
           "auto"
@@ -113,6 +120,7 @@ export function runBoundaryRepositoryContract(
       it("creates a new record for a manual write", async () => {
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           manual(),
           "manual"
@@ -124,6 +132,7 @@ export function runBoundaryRepositoryContract(
       it("round-trips confidence, method, areaFraction, applied, overlapThreshold", async () => {
         const { record } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           auto({ confidence: 0.6123, areaFraction: 0.42, applied: false, overlapThreshold: 0.35 }),
           "auto"
@@ -137,9 +146,10 @@ export function runBoundaryRepositoryContract(
 
     describe("saveRespectingManual — sticky-correction rule", () => {
       it("an AUTO write overwrites a prior AUTO record", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto({ confidence: 0.5 }), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto({ confidence: 0.5 }), "auto");
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           auto({ confidence: 0.9 }),
           "auto"
@@ -149,9 +159,10 @@ export function runBoundaryRepositoryContract(
       });
 
       it("a MANUAL write overwrites a prior AUTO record", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto(), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto(), "auto");
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           manual(),
           "manual"
@@ -162,9 +173,10 @@ export function runBoundaryRepositoryContract(
       });
 
       it("an AUTO write does NOT overwrite an existing MANUAL record — the rule's entire purpose", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, manual(), "manual");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, manual(), "manual");
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           auto(),
           "auto"
@@ -179,9 +191,10 @@ export function runBoundaryRepositoryContract(
       });
 
       it("a MANUAL write always wins over a prior MANUAL record (re-adjustment)", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, manual(), "manual");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, manual(), "manual");
         const { record, preservedManual } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           manual({ polygon: AUTO_POLYGON }),
           "manual"
@@ -191,9 +204,10 @@ export function runBoundaryRepositoryContract(
       });
 
       it("one boundary per asset — a second write updates the same row, not a new one", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto(), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto(), "auto");
         const { record: second } = await boundaries.saveRespectingManual(
           projectId,
+          pageId,
           assetId,
           manual(),
           "manual"
@@ -205,7 +219,7 @@ export function runBoundaryRepositoryContract(
 
     describe("cascade", () => {
       it("deleting the project removes its boundary records", async () => {
-        await boundaries.saveRespectingManual(projectId, assetId, auto(), "auto");
+        await boundaries.saveRespectingManual(projectId, pageId, assetId, auto(), "auto");
         await projects.delete(projectId);
         expect(await boundaries.findByAsset(assetId)).toBeNull();
       });

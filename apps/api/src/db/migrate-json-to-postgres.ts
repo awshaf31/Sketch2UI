@@ -26,9 +26,12 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { randomBytes, randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 // Type-only: fully erased at compile time, so --dry-run still never loads the client.
 import type { Prisma } from "@prisma/client";
+import { hashPassword } from "../modules/auth/password.js";
+import { LEGACY_OWNER_EMAIL, LEGACY_OWNER_ID } from "../modules/auth/legacy-owner.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -301,6 +304,7 @@ function plan(store: Store): Array<[string, number]> {
 
   return [
     ["projects", store.projects.length],
+    ["pages", store.projects.length], // Phase D3: one synthesized "Page 1" per project.
     ["project_assets", store.assets.length],
     ["detections", store.detections.length],
     ["code_versions", store.codeVersions.length],
@@ -332,12 +336,43 @@ async function migrate(store: Store): Promise<void> {
     // One transaction: Appendix E stage 5. A partial migration is worse than none,
     // because the "is this database populated?" question stops having a clear answer.
     await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Projects from the JSON store predate ownership (Phase D1) and carry no
+      // ownerId, so every one of them is assigned to a well-known legacy account
+      // rather than left ownerless — see modules/auth/legacy-owner.ts.
+      await tx.user.upsert({
+        where: { id: LEGACY_OWNER_ID },
+        update: {},
+        create: {
+          id: LEGACY_OWNER_ID,
+          email: LEGACY_OWNER_EMAIL,
+          passwordHash: await hashPassword(randomBytes(32).toString("hex")),
+        },
+      });
+
       await tx.project.createMany({
         data: store.projects.map((p) => ({
           id: p.id,
           name: p.name,
           description: p.description ?? null,
           status: p.status ?? "draft",
+          ownerId: p.ownerId ?? LEGACY_OWNER_ID,
+          activeCodeVersionId: p.activeCodeVersionId ?? null,
+          createdAt: toDate(p.createdAt),
+          updatedAt: toDate(p.updatedAt),
+        })),
+      });
+
+      // Phase D3: the JSON store predates pages entirely — every project's existing
+      // data becomes "Page 1", exactly matching the JSON store's own automatic
+      // backfill (db/jsonStore.ts's backfillPages). One deterministic id per project
+      // so every child row's pageId below can look it up.
+      const pageIdByProject = new Map<string, string>(store.projects.map((p) => [p.id, randomUUID()]));
+      await tx.page.createMany({
+        data: store.projects.map((p) => ({
+          id: pageIdByProject.get(p.id)!,
+          projectId: p.id,
+          name: "Page 1",
+          order: 1,
           activeCodeVersionId: p.activeCodeVersionId ?? null,
           createdAt: toDate(p.createdAt),
           updatedAt: toDate(p.updatedAt),
@@ -348,6 +383,7 @@ async function migrate(store: Store): Promise<void> {
         data: store.assets.map((a) => ({
           id: a.id,
           projectId: a.projectId,
+          pageId: pageIdByProject.get(a.projectId)!,
           storageKey: a.storageKey,
           mimeType: a.mimeType,
           width: a.width,
@@ -361,6 +397,7 @@ async function migrate(store: Store): Promise<void> {
         data: store.detections.map((d) => ({
           id: d.id,
           projectId: d.projectId,
+          pageId: pageIdByProject.get(d.projectId)!,
           sourceAssetId: d.sourceAssetId,
           className: d.className,
           confidence: d.confidence,
@@ -381,6 +418,7 @@ async function migrate(store: Store): Promise<void> {
         data: store.codeVersions.map((c) => ({
           id: c.id,
           projectId: c.projectId,
+          pageId: pageIdByProject.get(c.projectId)!,
           versionNumber: c.versionNumber,
           source: legacyCodeVersionSource(c.source),
           html: c.html,
@@ -444,6 +482,7 @@ async function migrate(store: Store): Promise<void> {
         data: store.pageBoundaries.map((b) => ({
           id: b.id,
           projectId: b.projectId,
+          pageId: pageIdByProject.get(b.projectId)!,
           assetId: b.assetId,
           polygon: b.polygon,
           confidence: b.confidence,
@@ -461,6 +500,7 @@ async function migrate(store: Store): Promise<void> {
         data: store.correctionRecords.map((r) => ({
           id: r.id,
           projectId: r.projectId,
+          pageId: pageIdByProject.get(r.projectId)!,
           detectionId: r.detectionId,
           type: r.type,
           source: r.source ?? "user",
@@ -488,6 +528,7 @@ async function migrate(store: Store): Promise<void> {
       await tx.styleOverride.createMany({
         data: overrideRows("styleOverrides", (detectionId, style, projectId) => ({
           projectId,
+          pageId: pageIdByProject.get(projectId)!,
           detectionId,
           style,
         })),
@@ -496,6 +537,7 @@ async function migrate(store: Store): Promise<void> {
       await tx.contentOverride.createMany({
         data: overrideRows("contentOverrides", (detectionId, ov, projectId) => ({
           projectId,
+          pageId: pageIdByProject.get(projectId)!,
           detectionId,
           text: ov.text ?? null,
           altText: ov.altText ?? null,
@@ -507,6 +549,7 @@ async function migrate(store: Store): Promise<void> {
       await tx.geometryOverride.createMany({
         data: overrideRows("geometryOverrides", (detectionId, ov, projectId) => ({
           projectId,
+          pageId: pageIdByProject.get(projectId)!,
           detectionId,
           x: ov.x ?? null,
           y: ov.y ?? null,
@@ -518,6 +561,7 @@ async function migrate(store: Store): Promise<void> {
       await tx.structureOverride.createMany({
         data: overrideRows("structureOverrides", (detectionId, ov, projectId) => ({
           projectId,
+          pageId: pageIdByProject.get(projectId)!,
           detectionId,
           parentDetectionId: ov.parentDetectionId ?? null,
           parentDetectionIdSet: "parentDetectionId" in ov,

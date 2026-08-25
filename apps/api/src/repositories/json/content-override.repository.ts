@@ -24,13 +24,31 @@ export class JsonContentOverrideRepository implements ContentOverrideRepository 
     return project?.contentOverrides ? detach(project.contentOverrides) : {};
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, ContentOverride>> {
+    const page = db.state.pages.find((p) => p.id === pageId);
+    if (!page) return {};
+    const project = db.state.projects.find((p) => p.id === page.projectId);
+    const fullMap = project?.contentOverrides ?? {};
+    const pageDetectionIds = new Set(
+      db.state.detections.filter((d) => d.pageId === pageId).map((d) => d.id)
+    );
+    return detach(
+      Object.fromEntries(Object.entries(fullMap).filter(([detectionId]) => pageDetectionIds.has(detectionId)))
+    );
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<ContentOverride | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     const value = project?.contentOverrides?.[detectionId];
     return value ? detach(value) : null;
   }
 
-  async put(projectId: string, detectionId: string, value: ContentOverride): Promise<ContentOverride | null> {
+  async put(
+    projectId: string,
+    _pageId: string,
+    detectionId: string,
+    value: ContentOverride
+  ): Promise<ContentOverride | null> {
     const project = db.state.projects.find((p) => p.id === projectId);
     if (!project) return null;
 

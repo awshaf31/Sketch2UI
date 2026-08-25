@@ -2,12 +2,15 @@ import { Router } from "express";
 import { validateGeneratedCode } from "@sketch2ui/shared-types";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
-import type { ProjectParams } from "../../types.js";
+import type { PageParams } from "../../types.js";
 import { getRepositories } from "../../repositories/index.js";
 import type { CodeVersion } from "@sketch2ui/shared-types";
+import { requireProjectOwnership } from "../../middleware/requireProjectOwnership.js";
+import { requirePageInProject } from "../../middleware/requirePageInProject.js";
 
 // Code version history and hand-editing — plan §6.9 ("read-only mode initially, then
-// add editable mode"), §39 V1 tier.
+// add editable mode"), §39 V1 tier. Page-scoped since Phase D3: every page has its own
+// independent version history and active version.
 //
 // IMMUTABILITY IS PRESERVED. A hand-edit never mutates an existing CodeVersion; it
 // appends a new one with source "edited". Export (§18.8) and the evaluation baseline
@@ -16,26 +19,26 @@ import type { CodeVersion } from "@sketch2ui/shared-types";
 // place edit impossible to write rather than merely discouraged.
 
 export const codeVersionsRouter = Router({ mergeParams: true });
+codeVersionsRouter.use(requireProjectOwnership);
+codeVersionsRouter.use(requirePageInProject);
 
-interface VersionParams extends ProjectParams {
+interface VersionParams extends PageParams {
   versionId: string;
 }
 
-/** The version preview and export use: the explicit choice, else the latest. */
-export async function resolveActiveVersion(projectId: string): Promise<CodeVersion | null> {
-  return getRepositories().codeVersions.resolveActive(projectId);
+/** The version preview and export use for one page: the explicit choice, else the
+ * latest. */
+export async function resolveActiveVersionForPage(pageId: string): Promise<CodeVersion | null> {
+  return getRepositories().codeVersions.resolveActiveForPage(pageId);
 }
 
-// GET /api/projects/:id/code-versions — full history.
-codeVersionsRouter.get<ProjectParams>(
+// GET /api/projects/:id/pages/:pageId/code-versions — full history for this page.
+codeVersionsRouter.get<PageParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
     const [active, versions] = await Promise.all([
-      resolveActiveVersion(project.id),
-      getRepositories().codeVersions.listByProject(project.id),
+      resolveActiveVersionForPage(req.params.pageId),
+      getRepositories().codeVersions.listByPage(req.params.pageId),
     ]);
     res.json({
       activeVersionId: active?.id ?? null,
@@ -52,28 +55,26 @@ codeVersionsRouter.get<ProjectParams>(
   })
 );
 
-// GET /api/projects/:id/code-versions/:versionId — one version's full content.
+// GET /api/projects/:id/pages/:pageId/code-versions/:versionId — one version's full content.
 codeVersionsRouter.get<VersionParams>(
   "/:versionId",
   asyncHandler(async (req, res) => {
-    const version = await getRepositories().codeVersions.findById(req.params.id, req.params.versionId);
+    const version = await getRepositories().codeVersions.findByPage(req.params.pageId, req.params.versionId);
     if (!version) return sendError(res, 404, "NOT_FOUND", "Code version not found.");
     res.json(version);
   })
 );
 
 /**
- * POST /api/projects/:id/code-versions — save a hand-edited page as a NEW version.
+ * POST /api/projects/:id/pages/:pageId/code-versions — save a hand-edited page as a
+ * NEW version.
  *
  * The generator endpoint (POST /code-generation-jobs) takes no body and always renders
  * from the UI-IR; this is its counterpart for user-authored content.
  */
-codeVersionsRouter.post<ProjectParams>(
+codeVersionsRouter.post<PageParams>(
   "/",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
     const { html, css, basedOnVersionId } = (req.body ?? {}) as {
       html?: unknown;
       css?: unknown;
@@ -103,11 +104,12 @@ codeVersionsRouter.post<ProjectParams>(
     // paths in a hand-edited page still resolve to real crops at export time.
     const basis =
       typeof basedOnVersionId === "string"
-        ? await getRepositories().codeVersions.findById(project.id, basedOnVersionId)
-        : await resolveActiveVersion(project.id);
+        ? await getRepositories().codeVersions.findByPage(req.params.pageId, basedOnVersionId)
+        : await resolveActiveVersionForPage(req.params.pageId);
 
     const version = await getRepositories().codeVersions.create({
-      projectId: project.id,
+      projectId: req.params.id,
+      pageId: req.params.pageId,
       source: "edited",
       html,
       css,
@@ -116,25 +118,22 @@ codeVersionsRouter.post<ProjectParams>(
 
     // A freshly saved edit becomes what you are looking at — otherwise the preview would
     // keep showing the old version and the save would appear to have done nothing.
-    await getRepositories().projects.setActiveCodeVersion(project.id, version.id);
+    await getRepositories().pages.setActiveCodeVersion(req.params.pageId, version.id);
 
     res.status(201).json(version);
   })
 );
 
-// PUT /api/projects/:id/code-versions/:versionId/activate — choose which version
-// preview and export use. This is how a user reverts to a generated version after an
-// edit, without anything being deleted.
+// PUT /api/projects/:id/pages/:pageId/code-versions/:versionId/activate — choose which
+// version preview and export use for this page. This is how a user reverts to a
+// generated version after an edit, without anything being deleted.
 codeVersionsRouter.put<VersionParams>(
   "/:versionId/activate",
   asyncHandler(async (req, res) => {
-    const project = await getRepositories().projects.findById(req.params.id);
-    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-
-    const version = await getRepositories().codeVersions.findById(project.id, req.params.versionId);
+    const version = await getRepositories().codeVersions.findByPage(req.params.pageId, req.params.versionId);
     if (!version) return sendError(res, 404, "NOT_FOUND", "Code version not found.");
 
-    await getRepositories().projects.setActiveCodeVersion(project.id, version.id);
+    await getRepositories().pages.setActiveCodeVersion(req.params.pageId, version.id);
 
     res.json({ activeVersionId: version.id });
   })

@@ -13,6 +13,7 @@ if (reachable) {
   const { PrismaDetectionRepository } = await import("../prisma/detection.repository.js");
   const { PrismaAssetRepository } = await import("../prisma/asset.repository.js");
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
+  const { PrismaPageRepository } = await import("../prisma/page.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
   const { afterAll } = await import("vitest");
 
@@ -23,6 +24,7 @@ if (reachable) {
       detections: new PrismaDetectionRepository(),
       assets: new PrismaAssetRepository(),
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
     }),
     async () => {
       // Style overrides cascade from projects, so clearing projects is sufficient.

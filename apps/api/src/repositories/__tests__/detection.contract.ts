@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type {
   AssetRepository,
   DetectionRepository,
+  PageRepository,
   ProjectRepository,
 } from "../types.js";
 
@@ -20,6 +21,7 @@ export function runDetectionRepositoryContract(
     detections: DetectionRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -27,13 +29,16 @@ export function runDetectionRepositoryContract(
     let detections: DetectionRepository;
     let assets: AssetRepository;
     let projects: ProjectRepository;
+    let pages: PageRepository;
     let projectId: string;
+    let pageId: string;
     let assetId: string;
 
     const BBOX = { x: 0.1, y: 0.2, width: 0.3, height: 0.4 };
 
     const manual = (over: Record<string, unknown> = {}) => ({
       projectId,
+      pageId,
       sourceAssetId: assetId,
       className: "button",
       bbox: { ...BBOX },
@@ -50,10 +55,13 @@ export function runDetectionRepositoryContract(
       detections = repos.detections;
       assets = repos.assets;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host" })).id;
+      pages = repos.pages;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await pages.create({ projectId, name: "Page 1" })).id;
       assetId = (
         await assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
@@ -117,7 +125,7 @@ export function runDetectionRepositoryContract(
 
       it("findInProject returns null when it belongs to another project", async () => {
         const d = await detections.create(manual());
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         expect(await detections.findInProject(other.id, d.id)).toBeNull();
       });
 
@@ -142,6 +150,7 @@ export function runDetectionRepositoryContract(
         await detections.create(manual());
         const otherAsset = await assets.create({
           projectId,
+          pageId,
           storageKey: "o.png",
           mimeType: "image/png",
           width: 1,
@@ -260,7 +269,7 @@ export function runDetectionRepositoryContract(
 
       it("returns null when the detection belongs to another project", async () => {
         const d = await detections.create(manual());
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         expect(await detections.update(other.id, d.id, { className: "x" })).toBeNull();
       });
 
@@ -285,7 +294,7 @@ export function runDetectionRepositoryContract(
 
       it("refuses to delete another project's detection", async () => {
         const d = await detections.create(manual());
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         expect(await detections.delete(other.id, d.id)).toBeNull();
         expect(await detections.findById(d.id)).not.toBeNull();
       });
@@ -321,6 +330,7 @@ export function runDetectionRepositoryContract(
       it("does not touch another asset's model detections", async () => {
         const otherAsset = await assets.create({
           projectId,
+          pageId,
           storageKey: "o.png",
           mimeType: "image/png",
           width: 1,

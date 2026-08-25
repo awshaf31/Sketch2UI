@@ -8,6 +8,7 @@ if (reachable) {
   const { PrismaExportRepository } = await import("../prisma/export.repository.js");
   const { PrismaCodeVersionRepository } = await import("../prisma/code-version.repository.js");
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
+  const { PrismaPageRepository } = await import("../prisma/page.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
   const { afterAll } = await import("vitest");
 
@@ -17,6 +18,7 @@ if (reachable) {
       exports: new PrismaExportRepository(),
       codeVersions: new PrismaCodeVersionRepository(),
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
     }),
     async () => {
       await getPrismaClient().project.deleteMany({});

@@ -21,6 +21,11 @@ export class PrismaStyleOverrideRepository implements StyleOverrideRepository {
     return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, Record<string, string>>> {
+    const rows = await this.prisma.styleOverride.findMany({ where: { pageId } });
+    return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<Record<string, string> | null> {
     const row = await this.prisma.styleOverride.findFirst({ where: { detectionId, projectId } });
     return row ? toValue(row) : null;
@@ -28,6 +33,7 @@ export class PrismaStyleOverrideRepository implements StyleOverrideRepository {
 
   async put(
     projectId: string,
+    pageId: string,
     detectionId: string,
     value: Record<string, string>
   ): Promise<Record<string, string> | null> {
@@ -37,7 +43,7 @@ export class PrismaStyleOverrideRepository implements StyleOverrideRepository {
     }
     const row = await this.prisma.styleOverride.upsert({
       where: { detectionId },
-      create: { projectId, detectionId, style: value },
+      create: { projectId, pageId, detectionId, style: value },
       update: { style: value },
     });
     return toValue(row);

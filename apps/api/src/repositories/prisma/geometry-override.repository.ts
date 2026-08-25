@@ -22,12 +22,22 @@ export class PrismaGeometryOverrideRepository implements GeometryOverrideReposit
     return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, GeometryOverride>> {
+    const rows = await this.prisma.geometryOverride.findMany({ where: { pageId } });
+    return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<GeometryOverride | null> {
     const row = await this.prisma.geometryOverride.findFirst({ where: { detectionId, projectId } });
     return row ? toValue(row) : null;
   }
 
-  async put(projectId: string, detectionId: string, value: GeometryOverride): Promise<GeometryOverride | null> {
+  async put(
+    projectId: string,
+    pageId: string,
+    detectionId: string,
+    value: GeometryOverride
+  ): Promise<GeometryOverride | null> {
     if (Object.keys(value).length === 0) {
       await this.prisma.geometryOverride.deleteMany({ where: { detectionId, projectId } });
       return null;
@@ -40,7 +50,7 @@ export class PrismaGeometryOverrideRepository implements GeometryOverrideReposit
     };
     const row = await this.prisma.geometryOverride.upsert({
       where: { detectionId },
-      create: { projectId, detectionId, ...data },
+      create: { projectId, pageId, detectionId, ...data },
       update: data,
     });
     return toValue(row);

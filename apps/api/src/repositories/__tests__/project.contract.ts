@@ -29,14 +29,19 @@ export function runProjectRepositoryContract(
 
     describe("create", () => {
       it("returns a project with a generated id and draft status", async () => {
-        const project = await repo.create({ name: "Demo" });
+        const project = await repo.create({ name: "Demo", ownerId: "owner-a" });
         expect(project.id).toMatch(/[0-9a-f-]{36}/);
         expect(project.name).toBe("Demo");
         expect(project.status).toBe("draft");
       });
 
+      it("stamps the supplied ownerId", async () => {
+        const project = await repo.create({ name: "Demo", ownerId: "owner-a" });
+        expect(project.ownerId).toBe("owner-a");
+      });
+
       it("sets createdAt and updatedAt as ISO strings", async () => {
-        const project = await repo.create({ name: "Demo" });
+        const project = await repo.create({ name: "Demo", ownerId: "owner-a" });
         // ISO strings, not Dates — these are serialized straight into JSON responses,
         // so a Date here would change the wire format.
         expect(typeof project.createdAt).toBe("string");
@@ -45,20 +50,20 @@ export function runProjectRepositoryContract(
       });
 
       it("omits description entirely when not supplied", async () => {
-        const project = await repo.create({ name: "Demo" });
+        const project = await repo.create({ name: "Demo", ownerId: "owner-a" });
         // Absent, not null: `res.json` must not start emitting "description": null.
         expect("description" in project && project.description !== undefined).toBe(false);
       });
 
       it("keeps description when supplied", async () => {
-        const project = await repo.create({ name: "Demo", description: "hello" });
+        const project = await repo.create({ name: "Demo", description: "hello", ownerId: "owner-a" });
         expect(project.description).toBe("hello");
       });
     });
 
     describe("findById", () => {
       it("returns the project", async () => {
-        const created = await repo.create({ name: "Findable" });
+        const created = await repo.create({ name: "Findable", ownerId: "owner-a" });
         const found = await repo.findById(created.id);
         expect(found?.id).toBe(created.id);
         expect(found?.name).toBe("Findable");
@@ -73,7 +78,7 @@ export function runProjectRepositoryContract(
         // code mutated objects obtained from db.state and relied on that persisting.
         // Prisma cannot do that, so the contract forbids it and both adapters must
         // behave the same way (amendment §2.3).
-        const created = await repo.create({ name: "Original" });
+        const created = await repo.create({ name: "Original", ownerId: "owner-a" });
         const found = await repo.findById(created.id);
         (found as { name: string }).name = "Mutated In Place";
 
@@ -84,8 +89,8 @@ export function runProjectRepositoryContract(
 
     describe("list", () => {
       it("returns every project", async () => {
-        await repo.create({ name: "A" });
-        await repo.create({ name: "B" });
+        await repo.create({ name: "A", ownerId: "owner-a" });
+        await repo.create({ name: "B", ownerId: "owner-b" });
         const all = await repo.list();
         expect(all.map((p) => p.name).sort()).toEqual(["A", "B"]);
       });
@@ -95,28 +100,41 @@ export function runProjectRepositoryContract(
       });
     });
 
+    describe("listByOwner", () => {
+      it("returns only that owner's projects", async () => {
+        await repo.create({ name: "Mine", ownerId: "owner-a" });
+        await repo.create({ name: "Theirs", ownerId: "owner-b" });
+        const mine = await repo.listByOwner("owner-a");
+        expect(mine.map((p) => p.name)).toEqual(["Mine"]);
+      });
+
+      it("returns an empty array for an owner with no projects", async () => {
+        expect(await repo.listByOwner("nobody")).toEqual([]);
+      });
+    });
+
     describe("update", () => {
       it("changes only the supplied fields", async () => {
-        const created = await repo.create({ name: "Before", description: "keep me" });
+        const created = await repo.create({ name: "Before", description: "keep me", ownerId: "owner-a" });
         const updated = await repo.update(created.id, { name: "After" });
         expect(updated?.name).toBe("After");
         expect(updated?.description).toBe("keep me");
       });
 
       it("persists the change", async () => {
-        const created = await repo.create({ name: "Before" });
+        const created = await repo.create({ name: "Before", ownerId: "owner-a" });
         await repo.update(created.id, { name: "After" });
         expect((await repo.findById(created.id))?.name).toBe("After");
       });
 
       it("updates status", async () => {
-        const created = await repo.create({ name: "S" });
+        const created = await repo.create({ name: "S", ownerId: "owner-a" });
         const updated = await repo.update(created.id, { status: "generated" });
         expect(updated?.status).toBe("generated");
       });
 
       it("advances updatedAt", async () => {
-        const created = await repo.create({ name: "T" });
+        const created = await repo.create({ name: "T", ownerId: "owner-a" });
         await new Promise((r) => setTimeout(r, 5));
         const updated = await repo.update(created.id, { name: "T2" });
         expect(Date.parse(updated!.updatedAt)).toBeGreaterThanOrEqual(
@@ -131,13 +149,13 @@ export function runProjectRepositoryContract(
 
     describe("setActiveCodeVersion / setStatus", () => {
       it("sets the active code version", async () => {
-        const created = await repo.create({ name: "V" });
+        const created = await repo.create({ name: "V", ownerId: "owner-a" });
         await repo.setActiveCodeVersion(created.id, "version-123");
         expect((await repo.findById(created.id))?.activeCodeVersionId).toBe("version-123");
       });
 
       it("sets status", async () => {
-        const created = await repo.create({ name: "V" });
+        const created = await repo.create({ name: "V", ownerId: "owner-a" });
         await repo.setStatus(created.id, "generated");
         expect((await repo.findById(created.id))?.status).toBe("generated");
       });
@@ -152,7 +170,7 @@ export function runProjectRepositoryContract(
 
     describe("delete", () => {
       it("removes the project", async () => {
-        const created = await repo.create({ name: "Doomed" });
+        const created = await repo.create({ name: "Doomed", ownerId: "owner-a" });
         await repo.delete(created.id);
         expect(await repo.findById(created.id)).toBeNull();
       });
@@ -162,7 +180,7 @@ export function runProjectRepositoryContract(
       });
 
       it("returns the file-bearing rows so the caller can clean up", async () => {
-        const created = await repo.create({ name: "WithFiles" });
+        const created = await repo.create({ name: "WithFiles", ownerId: "owner-a" });
         const result = await repo.delete(created.id);
         // Shape matters even when empty: the route iterates these unconditionally.
         expect(Array.isArray(result?.assets)).toBe(true);
@@ -170,8 +188,8 @@ export function runProjectRepositoryContract(
       });
 
       it("does not affect other projects", async () => {
-        const keep = await repo.create({ name: "Keep" });
-        const drop = await repo.create({ name: "Drop" });
+        const keep = await repo.create({ name: "Keep", ownerId: "owner-a" });
+        const drop = await repo.create({ name: "Drop", ownerId: "owner-a" });
         await repo.delete(drop.id);
         expect(await repo.findById(keep.id)).not.toBeNull();
       });
@@ -182,7 +200,7 @@ export function runProjectRepositoryContract(
         // Deliberate narrowing — overrides are their own repositories and their own
         // tables in the Prisma schema. Verified safe: apps/web reads them only from the
         // dedicated endpoints. See ProjectRecord's doc comment.
-        const created = await repo.create({ name: "Clean" });
+        const created = await repo.create({ name: "Clean", ownerId: "owner-a" });
         const found = (await repo.findById(created.id)) as Record<string, unknown>;
         expect(found.styleOverrides).toBeUndefined();
         expect(found.contentOverrides).toBeUndefined();

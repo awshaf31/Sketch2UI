@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, ProjectRepository, TrainingRepository } from "../types.js";
+import type { AssetRepository, PageRepository, ProjectRepository, TrainingRepository } from "../types.js";
 
 /**
  * TrainingRepository CONTRACT — Phase 8 amendment §14.
@@ -17,6 +17,7 @@ export function runTrainingRepositoryContract(
     training: TrainingRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -46,10 +47,12 @@ export function runTrainingRepositoryContract(
       const repos = await makeRepositories();
       training = repos.training;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      const pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       assetId = (
         await repos.assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,

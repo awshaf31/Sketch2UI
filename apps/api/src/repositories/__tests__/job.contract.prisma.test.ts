@@ -7,6 +7,7 @@ const reachable = await databaseReachable();
 if (reachable) {
   const { PrismaJobRepository } = await import("../prisma/job.repository.js");
   const { PrismaProjectRepository } = await import("../prisma/project.repository.js");
+  const { PrismaPageRepository } = await import("../prisma/page.repository.js");
   const { PrismaAssetRepository } = await import("../prisma/asset.repository.js");
   const { getPrismaClient } = await import("../prisma/client.js");
   const { afterAll } = await import("vitest");
@@ -16,6 +17,7 @@ if (reachable) {
     async () => ({
       jobs: new PrismaJobRepository(),
       projects: new PrismaProjectRepository(),
+      pages: new PrismaPageRepository(),
       assets: new PrismaAssetRepository(),
     }),
     async () => {

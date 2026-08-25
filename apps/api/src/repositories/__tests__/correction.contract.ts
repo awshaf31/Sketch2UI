@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, CorrectionRepository, DetectionRepository, ProjectRepository } from "../types.js";
+import type { AssetRepository, CorrectionRepository, DetectionRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * CorrectionRepository CONTRACT — Phase 8 amendment §14.
@@ -16,6 +16,7 @@ export function runCorrectionRepositoryContract(
     detections: DetectionRepository;
     assets: AssetRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -23,6 +24,7 @@ export function runCorrectionRepositoryContract(
     let corrections: CorrectionRepository;
     let projects: ProjectRepository;
     let projectId: string;
+    let pageId: string;
     let detectionId: string;
     let otherDetectionId: string;
 
@@ -32,10 +34,12 @@ export function runCorrectionRepositoryContract(
       corrections = repos.corrections;
       projects = repos.projects;
 
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       const assetId = (
         await repos.assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
@@ -46,6 +50,7 @@ export function runCorrectionRepositoryContract(
       detectionId = (
         await repos.detections.create({
           projectId,
+          pageId,
           sourceAssetId: assetId,
           className: "button",
           bbox: { x: 0, y: 0, width: 0.1, height: 0.1 },
@@ -55,6 +60,7 @@ export function runCorrectionRepositoryContract(
       otherDetectionId = (
         await repos.detections.create({
           projectId,
+          pageId,
           sourceAssetId: assetId,
           className: "card",
           bbox: { x: 0.2, y: 0.2, width: 0.3, height: 0.3 },
@@ -67,6 +73,7 @@ export function runCorrectionRepositoryContract(
       it("mints an id, sets source to 'user', and stamps a timestamp", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "created",
           newClassName: "button",
@@ -79,6 +86,7 @@ export function runCorrectionRepositoryContract(
       it("round-trips class_changed fields", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "class_changed",
           oldClassName: "input",
@@ -91,6 +99,7 @@ export function runCorrectionRepositoryContract(
       it("round-trips bbox_changed fields exactly", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "bbox_changed",
           oldBBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.1 },
@@ -103,6 +112,7 @@ export function runCorrectionRepositoryContract(
       it("round-trips explicit null parentDetectionId (root) — NOT the same as absent", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "parent_changed",
           oldParentDetectionId: otherDetectionId,
@@ -116,6 +126,7 @@ export function runCorrectionRepositoryContract(
       it("leaves parentDetectionId fields OUT entirely when not provided", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "order_changed",
           oldDisplayOrder: 1,
@@ -128,6 +139,7 @@ export function runCorrectionRepositoryContract(
       it("round-trips displayOrder 0 (falsy but meaningful)", async () => {
         const record = await corrections.append({
           projectId,
+          pageId,
           detectionId,
           type: "order_changed",
           newDisplayOrder: 0,
@@ -138,19 +150,19 @@ export function runCorrectionRepositoryContract(
 
     describe("list", () => {
       it("returns a project's records in CHRONOLOGICAL order", async () => {
-        await corrections.append({ projectId, detectionId, type: "created", newClassName: "a" });
+        await corrections.append({ projectId, pageId, detectionId, type: "created", newClassName: "a" });
         await new Promise((r) => setTimeout(r, 5));
-        await corrections.append({ projectId, detectionId, type: "class_changed", newClassName: "b" });
+        await corrections.append({ projectId, pageId, detectionId, type: "class_changed", newClassName: "b" });
         await new Promise((r) => setTimeout(r, 5));
-        await corrections.append({ projectId, detectionId, type: "class_changed", newClassName: "c" });
+        await corrections.append({ projectId, pageId, detectionId, type: "class_changed", newClassName: "c" });
 
         const list = await corrections.list(projectId);
         expect(list.map((r) => r.newClassName)).toEqual(["a", "b", "c"]);
       });
 
       it("scopes to one detection when detectionId is given", async () => {
-        await corrections.append({ projectId, detectionId, type: "created", newClassName: "mine" });
-        await corrections.append({ projectId, detectionId: otherDetectionId, type: "created", newClassName: "theirs" });
+        await corrections.append({ projectId, pageId, detectionId, type: "created", newClassName: "mine" });
+        await corrections.append({ projectId, pageId, detectionId: otherDetectionId, type: "created", newClassName: "theirs" });
 
         const list = await corrections.list(projectId, detectionId);
         expect(list.map((r) => r.newClassName)).toEqual(["mine"]);
@@ -163,7 +175,7 @@ export function runCorrectionRepositoryContract(
 
     describe("cascade", () => {
       it("deleting the project removes its correction records", async () => {
-        await corrections.append({ projectId, detectionId, type: "created", newClassName: "a" });
+        await corrections.append({ projectId, pageId, detectionId, type: "created", newClassName: "a" });
         await projects.delete(projectId);
         expect(await corrections.list(projectId)).toEqual([]);
       });

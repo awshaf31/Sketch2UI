@@ -39,12 +39,22 @@ export class PrismaContentOverrideRepository implements ContentOverrideRepositor
     return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
   }
 
+  async mapForPage(pageId: string): Promise<Record<string, ContentOverride>> {
+    const rows = await this.prisma.contentOverride.findMany({ where: { pageId } });
+    return Object.fromEntries(rows.map((r) => [r.detectionId, toValue(r)]));
+  }
+
   async findByDetection(projectId: string, detectionId: string): Promise<ContentOverride | null> {
     const row = await this.prisma.contentOverride.findFirst({ where: { detectionId, projectId } });
     return row ? toValue(row) : null;
   }
 
-  async put(projectId: string, detectionId: string, value: ContentOverride): Promise<ContentOverride | null> {
+  async put(
+    projectId: string,
+    pageId: string,
+    detectionId: string,
+    value: ContentOverride
+  ): Promise<ContentOverride | null> {
     if (isEmpty(value)) {
       await this.prisma.contentOverride.deleteMany({ where: { detectionId, projectId } });
       return null;
@@ -57,7 +67,7 @@ export class PrismaContentOverrideRepository implements ContentOverrideRepositor
     };
     const row = await this.prisma.contentOverride.upsert({
       where: { detectionId },
-      create: { projectId, detectionId, ...data },
+      create: { projectId, pageId, detectionId, ...data },
       update: data,
     });
     return toValue(row);

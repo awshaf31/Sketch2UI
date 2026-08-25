@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { CodeVersionRepository, ProjectRepository } from "../types.js";
+import type { CodeVersionRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * CodeVersionRepository CONTRACT — Phase 8 amendment §12.
@@ -15,16 +15,20 @@ export function runCodeVersionRepositoryContract(
   makeRepositories: () => Promise<{
     codeVersions: CodeVersionRepository;
     projects: ProjectRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
   describe(`CodeVersionRepository contract — ${name}`, () => {
     let codeVersions: CodeVersionRepository;
     let projects: ProjectRepository;
+    let pages: PageRepository;
     let projectId: string;
+    let pageId: string;
 
     const input = (over: Record<string, unknown> = {}) => ({
       projectId,
+      pageId,
       source: "generated" as const,
       html: "<div>hi</div>",
       css: "div{color:red}",
@@ -36,8 +40,17 @@ export function runCodeVersionRepositoryContract(
       const repos = await makeRepositories();
       codeVersions = repos.codeVersions;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host" })).id;
+      pages = repos.pages;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      pageId = (await pages.create({ projectId, name: "Page 1" })).id;
     });
+
+    /** A second project + its own page — for tests asserting per-page isolation. */
+    async function createOther(): Promise<{ projectId: string; pageId: string }> {
+      const other = await projects.create({ name: "Other", ownerId: "test-owner" });
+      const otherPageId = (await pages.create({ projectId: other.id, name: "Page 1" })).id;
+      return { projectId: other.id, pageId: otherPageId };
+    }
 
     describe("create", () => {
       it("assigns versionNumber 1 to the first version", async () => {
@@ -52,10 +65,10 @@ export function runCodeVersionRepositoryContract(
         expect(v3.versionNumber).toBe(3);
       });
 
-      it("numbers each project independently", async () => {
-        const other = await projects.create({ name: "Other" });
+      it("numbers each page independently", async () => {
+        const other = await createOther();
         await codeVersions.create(input());
-        const otherFirst = await codeVersions.create(input({ projectId: other.id }));
+        const otherFirst = await codeVersions.create(input({ projectId: other.projectId, pageId: other.pageId }));
         expect(otherFirst.versionNumber).toBe(1);
       });
 
@@ -94,7 +107,7 @@ export function runCodeVersionRepositoryContract(
 
       it("returns null when the version belongs to another project", async () => {
         const v = await codeVersions.create(input());
-        const other = await projects.create({ name: "Other" });
+        const other = await projects.create({ name: "Other", ownerId: "test-owner" });
         expect(await codeVersions.findById(other.id, v.id)).toBeNull();
       });
 
@@ -113,9 +126,9 @@ export function runCodeVersionRepositoryContract(
       });
 
       it("scopes to the project", async () => {
-        const other = await projects.create({ name: "Other" });
+        const other = await createOther();
         await codeVersions.create(input());
-        await codeVersions.create(input({ projectId: other.id }));
+        await codeVersions.create(input({ projectId: other.projectId, pageId: other.pageId }));
         expect(await codeVersions.listByProject(projectId)).toHaveLength(1);
       });
 

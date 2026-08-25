@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { AssetRepository, JobRepository, ProjectRepository } from "../types.js";
+import type { AssetRepository, JobRepository, PageRepository, ProjectRepository } from "../types.js";
 
 /**
  * JobRepository CONTRACT — Phase 8 amendment §16.
@@ -15,6 +15,7 @@ export function runJobRepositoryContract(
     jobs: JobRepository;
     projects: ProjectRepository;
     assets: AssetRepository;
+    pages: PageRepository;
   }>,
   reset: () => Promise<void> | void
 ): void {
@@ -29,10 +30,12 @@ export function runJobRepositoryContract(
       const repos = await makeRepositories();
       jobs = repos.jobs;
       projects = repos.projects;
-      projectId = (await projects.create({ name: "Host" })).id;
+      projectId = (await projects.create({ name: "Host", ownerId: "test-owner" })).id;
+      const pageId = (await repos.pages.create({ projectId, name: "Page 1" })).id;
       assetId = (
         await repos.assets.create({
           projectId,
+          pageId,
           storageKey: "s.png",
           mimeType: "image/png",
           width: 100,
