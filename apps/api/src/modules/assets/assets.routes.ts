@@ -85,6 +85,10 @@ export const assetsRouter = Router({ mergeParams: true });
 assetsRouter.use(requireProjectOwnership);
 assetsRouter.use(requirePageInProject);
 
+interface AssetParams extends PageParams {
+  assetId: string;
+}
+
 // POST /api/projects/:id/pages/:pageId/assets — plan section 18.2 & 19.1: validate
 // upload, never trust the original filename, generate a server-side storage key, and
 // decode dimensions before trusting them.
@@ -138,4 +142,26 @@ assetsRouter.post<PageParams>(
 // GET /api/projects/:id/pages/:pageId/assets
 assetsRouter.get<PageParams>("/", asyncHandler(async (req, res) => {
   res.json(await getRepositories().assets.listByPage(req.params.pageId));
+}));
+
+// GET /api/projects/:id/pages/:pageId/assets/:assetId/image — QA audit DEF-008
+// (docs/qa/MASTER_DEFECT_REGISTER.md): the source sketch used to be served from a
+// flat, unauthenticated-by-ownership `/uploads/:storageKey` static route — gated by
+// `requireAuth` (any logged-in session) but not by project/page ownership, so any
+// authenticated user who learned another user's storageKey could fetch that file
+// directly. This route replaces it: mounted under the already
+// requireProjectOwnership + requirePageInProject-gated `assetsRouter`, and — same
+// existence-enumeration-avoidance reasoning as `boundariesRouter` — 404s (not 403)
+// if the asset doesn't belong to this page.
+assetsRouter.get<AssetParams>("/:assetId/image", asyncHandler(async (req, res) => {
+  const asset = await getRepositories().assets.findById(req.params.assetId);
+  if (!asset || asset.pageId !== req.params.pageId) {
+    return sendError(res, 404, "NOT_FOUND", "Asset not found for this page.");
+  }
+  res.setHeader("Cache-Control", "private, max-age=300");
+  res.sendFile(asset.storageKey, { root: env.uploadsDir }, (err) => {
+    if (err && !res.headersSent) {
+      sendError(res, 404, "NOT_FOUND", "Asset file not found.");
+    }
+  });
 }));

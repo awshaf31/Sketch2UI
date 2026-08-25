@@ -14,9 +14,9 @@ each required to cite exact file:line evidence and distinguish "confirmed" from
 Every fix below has a regression test that was confirmed to fail without the fix and
 pass with it (shown by literally reverting the fix and re-running).
 
-**Total defects logged: 14** (6 fixed, 7 deferred with rationale, 1 inconclusive).
-DEF-010 was fixed in a follow-up session on 2026-08-26, after the original audit
-pass below — see its entry for details.
+**Total defects logged: 14** (7 fixed, 6 deferred with rationale, 1 inconclusive).
+DEF-010 and DEF-008 were fixed in a follow-up session on 2026-08-26, after the
+original audit pass below — see their entries for details.
 
 ---
 
@@ -232,6 +232,41 @@ pass below — see its entry for details.
   after the change.
 - **Status:** ✅ Fixed, live-verified.
 
+### DEF-008 — `/uploads` static route has no per-asset ownership check
+
+- **Category:** SECURITY
+- **Severity / Priority:** P2
+- **Fixed in a follow-up session (2026-08-26)**, immediately after DEF-010 above —
+  originally logged as deferred; see git history for the exact commit.
+- **Location:** `apps/api/src/server.ts`, `apps/api/src/modules/assets/assets.routes.ts`,
+  `apps/web/src/services/api.ts`
+- **Reproduction (before fix):** The source sketch was served from a flat
+  `app.use("/uploads", express.static(env.uploadsDir))`. Gated by `requireAuth` (any
+  logged-in session) but nothing else — any authenticated user who learned another
+  user's `storageKey` (a path/network-log leak, not a guess, since keys are
+  server-generated UUIDs) could fetch that file directly with zero project/page
+  ownership check.
+- **Fix:** Removed the static route entirely. The image is now served from
+  `GET /api/projects/:id/pages/:pageId/assets/:assetId/image`, added to the existing
+  `assetsRouter` (already gated by `requireProjectOwnership` + `requirePageInProject`
+  for every other asset route) — the exact pattern `cropsRouter` and
+  `boundariesRouter` already use, right down to 404ing (not 403) when the asset
+  doesn't belong to the given page, matching the existence-enumeration-avoidance
+  reasoning used everywhere else ownership is checked. `api.assetUrl()` on the
+  frontend now takes `(projectId, pageId, assetId)` instead of a bare `storageKey`;
+  its two call sites in `ProjectWorkspace.tsx` were updated to match (both already
+  had `id`/`currentPageId` in scope).
+- **Regression test:** `apps/api/src/modules/assets/assets.routes.test.ts` — new
+  `describe` block: the owning user gets `200` with the correct bytes; a second,
+  unrelated authenticated user gets `404` (not `200`, not `403`) for the same asset
+  URL. Verified live against the real running dev stack too, not just the isolated
+  test harness: a freshly registered intruder account got `404` on another user's
+  asset image, and the removed `/uploads/<key>` path now 404s outright for an
+  authenticated user where it used to serve any file. `npm run typecheck`,
+  `npm run test` (124 + 262 passing, 2 new), and `npm run test:e2e` (4/4 — every
+  spec loads an asset image through this exact route) all green after the change.
+- **Status:** ✅ Fixed, live-verified.
+
 ---
 
 ## Deferred (real, but out of scope for this pass — see rationale per item)
@@ -265,16 +300,6 @@ verified, not speculative.
 - **Why deferred:** Observability enhancement, not a functional defect — no user-facing
   behavior is wrong, there's just no visibility into how many candidates were
   discarded pre-threshold.
-
-### DEF-008 — `/uploads` static route has no per-asset ownership check
-- **Category:** SECURITY · **Priority:** P2
-- Gated by `requireAuth` (any logged-in session) but not by project/page ownership —
-  any authenticated user who learns another user's `storageKey` can fetch that file
-  directly.
-- **Why deferred:** Real gap, but low-likelihood (storage keys are server-generated
-  UUIDs, never enumerable or guessable). Fixing it properly means routing uploads
-  through an ownership-checked handler (the pattern `cropsRouter` already uses) — a
-  real, if small, architectural change, not a one-line fix.
 
 ### DEF-009 — No rate limiting on `/api/auth/login` or `/register`
 - **Category:** SECURITY · **Priority:** P2
@@ -379,7 +404,8 @@ verified, not speculative.
   swallowed `catch` blocks found anywhere in `Dashboard.tsx`.
 - Ownership middleware coverage — cross-referenced every mounted router in
   `server.ts` against its ownership middleware; no project- or page-scoped route
-  found unprotected (the one real gap found, `/uploads`, is logged as DEF-008).
+  found unprotected (the one real gap found, `/uploads`, was logged and later fixed
+  as DEF-008 — see its entry in "Fixed this pass" above).
 - Session cookie flags (`httpOnly`/`secure`/`sameSite`) — correctly
   environment-conditional, no issue.
 - CORS configuration — locked to a single configured origin, never wildcarded.

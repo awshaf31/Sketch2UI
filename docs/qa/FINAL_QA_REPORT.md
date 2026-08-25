@@ -30,8 +30,8 @@ repository architecture, per the stated constraints.
 | P1 | 2 |
 | P2 | 7 |
 | P3 | 4 |
-| **Fixed** (5 this pass + 1 in a 2026-08-26 follow-up, DEF-010) | **6** |
-| Deferred (real, documented rationale) | 7 |
+| **Fixed** (5 this pass + 2 in a 2026-08-26 follow-up, DEF-010 & DEF-008) | **7** |
+| Deferred (real, documented rationale) | 6 |
 | Inconclusive (flagged, not confirmed) | 1 |
 
 **All audited P0 and P1 issues are fixed** (1/1 P0, 2/2 P1) — this claim is scoped
@@ -78,6 +78,21 @@ exactly to what this pass actually audited; see "What this does NOT claim" below
    (nested-child descent, ascent, top-of-list no-op, and collapse-then-skip all
    behaved correctly); full regression suite (typecheck, 384 unit tests, 4/4 e2e)
    green afterward.
+7. **DEF-008 (P2, SECURITY, fixed 2026-08-26 in the same follow-up session)** — The
+   source sketch was served from a flat `/uploads/:storageKey` static route: gated
+   by `requireAuth` (any logged-in session) but not by project/page ownership, so
+   any authenticated user who learned another user's storageKey could fetch that
+   file directly. Fixed by removing the static route and serving the image from
+   `GET /api/projects/:id/pages/:pageId/assets/:assetId/image` instead — added to
+   the existing `assetsRouter`, which already carries the `requireProjectOwnership`
+   + `requirePageInProject` gates every other page-owned resource uses (the same
+   pattern `cropsRouter`/`boundariesRouter` already followed), 404ing rather than
+   403ing on a cross-user request per the app's existing existence-enumeration-
+   avoidance convention. New HTTP-integration tests cover both the owning-user
+   `200` and the cross-user `404`; live-verified against the real running dev
+   stack too (a freshly registered account got `404` on another user's asset, and
+   the old `/uploads/<key>` path now 404s outright). Full regression green
+   afterward (typecheck, 386 unit tests including the 2 new ones, 4/4 e2e).
 
 ## Deferred (real, not fixed — see the register for full rationale per item)
 
@@ -89,8 +104,6 @@ batched-query rewrite) rather than a small, contained fix:
   overlapping/different-class boxes on the same region can both persist.
 - **DEF-007 (P3)** No audit trail for confidence-threshold-dropped detections; a
   dead per-request confidence override parameter.
-- **DEF-008 (P2)** `/uploads` static file route checks authentication but not
-  per-asset ownership (low-likelihood given UUID storage keys, but real).
 - **DEF-009 (P2)** No rate limiting on login/register.
 - **DEF-011 (P2)** Canvas detection resize handles are keyboard-inaccessible.
 - **DEF-012 (P2)** N+1 query/image-decode pattern in the export route — will scale
@@ -147,9 +160,10 @@ No existing test was modified or weakened to make it pass.
 
 ## Remaining risks
 
-- **DEF-008/DEF-009** (uploads ownership gap, no rate limiting) are the two
-  highest-value security follow-ups — both are well-understood, standard fixes,
-  just deliberately out of scope for "smallest fix, not new architecture" here.
+- **DEF-009** (no rate limiting on login/register) is the remaining highest-value
+  security follow-up — a well-understood, standard fix, just deliberately out of
+  scope for "smallest fix, not new architecture" here. (DEF-008, the uploads
+  ownership gap this note used to pair it with, was fixed 2026-08-26 — see above.)
 - **DEF-002's fix pattern should be reviewed for other "client re-derives, server
   never does" cases** — this exact class of bug (client-side live state diverging
   from server-persisted state with no reconciliation path short of a heavy

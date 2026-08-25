@@ -37,8 +37,6 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use(requireAuth);
 
-app.use("/uploads", express.static(env.uploadsDir));
-
 // Page-owned resources — Phase D3. Nested under /pages/:pageId; each router is
 // gated by requireProjectOwnership then requirePageInProject (see each router file).
 app.use("/api/projects/:id/pages/:pageId/assets/:assetId/detect", detectRouter);

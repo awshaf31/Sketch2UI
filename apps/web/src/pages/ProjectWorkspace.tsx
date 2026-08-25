@@ -790,7 +790,7 @@ export default function ProjectWorkspace() {
       <WorkspaceUnavailable
         project={project}
         asset={asset}
-        assetImageUrl={asset ? api.assetUrl(asset.storageKey) : null}
+        assetImageUrl={asset && id && currentPageId ? api.assetUrl(id, currentPageId, asset.id) : null}
         hasCodeVersion={versionList.length > 0}
         html={html}
         css={css}
@@ -887,7 +887,11 @@ export default function ProjectWorkspace() {
           canvas={
             <CanvasPanel
               asset={asset}
-              imageUrl={api.assetUrl(asset.storageKey)}
+              // id/currentPageId are non-null here: this branch only renders once
+              // `asset` is set, and every effect that sets `asset` is itself gated
+              // on both already being non-null (e.g. the `listAssets`/`uploadAsset`
+              // effects above) — TS just can't see that cross-effect invariant.
+              imageUrl={api.assetUrl(id!, currentPageId!, asset.id)}
               detections={visibleDetections}
               selectedId={selectedId}
               activeClass={activeClass}
