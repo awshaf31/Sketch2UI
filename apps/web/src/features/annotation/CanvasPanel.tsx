@@ -23,6 +23,10 @@ const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 const FIT_MARGIN = 0.96;
+// Matches the `lg` spacing token (tailwind.config.js) — the floor this canvas always
+// keeps around the sketch, and the amount actually used once zoomed content no longer
+// fits (see the centering comment below).
+const BASE_PADDING_PX = 16;
 
 function clampZoom(z: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 100) / 100));
@@ -61,6 +65,11 @@ export function CanvasPanel({
 }: CanvasPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  // Measured scroll-container size, used to compute centering padding below. Kept in
+  // state (not read directly at render time) because the container's size can change
+  // for reasons that have nothing to do with zoom — a tablet drawer opening, the dock
+  // resizing — and only a ResizeObserver callback (not the render phase) sees that.
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   // Tracks whether the user has explicitly changed zoom for the CURRENT asset, so a
   // later container-resize re-fit (below) never fights a deliberate zoom choice —
   // only the automatic, no-manual-input fit path is resize-reactive.
@@ -96,6 +105,7 @@ export function CanvasPanel({
     const el = scrollRef.current;
     if (!el) return;
     const observer = new ResizeObserver(() => {
+      setContainerSize({ width: el.clientWidth, height: el.clientHeight });
       if (!userAdjustedZoomRef.current) fitToScreen();
     });
     observer.observe(el);
@@ -147,9 +157,23 @@ export function CanvasPanel({
         <div
           ref={scrollRef}
           onWheel={handleWheel}
-          className="flex h-full items-center justify-center overflow-auto bg-surface-sunken p-lg"
+          // Centering degrades to a flat BASE_PADDING_PX (not a flexbox center) once
+          // the zoomed content no longer fits — flex/grid centering of overflowing
+          // content scrolls asymmetrically from the center outward in most browsers,
+          // which read as "scrolling/zoom feels stuck" (reported directly against the
+          // earlier flex-centered version). Padding-based centering has no such
+          // quirk: it's ordinary block layout, so `overflow: auto` always scrolls
+          // linearly from the true top-left, exactly like before zoom/centering
+          // existed, and only ADDS breathing room when there's room to add it.
+          className="h-full overflow-auto bg-surface-sunken"
+          style={{
+            paddingLeft: Math.max(BASE_PADDING_PX, (containerSize.width - asset.width * zoom) / 2),
+            paddingRight: Math.max(BASE_PADDING_PX, (containerSize.width - asset.width * zoom) / 2),
+            paddingTop: Math.max(BASE_PADDING_PX, (containerSize.height - asset.height * zoom) / 2),
+            paddingBottom: Math.max(BASE_PADDING_PX, (containerSize.height - asset.height * zoom) / 2),
+          }}
         >
-          <div className="shrink-0" style={{ width: asset.width * zoom }}>
+          <div style={{ width: asset.width * zoom }}>
             <AnnotationCanvas
               asset={asset}
               imageUrl={imageUrl}

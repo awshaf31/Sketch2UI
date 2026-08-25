@@ -270,6 +270,28 @@ export default function AnnotationCanvas({
     return liveOverridesRef.current[detection.id] ?? toPixels(detection.bbox, asset);
   }
 
+  // SVG paints later elements on top, and a filled (even low-opacity) rect intercepts
+  // pointer events across its whole area — so whichever detection happens to come
+  // LATER in `detections` wins every click in an overlap, regardless of which one is
+  // visually "inside" the other. A large container (e.g. "section") that happens to be
+  // ordered after a small nested one (e.g. a "button" fully inside it) then makes that
+  // inner detection permanently unclickable, since the container's rect always paints
+  // over it. Sorting smaller-on-top fixes this without touching any stored order,
+  // geometry, or the `detections` prop itself (this is a render-order-only derived
+  // list, never written back).
+  //
+  // Deliberately NOT also forcing the selected detection to render on top regardless
+  // of size: an earlier version of this fix did that (to keep resize handles from
+  // ever being occluded), but it silently reintroduces the exact bug this fix exists
+  // to solve — once a large box is selected, it would permanently block clicking
+  // through to any smaller box nested inside it, which is precisely the "can't select
+  // the thing inside" complaint. A nested child is by definition inside its parent's
+  // edges, so it essentially never overlaps the parent's corner handles in practice;
+  // that small risk is far better than reintroducing the original bug.
+  const renderOrder = [...detections].sort(
+    (a, b) => b.bbox.width * b.bbox.height - a.bbox.width * a.bbox.height
+  );
+
   return (
     <div className="relative w-full select-none" style={{ aspectRatio: `${asset.width} / ${asset.height}` }}>
       <img
@@ -291,7 +313,7 @@ export default function AnnotationCanvas({
           setDrag({ kind: "draw", startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
         }}
       >
-        {detections.map((detection) => {
+        {renderOrder.map((detection) => {
           const box = pixelBBoxFor(detection);
           const selected = detection.id === selectedId;
           // Model-sourced boxes get a distinct colour and a dashed outline, following
