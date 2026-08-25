@@ -58,12 +58,14 @@ export function WorkspaceToolbar({
       {hasAsset && (
         <div className="flex items-center gap-sm">
           <Tooltip content="Run the experimental component detector on this sketch">
-            <Button variant="tinted" tint="violet" size="sm" onClick={onDetect} disabled={detecting}>
-              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-detection-model" />
+            <Button variant="primary" size="sm" onClick={onDetect} disabled={detecting}>
+              <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-text-inverse/70" />
               {detecting ? "Detecting…" : "Detect"}
               <Badge tone="violet">Beta</Badge>
             </Button>
           </Tooltip>
+
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
 
           <Tooltip content="Snapshot this sketch's current boxes as approved training data">
             <Button variant="tinted" tint="success" size="sm" onClick={onApprove} disabled={approving}>
@@ -78,7 +80,7 @@ export function WorkspaceToolbar({
           </Tooltip>
 
           <Tooltip content="Save version — generates and saves the current code">
-            <Button variant="primary" size="sm" onClick={onSaveVersion} disabled={saving}>
+            <Button variant="secondary" size="sm" onClick={onSaveVersion} disabled={saving}>
               {saving ? "Saving…" : "Save version"}
             </Button>
           </Tooltip>

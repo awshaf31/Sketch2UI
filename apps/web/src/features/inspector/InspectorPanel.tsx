@@ -10,6 +10,7 @@ import { ALL_CLASSES, contentFieldsFor, validateGeometryOverride } from "@sketch
 import { AccordionSection } from "./AccordionSection.js";
 import { InspectorSectionFooter } from "./InspectorSectionFooter.js";
 import { Button } from "../../components/Button.js";
+import { EmptyState } from "../../components/EmptyState.js";
 import { Field } from "../../components/Field.js";
 import { Input, Textarea } from "../../components/Input.js";
 import { Select } from "../../components/Select.js";
@@ -564,8 +565,13 @@ export default function InspectorPanel({
         <h2 className="border-b border-border px-md py-sm text-2xs font-medium uppercase tracking-wide text-text-muted">
           Inspector
         </h2>
-        <div className="px-md py-lg text-xs text-text-muted">
-          Select a component on the canvas or in the tree to edit its class, style, geometry, structure and content.
+        <EmptyState title="Select a component" description="to inspect and edit" />
+        <div className="mt-auto flex flex-wrap justify-center gap-sm border-t border-border px-md py-sm">
+          {["Detection", "Geometry", "Structure", "Style", "Content"].map((section) => (
+            <span key={section} className="text-2xs uppercase tracking-wide text-text-muted">
+              {section}
+            </span>
+          ))}
         </div>
       </div>
     );

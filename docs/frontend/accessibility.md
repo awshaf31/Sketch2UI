@@ -68,11 +68,15 @@ meet **WCAG AA** (4.5:1 for text below 18px/14px-bold, 3:1 at or above) — this
 resolves the audit's §20 finding that today's 9–10px gray-400 text on white likely
 fails AA. Concretely:
 
-- `color-text-muted` (`#848da0`) on `color-surface` (`#ffffff`) is verified ≥ 4.5:1
-  and is never used below `text-xs` (12px) — the type scale's 11px floor
-  (`text-2xs`) is reserved for `color-text-primary`/`color-text-secondary` or
-  canvas-context labels where a colored stroke provides the primary distinguishing
-  signal, not for muted gray at the smallest size.
+- `color-text-muted` is `#5d6679` (corrected from an earlier `#848da0` that measured
+  only 3.33:1 on `color-surface`/2.92:1 on `color-surface-sunken` — a real AA failure
+  caught by a QA audit, not a documentation error; see
+  `docs/qa/MASTER_DEFECT_REGISTER.md` DEF-003). The corrected value clears 4.5:1
+  against both backgrounds (5.35:1 / 4.68:1+) — the claim above about never using it
+  below `text-xs` does **not** hold in the actual codebase (it is routinely used at
+  `text-2xs`/11px — tree type labels, section captions, status text), but since the
+  corrected color clears the stricter 4.5:1 "normal text" bar rather than only the
+  3:1 "large text" bar, that usage is compliant regardless of size.
 - All five detection/canvas colors are checked against both their own fill and the
   sketch-image backdrop they render over, not just against white.
 

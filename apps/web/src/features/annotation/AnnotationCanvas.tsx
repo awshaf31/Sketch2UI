@@ -30,11 +30,27 @@ const STROKE_CLASS: Record<DetectionTone, string> = {
   manual: "stroke-detection-manual",
 };
 
+// Color only — NOT combined with Tailwind's `/<n>` opacity-modifier shorthand. That
+// shorthand only compiles for values in Tailwind's default opacity scale (multiples of
+// 5); `fill-selection/8` and `fill-detection-model/6` silently failed to generate any
+// CSS at all, so the browser fell back to SVG's own built-in default — solid opaque
+// black — for every "selected" and "model" box (the two most common tones). That
+// silent failure is the confirmed root cause of detections rendering as large solid
+// black regions instead of a subtle tint. Fill-opacity below is applied as a plain
+// numeric SVG prop instead, which needs no CSS generation step at all and can't
+// silently vanish the same way for any future opacity value.
 const FILL_CLASS: Record<DetectionTone, string> = {
-  selected: "fill-selection/8",
-  model: "fill-detection-model/6",
-  container: "fill-primary/5",
-  manual: "fill-detection-manual/5",
+  selected: "fill-selection",
+  model: "fill-detection-model",
+  container: "fill-primary",
+  manual: "fill-detection-manual",
+};
+
+const FILL_OPACITY: Record<DetectionTone, number> = {
+  selected: 0.08,
+  model: 0.06,
+  container: 0.05,
+  manual: 0.05,
 };
 
 const TEXT_FILL_CLASS: Record<DetectionTone, string> = {
@@ -287,6 +303,15 @@ export default function AnnotationCanvas({
           // again with no re-detect.
           const rejected = detection.status === "rejected";
           const tone = detectionTone(detection, selected);
+          // Rejected (outside the page boundary) detections read as unambiguously
+          // "excluded" — true neutral gray, not just a dimmer version of their own
+          // class color — while still keeping the opacity dip below for a second,
+          // independent signal (canvas-design.md's "at least two channels" rule).
+          const muted = rejected && !selected;
+          const strokeClass = muted ? "stroke-text-muted" : STROKE_CLASS[tone];
+          const fillClass = muted ? "fill-text-muted" : FILL_CLASS[tone];
+          const fillOpacity = muted ? 0.05 : FILL_OPACITY[tone];
+          const textClass = muted ? "fill-text-muted" : TEXT_FILL_CLASS[tone];
           return (
             <g key={detection.id} opacity={rejected && !selected ? 0.35 : 1}>
               <rect
@@ -294,7 +319,8 @@ export default function AnnotationCanvas({
                 y={box.y}
                 width={box.width}
                 height={box.height}
-                className={cn(FILL_CLASS[tone], "focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary", STROKE_CLASS[tone])}
+                className={cn(fillClass, "focus-visible:outline focus-visible:outline-2 focus-visible:outline-selection", strokeClass)}
+                fillOpacity={fillOpacity}
                 strokeWidth={selected ? 2.5 : 1.5}
                 strokeDasharray={fromModel && !selected ? "6 3" : undefined}
                 tabIndex={0}
@@ -321,7 +347,8 @@ export default function AnnotationCanvas({
               <text
                 x={box.x + 4}
                 y={box.y + 14}
-                className={cn("pointer-events-none font-mono text-2xs", TEXT_FILL_CLASS[tone])}
+                className={cn("pointer-events-none stroke-surface font-mono text-2xs", textClass)}
+                style={{ paintOrder: "stroke", strokeWidth: 3, strokeLinejoin: "round" }}
               >
                 {detection.className}
                 {fromModel ? ` ${detection.confidence.toFixed(2)}` : ""}

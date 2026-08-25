@@ -976,7 +976,7 @@ export default function ProjectWorkspace() {
                   ))}
                 </div>
               )}
-              <div className="flex border-b border-border">
+              <div className="flex border-b border-border bg-surface-sunken">
                 {(["preview", "code"] as const).map((t) => (
                   <button
                     key={t}
@@ -984,7 +984,7 @@ export default function ProjectWorkspace() {
                     className={cn(
                       "px-md py-sm text-xs font-medium uppercase tracking-wide transition-colors duration-fast",
                       rightTab === t
-                        ? "border-b-2 border-primary text-text-primary"
+                        ? "border-b-2 border-primary bg-surface text-text-primary"
                         : "text-text-muted hover:text-text-secondary"
                     )}
                   >

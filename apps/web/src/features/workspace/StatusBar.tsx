@@ -34,6 +34,17 @@ export function StatusBar({ segments }: { segments: ReactNode[] }) {
   );
 }
 
+/** Short uppercase prefix ("AI"/"Page") distinguishing which segment a status
+ * message belongs to — the fix for the model warning and boundary warning
+ * otherwise reading as one undifferentiated stream of text. */
+function SegmentLabel({ children }: { children: ReactNode }) {
+  return (
+    <span className="mr-2xs font-mono text-2xs font-semibold uppercase tracking-wide text-text-muted">
+      {children}
+    </span>
+  );
+}
+
 function DismissIcon() {
   return (
     <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
@@ -65,6 +76,7 @@ export function DetectJobSegment({
     return (
       <span className="flex shrink-0 items-center gap-sm whitespace-nowrap">
         <StatusIndicator tone="error">
+          <SegmentLabel>AI</SegmentLabel>
           <strong className="font-semibold text-text-primary">Detection failed.</strong> {error}
           {retryable === false && " This will not succeed on retry."}
         </StatusIndicator>
@@ -75,6 +87,7 @@ export function DetectJobSegment({
   if (running) {
     return (
       <StatusIndicator tone="violet" className="shrink-0 whitespace-nowrap">
+        <SegmentLabel>AI</SegmentLabel>
         Detecting components… {stage ? stage.replace(/_/g, " ") : "queued"}
         {typeof progress === "number" ? ` · ${progress}%` : ""}
       </StatusIndicator>
@@ -83,6 +96,7 @@ export function DetectJobSegment({
   if (modelCount > 0) {
     return (
       <StatusIndicator tone="violet" className="shrink-0 whitespace-nowrap">
+        <SegmentLabel>AI</SegmentLabel>
         <strong className="font-semibold text-text-primary">{modelCount}</strong> box
         {modelCount === 1 ? "" : "es"} from the detector (dashed purple). This model is{" "}
         <strong className="font-semibold text-text-primary">experimental</strong> — accuracy varies a
@@ -113,6 +127,7 @@ export function PageBoundarySegment({
   return (
     <span className="flex shrink-0 items-center gap-sm whitespace-nowrap">
       <StatusIndicator tone="boundary">
+        <SegmentLabel>Page</SegmentLabel>
         {boundary.applied ? (
           <>
             <strong className="font-semibold text-text-primary">Page detected</strong> — confidence:{" "}

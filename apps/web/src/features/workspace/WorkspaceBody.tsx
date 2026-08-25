@@ -19,9 +19,11 @@ import { Drawer } from "../../components/Drawer.js";
 // the canvas takes the full width. The `layers`/`canvas`/`inspector`/`dock` content
 // itself is identical in both layouts — only how it's framed changes.
 //
-// The dock's height is a fixed 40% for now, not yet resizable/collapsible —
+// The dock's height is a fixed 32% for now, not yet resizable/collapsible —
 // code-preview-design.md's resize/collapse behavior is explicitly a later-phase
-// capability, not part of this shell.
+// capability, not part of this shell. (Lowered from an original 40% during the
+// workspace visual-polish pass — the canvas region needed more of the available
+// vertical space than a fixed 40% dock left it.)
 
 interface WorkspaceBodyProps {
   layers: ReactNode;
@@ -50,7 +52,7 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet }: Wor
           <div className="flex flex-1 flex-col overflow-hidden">{canvas}</div>
         </div>
 
-        <Panel bordered="top" className="h-[40%] shrink-0 overflow-hidden">
+        <Panel bordered="top" className="h-[32%] shrink-0 overflow-hidden">
           {dock}
         </Panel>
 

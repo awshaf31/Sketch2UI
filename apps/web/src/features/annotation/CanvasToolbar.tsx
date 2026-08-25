@@ -43,10 +43,11 @@ interface CanvasToolbarProps {
 
 export function CanvasToolbar({ zoom, onZoomIn, onZoomOut, onFit }: CanvasToolbarProps) {
   return (
-    <div className="flex items-center gap-2xs">
+    <div className="flex items-center gap-2xs rounded-sm border border-border px-2xs py-2xs">
       <IconButton aria-label="Zoom out" size="sm" icon={<ZoomOutIcon />} onClick={onZoomOut} />
       <span className="w-11 text-center font-mono text-xs text-text-secondary">{Math.round(zoom * 100)}%</span>
       <IconButton aria-label="Zoom in" size="sm" icon={<ZoomInIcon />} onClick={onZoomIn} />
+      <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
       <IconButton aria-label="Fit sketch to screen" size="sm" icon={<FitScreenIcon />} onClick={onFit} />
     </div>
   );

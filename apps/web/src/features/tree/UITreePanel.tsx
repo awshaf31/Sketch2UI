@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { UINode, UIRoot } from "@sketch2ui/shared-types";
 import { cn } from "../../components/cn.js";
+import { EmptyState } from "../../components/EmptyState.js";
 
 // docs/frontend/component-specification.md — Tree Node. Restyled onto tokens; adds a
 // per-type icon (replacing the bare font-mono type label as the primary visual — the
@@ -163,7 +164,8 @@ function TreeNode({
         style={{ paddingLeft: depth * 16 }}
         aria-expanded={hasChildren ? !collapsed : undefined}
         className={cn(
-          "flex w-full items-center gap-xs rounded-sm px-xs py-2xs text-left text-sm transition-colors duration-fast hover:bg-surface-sunken",
+          "flex w-full items-center gap-xs rounded-sm px-xs py-xs text-left text-sm transition-colors duration-fast hover:bg-surface-sunken",
+          "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-primary",
           selected ? "bg-selection-subtle text-selection" : fromModel ? "text-detection-model" : "text-text-secondary"
         )}
       >
@@ -200,7 +202,11 @@ function TreeNode({
         )}
       </button>
       {hasChildren && !collapsed && (
-        <ul>
+        // A small constant offset, not depth-based — the child buttons already carry
+        // the real (absolute, per-depth) indentation via their own inline
+        // `paddingLeft`, so this line must stay independent of `depth` or the two
+        // would stack and double the indentation at every nesting level.
+        <ul className="ml-1.5 border-l border-border">
           {node.children.map((child) => (
             <TreeNode
               key={child.id}
@@ -224,7 +230,12 @@ export default function UITreePanel({
   modelDetectionIds,
 }: UITreePanelProps) {
   if (root.children.length === 0) {
-    return <p className="p-md text-xs text-text-muted">Draw boxes on the sketch to build the UI tree.</p>;
+    return (
+      <EmptyState
+        title="No components yet"
+        description="Draw boxes on the sketch to build the UI tree."
+      />
+    );
   }
 
   return (

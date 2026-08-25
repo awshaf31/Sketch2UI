@@ -1,7 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
+import type { NextFunction, Request, Response } from "express";
 import { Router } from "express";
-import multer from "multer";
+import multer, { MulterError } from "multer";
 import imageSize from "image-size";
 import { v4 as uuid } from "uuid";
 import { env } from "../../config/env.js";
@@ -52,6 +53,34 @@ const upload = multer({
   },
 });
 
+// QA audit DEF-004 (docs/qa/MASTER_DEFECT_REGISTER.md): `upload.single("file")` is
+// plain Express middleware (callback-style `next(err)`, not the async/await style
+// `asyncHandler` wraps), so a multer-level rejection — an oversized file
+// (`MulterError`, code `LIMIT_FILE_SIZE`) or an unsupported MIME type (the plain
+// `Error` thrown by `fileFilter` above) — used to skip straight past every route
+// handler and land in the catch-all `errorHandler`, which answers every unhandled
+// error with a generic `500 INTERNAL "An unexpected server error occurred."` This
+// misrepresented an ordinary client input-validation failure as a server crash (wrong
+// status code, no actionable message) — placed directly after `upload.single`, this
+// intercepts exactly those two multer-level failures and reports them the same way
+// every other validation failure in this router already does; anything else is passed
+// through unchanged to the real error handler.
+function handleUploadError(err: unknown, _req: Request, res: Response, next: NextFunction): void {
+  if (err instanceof MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      sendError(res, 413, "VALIDATION_FAILED", `File is too large — the limit is ${MAX_SIZE_BYTES / (1024 * 1024)}MB.`);
+      return;
+    }
+    sendError(res, 400, "VALIDATION_FAILED", `Upload failed: ${err.message}.`);
+    return;
+  }
+  if (err instanceof Error && err.message === "unsupported file type") {
+    sendError(res, 400, "VALIDATION_FAILED", "Unsupported file type — PNG, JPEG, or WebP only.");
+    return;
+  }
+  next(err);
+}
+
 export const assetsRouter = Router({ mergeParams: true });
 assetsRouter.use(requireProjectOwnership);
 assetsRouter.use(requirePageInProject);
@@ -59,7 +88,11 @@ assetsRouter.use(requirePageInProject);
 // POST /api/projects/:id/pages/:pageId/assets — plan section 18.2 & 19.1: validate
 // upload, never trust the original filename, generate a server-side storage key, and
 // decode dimensions before trusting them.
-assetsRouter.post<PageParams>("/", upload.single("file"), asyncHandler(async (req, res) => {
+assetsRouter.post<PageParams>(
+  "/",
+  upload.single("file"),
+  handleUploadError,
+  asyncHandler(async (req, res) => {
   const repos = getRepositories();
 
   const file = req.file;

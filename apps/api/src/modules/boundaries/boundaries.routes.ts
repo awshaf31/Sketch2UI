@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type { PageBoundary } from "@sketch2ui/shared-types";
+import { shouldAccept, DEFAULT_OVERLAP_THRESHOLD } from "@sketch2ui/shared-types";
 import type { PageParams } from "../../types.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
@@ -62,6 +63,7 @@ boundariesRouter.put<AssetParams>(
       );
     }
 
+    const overlapThreshold = body?.overlapThreshold ?? 0.5;
     const { record } = await getRepositories().boundaries.saveRespectingManual(
       req.params.id,
       req.params.pageId,
@@ -72,10 +74,32 @@ boundariesRouter.put<AssetParams>(
         method: "manual",
         areaFraction: body?.areaFraction ?? 1,
         applied: true,
-        overlapThreshold: body?.overlapThreshold ?? 0.5,
+        overlapThreshold,
       },
       "manual"
     );
+
+    // QA audit DEF-002 (docs/qa/MASTER_DEFECT_REGISTER.md): re-derive accept/reject for
+    // every model detection against the boundary just saved. Without this, only the
+    // CLIENT's own effectiveDetections memo re-classified boxes live — the persisted
+    // `status` column never changed, so a later "Save Version"/export (both of which
+    // read `listActiveByPage`, filtered on the stored `status`) silently kept using the
+    // OLD boundary's accept/reject verdicts. Mirrors the exact re-derivation
+    // detect.job.ts already does for a manual boundary in force at detect-time — this is
+    // the same rule applied at boundary-SAVE time instead, so Canvas/Tree (client-side,
+    // already live) and Preview/Code/Export (server-side, previously stale) agree.
+    // Deleted detections are left alone; only active/rejected model boxes are eligible
+    // to flip. Manual detections are never re-classified by boundary geometry (the same
+    // rule effectiveDetections already applies client-side).
+    const pageDetections = await getRepositories().detections.listByPage(req.params.pageId);
+    for (const detection of pageDetections) {
+      if (detection.source !== "model" || detection.status === "deleted") continue;
+      const accepted = shouldAccept(detection.bbox, polygon, overlapThreshold ?? DEFAULT_OVERLAP_THRESHOLD).accepted;
+      const nextStatus = accepted ? "active" : "rejected";
+      if (nextStatus !== detection.status) {
+        await getRepositories().detections.updateInPage(req.params.pageId, detection.id, { status: nextStatus });
+      }
+    }
 
     res.json({ boundary: toPageBoundary(record), source: record.source });
   })

@@ -25,7 +25,7 @@ semantic/CSS-custom-property names; the Tailwind key is the suggested utility su
 | `color-border-strong` | `#c3c9d4` | `border-strong` | Emphasized divider — major region boundaries (toolbar/canvas split), focus-adjacent outlines |
 | `color-text-primary` | `#171a21` | `text-primary` | Headings, primary body text, values |
 | `color-text-secondary` | `#4b5262` | `text-secondary` | Labels, secondary body text |
-| `color-text-muted` | `#848da0` | `text-muted` | Captions, placeholders, disabled text, timestamps |
+| `color-text-muted` | `#5d6679` | `text-muted` | Captions, placeholders, disabled text, timestamps (corrected from `#848da0`, which failed WCAG AA — see `docs/qa/MASTER_DEFECT_REGISTER.md` DEF-003) |
 | `color-text-inverse` | `#ffffff` | `text-inverse` | Text on filled primary/dark surfaces |
 
 Neutrals carry a very slight cool (blue) bias rather than pure gray — consistent with

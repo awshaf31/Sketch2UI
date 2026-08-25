@@ -17,7 +17,16 @@ export default {
         "border-strong": "#c3c9d4",
         "text-primary": "#171a21",
         "text-secondary": "#4b5262",
-        "text-muted": "#848da0",
+        // QA audit DEF-003 (docs/qa/MASTER_DEFECT_REGISTER.md): the previous value
+        // (#848da0) was only 3.33:1 against `surface` and 2.92:1 against
+        // `surface-sunken` — both fail WCAG AA's 4.5:1 for normal text, despite this
+        // being the app's most-used muted-text color (tree type labels, section
+        // captions, status text) and routinely rendered at 11px (text-2xs), well
+        // below "large text" territory where a lower bar would apply. Same hue,
+        // darkened just enough to clear 4.5:1 against the harder of the two
+        // backgrounds (surface-sunken, 5.05:1) with headroom for rounding — verified
+        // via the WCAG relative-luminance formula, not eyeballed.
+        "text-muted": "#5d6679",
         "text-inverse": "#ffffff",
 
         // Brand & selection — see design-tokens.md for why brand blue also serves as

@@ -111,7 +111,7 @@ export function PagesStrip({ projectId, pages, currentPageId, onPagesChange, onS
   }
 
   return (
-    <div className="flex items-center gap-2xs border-b border-border bg-surface px-md py-2xs">
+    <div className="flex items-center gap-xs border-b border-border bg-surface px-md py-2xs">
       {pages.map((page) => {
         const selected = page.id === currentPageId;
         const isEditing = editingPageId === page.id;
@@ -140,6 +140,8 @@ export function PagesStrip({ projectId, pages, currentPageId, onPagesChange, onS
               <Button
                 variant={selected ? "primary" : "ghost"}
                 size="sm"
+                aria-current={selected ? "page" : undefined}
+                className={selected ? "active:bg-primary-active" : "active:bg-border/60"}
                 onClick={() => onSelectPage(page.id)}
               >
                 {page.name}
