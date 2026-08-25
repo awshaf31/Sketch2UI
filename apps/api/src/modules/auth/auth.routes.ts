@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { PublicUser, User } from "@sketch2ui/shared-types";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
+import { authRateLimiterOrNoop } from "../../middleware/rateLimiter.js";
 import { requireAuth } from "../../middleware/requireAuth.js";
 import { getRepositories } from "../../repositories/index.js";
 import { clearSessionCookie, readSessionCookie, sessionExpiryFromNow, setSessionCookie } from "./cookies.js";
@@ -46,9 +47,10 @@ async function issueSession(userId: string): Promise<string> {
   return token;
 }
 
-// POST /api/auth/register
+// POST /api/auth/register — DEF-009: rate-limited, see rateLimiter.ts.
 authRouter.post(
   "/register",
+  authRateLimiterOrNoop(),
   asyncHandler(async (req, res) => {
     const { email, password } = req.body ?? {};
     const validationError = validateCredentials(email, password);
@@ -71,9 +73,10 @@ authRouter.post(
   })
 );
 
-// POST /api/auth/login
+// POST /api/auth/login — DEF-009: rate-limited, see rateLimiter.ts.
 authRouter.post(
   "/login",
+  authRateLimiterOrNoop(),
   asyncHandler(async (req, res) => {
     const { email, password } = req.body ?? {};
     if (typeof email !== "string" || typeof password !== "string") {

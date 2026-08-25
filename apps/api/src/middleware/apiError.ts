@@ -23,7 +23,10 @@ export type ErrorCode =
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
   | "EMAIL_IN_USE"
-  | "INVALID_CREDENTIALS";
+  | "INVALID_CREDENTIALS"
+  // QA audit DEF-009 (docs/qa/MASTER_DEFECT_REGISTER.md): rate limiting on
+  // /api/auth/login and /register.
+  | "RATE_LIMITED";
 
 export interface ApiErrorBody {
   error: {
@@ -37,6 +40,7 @@ const RETRYABLE: ReadonlySet<ErrorCode> = new Set<ErrorCode>([
   "MODEL_UNAVAILABLE",
   "WORKER_UNREACHABLE",
   "INFERENCE_FAILED",
+  "RATE_LIMITED",
 ]);
 
 export function isRetryable(code: ErrorCode): boolean {

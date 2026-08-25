@@ -30,8 +30,8 @@ repository architecture, per the stated constraints.
 | P1 | 2 |
 | P2 | 7 |
 | P3 | 4 |
-| **Fixed** (5 this pass + 2 in a 2026-08-26 follow-up, DEF-010 & DEF-008) | **7** |
-| Deferred (real, documented rationale) | 6 |
+| **Fixed** (5 this pass + 3 in a 2026-08-26 follow-up, DEF-010, DEF-008 & DEF-009) | **8** |
+| Deferred (real, documented rationale) | 5 |
 | Inconclusive (flagged, not confirmed) | 1 |
 
 **All audited P0 and P1 issues are fixed** (1/1 P0, 2/2 P1) — this claim is scoped
@@ -93,6 +93,24 @@ exactly to what this pass actually audited; see "What this does NOT claim" below
    stack too (a freshly registered account got `404` on another user's asset, and
    the old `/uploads/<key>` path now 404s outright). Full regression green
    afterward (typecheck, 386 unit tests including the 2 new ones, 4/4 e2e).
+8. **DEF-009 (P2, SECURITY, fixed 2026-08-26 in the same follow-up session)** —
+   `/api/auth/login` and `/register` had no rate limiting at all, open to
+   unthrottled brute-force/credential-stuffing. Fixed by adding `express-rate-limit`
+   as an independent per-route middleware instance (10 requests/15 min per IP,
+   in-memory — matching the app's existing single-process model rather than
+   reaching for the unused Redis container), emitting a `429 RATE_LIMITED` in the
+   same `{ error: { code, message, retryable } }` shape as every other route.
+   Disabled under `NODE_ENV=test` (set automatically by Vitest) so every other
+   module's own HTTP-integration tests can register/log in as many throwaway users
+   as they need without the test suite's own size tripping the limit. New
+   `rateLimiter.test.ts` exercises the limiter's real logic directly (bypassing
+   that test-mode no-op): limit enforcement, the `429`/`RATE_LIMITED` shape, and
+   per-IP isolation. Live-verified against the real running dev API: 10 sequential
+   bad-password login attempts each 401'd normally, the 11th/12th both came back
+   `429`, and a `register` call right after (separate limiter) still succeeded.
+   Full regression green afterward (typecheck, 388 unit tests including the 2 new
+   ones, 4/4 e2e — run against the real limiter, since Playwright's `webServer`
+   doesn't set `NODE_ENV=test`).
 
 ## Deferred (real, not fixed — see the register for full rationale per item)
 
@@ -104,7 +122,6 @@ batched-query rewrite) rather than a small, contained fix:
   overlapping/different-class boxes on the same region can both persist.
 - **DEF-007 (P3)** No audit trail for confidence-threshold-dropped detections; a
   dead per-request confidence override parameter.
-- **DEF-009 (P2)** No rate limiting on login/register.
 - **DEF-011 (P2)** Canvas detection resize handles are keyboard-inaccessible.
 - **DEF-012 (P2)** N+1 query/image-decode pattern in the export route — will scale
   poorly on projects with many pages/images.
@@ -160,10 +177,10 @@ No existing test was modified or weakened to make it pass.
 
 ## Remaining risks
 
-- **DEF-009** (no rate limiting on login/register) is the remaining highest-value
-  security follow-up — a well-understood, standard fix, just deliberately out of
-  scope for "smallest fix, not new architecture" here. (DEF-008, the uploads
-  ownership gap this note used to pair it with, was fixed 2026-08-26 — see above.)
+- No open security follow-ups remain from this list. (DEF-008, the uploads
+  ownership gap, and DEF-009, the missing login/register rate limiting, were both
+  fixed 2026-08-26 — see above.) DEF-006/DEF-007 below are correctness/observability
+  gaps in the detection pipeline, not security issues.
 - **DEF-002's fix pattern should be reviewed for other "client re-derives, server
   never does" cases** — this exact class of bug (client-side live state diverging
   from server-persisted state with no reconciliation path short of a heavy

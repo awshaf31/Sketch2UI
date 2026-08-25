@@ -14,9 +14,9 @@ each required to cite exact file:line evidence and distinguish "confirmed" from
 Every fix below has a regression test that was confirmed to fail without the fix and
 pass with it (shown by literally reverting the fix and re-running).
 
-**Total defects logged: 14** (7 fixed, 6 deferred with rationale, 1 inconclusive).
-DEF-010 and DEF-008 were fixed in a follow-up session on 2026-08-26, after the
-original audit pass below — see their entries for details.
+**Total defects logged: 14** (8 fixed, 5 deferred with rationale, 1 inconclusive).
+DEF-010, DEF-008, and DEF-009 were fixed in a follow-up session on 2026-08-26,
+after the original audit pass below — see their entries for details.
 
 ---
 
@@ -267,6 +267,51 @@ original audit pass below — see their entries for details.
   spec loads an asset image through this exact route) all green after the change.
 - **Status:** ✅ Fixed, live-verified.
 
+### DEF-009 — No rate limiting on `/api/auth/login` or `/register`
+
+- **Category:** SECURITY
+- **Severity / Priority:** P2
+- **Fixed in a follow-up session (2026-08-26)**, immediately after DEF-008 above —
+  originally logged as deferred (adding rate limiting means picking a dependency and
+  deciding limits/storage, a real infra decision this session was explicitly asked
+  to make); see git history for the exact commit.
+- **Location:** `apps/api/src/middleware/rateLimiter.ts` (new),
+  `apps/api/src/modules/auth/auth.routes.ts`, `apps/api/src/middleware/apiError.ts`
+- **Reproduction (before fix):** Zero rate-limiting dependency or middleware
+  anywhere in `apps/api` — `/api/auth/login`/`/register` were open to unthrottled
+  brute-force/credential-stuffing.
+- **Fix:** Added `express-rate-limit` (v8), applied as its own middleware instance
+  per route (`/login` and `/register` each get an independent budget — one route's
+  exhausted limit never blocks the other). 10 requests / 15 minutes per IP, within
+  the range OWASP's authentication cheat sheet suggests for login throttling; kept
+  in-memory (the library's default store) rather than Redis-backed, matching this
+  app's existing single-process deployment model (detection jobs already run
+  in-process rather than through the Redis container `docker-compose.yml`
+  provisions but nothing else uses). A new `RATE_LIMITED` error code was added to
+  the shared `ErrorCode` union (marked `retryable: true`) so a `429` comes back in
+  the same `{ error: { code, message, retryable } }` shape every other route uses,
+  not `express-rate-limit`'s own default body. The limiter is a no-op when
+  `NODE_ENV=test` (set automatically by Vitest) — every other module's own
+  HTTP-integration test registers/logs in its own throwaway users through these
+  exact routes, and a shared in-memory counter across a whole test file's
+  cumulative calls would make the test suite's own size an accidental trip hazard
+  rather than testing anything real.
+- **Regression test:** `apps/api/src/middleware/rateLimiter.test.ts` — calls
+  `buildAuthRateLimiter()` directly (bypassing the `NODE_ENV=test` no-op wrapper) with
+  a tiny limit: confirms requests up to the limit succeed, the next one 429s with
+  `RATE_LIMITED`/`retryable: true`, and — via a `trust proxy` + `X-Forwarded-For`
+  test app just for this one test — that two different client IPs get independent
+  budgets rather than sharing one global counter. Also live-verified against the
+  real running dev API: 10 sequential bad-password `POST /api/auth/login` calls each
+  correctly 401'd, the 11th and 12th both came back `429 RATE_LIMITED`, and a
+  `POST /api/auth/register` call made immediately after (a different route, its own
+  limiter instance) still succeeded with `201`. `npm run typecheck`,
+  `npm run test` (124 + 264 passing, 2 new), and `npm run test:e2e` (4/4, run
+  against the real rate limiter since Playwright's `webServer` doesn't set
+  `NODE_ENV=test` — each spec's single register call stays well under the limit)
+  all green after the change.
+- **Status:** ✅ Fixed, live-verified.
+
 ---
 
 ## Deferred (real, but out of scope for this pass — see rationale per item)
@@ -300,15 +345,6 @@ verified, not speculative.
 - **Why deferred:** Observability enhancement, not a functional defect — no user-facing
   behavior is wrong, there's just no visibility into how many candidates were
   discarded pre-threshold.
-
-### DEF-009 — No rate limiting on `/api/auth/login` or `/register`
-- **Category:** SECURITY · **Priority:** P2
-- Confirmed zero rate-limiting dependency or middleware anywhere in `apps/api`.
-  Login/register are open to unthrottled brute-force/credential-stuffing attempts.
-- **Why deferred:** Standard hardening gap, but adding it means picking and wiring a
-  new dependency (e.g. `express-rate-limit`) and deciding limits/storage
-  (in-memory vs. shared) — a deliberate infra decision, explicitly the kind of thing
-  the deadline rule asks to not start unprompted.
 
 ### DEF-011 — Canvas detection resize handles are mouse-only
 - **Category:** ACCESSIBILITY · **Priority:** P2
