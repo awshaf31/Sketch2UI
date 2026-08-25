@@ -30,8 +30,8 @@ repository architecture, per the stated constraints.
 | P1 | 2 |
 | P2 | 7 |
 | P3 | 4 |
-| **Fixed** (5 this pass + 3 in a 2026-08-26 follow-up, DEF-010, DEF-008 & DEF-009) | **8** |
-| Deferred (real, documented rationale) | 5 |
+| **Fixed** (5 this pass + 4 in a 2026-08-26 follow-up, DEF-010, DEF-008, DEF-009 & DEF-011) | **9** |
+| Deferred (real, documented rationale) | 4 |
 | Inconclusive (flagged, not confirmed) | 1 |
 
 **All audited P0 and P1 issues are fixed** (1/1 P0, 2/2 P1) — this claim is scoped
@@ -111,6 +111,25 @@ exactly to what this pass actually audited; see "What this does NOT claim" below
    Full regression green afterward (typecheck, 388 unit tests including the 2 new
    ones, 4/4 e2e — run against the real limiter, since Playwright's `webServer`
    doesn't set `NODE_ENV=test`).
+9. **DEF-011 (P2, ACCESSIBILITY, fixed 2026-08-26 in the same follow-up session)** —
+   Selection and move both had keyboard paths already; resize had none — the four
+   handle `<rect>`s had no `tabIndex`/`role`/`onKeyDown` at all. Fixed by making
+   each handle individually tabbable (reachable right after its detection, in
+   document order) with a descriptive `aria-label`; with a handle focused, arrow
+   keys move that one corner using the exact same `applyHandle()` function the
+   mouse-drag resize already calls (so keyboard and mouse resize behave
+   identically) and the same step convention the existing whole-box nudge
+   established (1px, 10px with Shift). `stopPropagation()` on the handle's keydown
+   prevents the same key from also bubbling to the window-level whole-box nudge
+   listener. Live-verified in the browser: `Tab` order confirmed (detection → its
+   NW handle → NE → ...), a plain arrow key moved a corner by exactly 1px, a real
+   `shiftKey: true` event moved it by exactly 10px (the Browser-pane tool's own
+   `modifiers` parameter didn't propagate `shiftKey` in this environment — isolated
+   as a tool limitation, not a code bug, by dispatching a raw event directly), each
+   resize produced a `PATCH .../detections/:id → 200` and a new correction-history
+   row, and a 400-keypress stress test settled cleanly with no collapse or
+   corruption. Full regression green afterward (typecheck, 388 unit tests, 4/4
+   e2e).
 
 ## Deferred (real, not fixed — see the register for full rationale per item)
 
@@ -122,7 +141,6 @@ batched-query rewrite) rather than a small, contained fix:
   overlapping/different-class boxes on the same region can both persist.
 - **DEF-007 (P3)** No audit trail for confidence-threshold-dropped detections; a
   dead per-request confidence override parameter.
-- **DEF-011 (P2)** Canvas detection resize handles are keyboard-inaccessible.
 - **DEF-012 (P2)** N+1 query/image-decode pattern in the export route — will scale
   poorly on projects with many pages/images.
 - **DEF-013 (P3)** No route-level code-splitting (mitigated by Monaco already being

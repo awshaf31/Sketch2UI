@@ -14,9 +14,9 @@ each required to cite exact file:line evidence and distinguish "confirmed" from
 Every fix below has a regression test that was confirmed to fail without the fix and
 pass with it (shown by literally reverting the fix and re-running).
 
-**Total defects logged: 14** (8 fixed, 5 deferred with rationale, 1 inconclusive).
-DEF-010, DEF-008, and DEF-009 were fixed in a follow-up session on 2026-08-26,
-after the original audit pass below — see their entries for details.
+**Total defects logged: 14** (9 fixed, 4 deferred with rationale, 1 inconclusive).
+DEF-010, DEF-008, DEF-009, and DEF-011 were fixed in a follow-up session on
+2026-08-26, after the original audit pass below — see their entries for details.
 
 ---
 
@@ -312,6 +312,53 @@ after the original audit pass below — see their entries for details.
   all green after the change.
 - **Status:** ✅ Fixed, live-verified.
 
+### DEF-011 — Canvas detection resize handles are mouse-only
+
+- **Category:** ACCESSIBILITY
+- **Severity / Priority:** P2
+- **Fixed in a follow-up session (2026-08-26)**, immediately after DEF-009 above —
+  originally logged as deferred (designing a sane keyboard-resize interaction —
+  which handle, which direction, what step size — was judged new UX design work,
+  not a one-line fix); see git history for the exact commit.
+- **Location:** `apps/web/src/features/annotation/AnnotationCanvas.tsx`
+- **Reproduction (before fix):** Selection and move both had keyboard paths
+  (Enter/Space to select, arrow keys to nudge the whole box); resize had none — the
+  four handle `<rect>`s had no `tabIndex`, `role`, or `onKeyDown` at all, so they
+  were unreachable by keyboard entirely.
+- **Fix:** Each of the four resize handles is now `tabIndex={0}` with
+  `role="button"` and a descriptive `aria-label` (e.g. "Resize section from the NW
+  corner..."), reachable by `Tab` right after its detection in document order. With
+  a handle focused, arrow keys move *that one corner* by the same step convention
+  the existing whole-box nudge already established (1px-equivalent, 10px with
+  Shift) — reusing the exact same `applyHandle()` function the mouse-drag resize
+  path already calls, so a keyboard resize from a given corner behaves identically
+  to dragging that corner by the same amount, and the same `MIN_BOX_PX` collapse
+  guard the mouse path uses prevents committing a near-zero-size box. Each keydown
+  calls `e.stopPropagation()` — without it, the same arrow-key event would also
+  bubble to the window-level whole-box nudge listener and move the entire box on
+  top of the resize, since that listener has no way to know a more specific handler
+  already claimed the key.
+- **Regression test:** No new automated test (no React component-test suite exists
+  yet — see `PROJECT_STATUS.md` §6.6). Live-verified in the browser against a real
+  detection on the "CV Worker Check" project: focused the detection, confirmed
+  `Tab` reaches its NW handle next (in that exact order, before the next
+  detection); plain `ArrowRight` moved the NW corner by exactly 1px (`x: 196.70 →
+  197.70`, `width` shrinking by the same 1px, matching `applyHandle`'s "move this
+  corner, keep the opposite one fixed" contract); a real `shiftKey: true` keydown
+  moved it by exactly 10px, confirming the Shift-step convention (the Browser-pane
+  tool's own `modifiers` parameter didn't propagate `shiftKey` into the dispatched
+  event in this environment — confirmed as a tool limitation, not a code bug, by
+  dispatching a raw `KeyboardEvent` with `shiftKey: true` directly and observing
+  the correct 10px move); each resize produced a `PATCH .../detections/:id → 200`
+  and a new "Geometry updated" row in the Inspector's correction-history list,
+  confirming it persists through the exact same path a mouse-drag resize does; a
+  400-keypress stress-test settled cleanly at a single valid 10px step with no box
+  collapse or corruption (the async PATCH-per-keystroke model means rapid
+  synthetic presses race rather than compound — not a concern for real human
+  typing speed). `npm run typecheck`, `npm run test` (124 + 264 passing), and
+  `npm run test:e2e` (4/4) all green after the change.
+- **Status:** ✅ Fixed, live-verified.
+
 ---
 
 ## Deferred (real, but out of scope for this pass — see rationale per item)
@@ -345,15 +392,6 @@ verified, not speculative.
 - **Why deferred:** Observability enhancement, not a functional defect — no user-facing
   behavior is wrong, there's just no visibility into how many candidates were
   discarded pre-threshold.
-
-### DEF-011 — Canvas detection resize handles are mouse-only
-- **Category:** ACCESSIBILITY · **Priority:** P2
-- Selection and move both have keyboard paths (Enter/Space to select, arrow keys to
-  nudge); resize has none — the four handle `<rect>`s have no `tabIndex`, `role`, or
-  `onKeyDown` at all.
-- **Why deferred:** A real gap in a core correction workflow, but designing a sane
-  keyboard-resize interaction (which handle, which direction, what step size) is new
-  UX design work, not a one-line fix.
 
 ### DEF-012 — N+1 query/decode pattern in the export route
 - **Category:** PERFORMANCE · **Priority:** P2

@@ -387,11 +387,53 @@ export default function AnnotationCanvas({
                       y={hy - HANDLE_SIZE / 2}
                       width={HANDLE_SIZE}
                       height={HANDLE_SIZE}
-                      className="fill-selection"
+                      className="fill-selection focus-visible:outline focus-visible:outline-2 focus-visible:outline-selection"
                       style={{ cursor: `${handle}-resize` }}
+                      tabIndex={0}
+                      role="button"
+                      aria-label={`Resize ${detection.className} from the ${handle.toUpperCase()} corner. Arrow keys move this corner; hold Shift to move it further.`}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         setDrag({ kind: "resize", id: detection.id, handle, original: box });
+                      }}
+                      // QA audit DEF-011 (docs/qa/MASTER_DEFECT_REGISTER.md): resize
+                      // had no keyboard path at all. Mirrors the whole-box arrow-nudge
+                      // handler above — same step sizes (1px-equivalent, 10px with
+                      // Shift), same "commit immediately, no drag state" model — but
+                      // moves only THIS corner, via the same `applyHandle` function the
+                      // mouse-drag resize path already uses, so a keyboard resize from
+                      // a given corner behaves identically to dragging that corner by
+                      // the same amount. `stopPropagation` is required: without it this
+                      // keydown would also bubble to the window-level arrow-nudge
+                      // listener above and move the WHOLE box on top of this resize.
+                      onKeyDown={(e) => {
+                        if (
+                          e.key !== "ArrowUp" &&
+                          e.key !== "ArrowDown" &&
+                          e.key !== "ArrowLeft" &&
+                          e.key !== "ArrowRight"
+                        ) {
+                          return;
+                        }
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const step = e.shiftKey ? 10 : 1;
+                        let point = { x: hx, y: hy };
+                        if (e.key === "ArrowUp") point = { ...point, y: point.y - step };
+                        if (e.key === "ArrowDown") point = { ...point, y: point.y + step };
+                        if (e.key === "ArrowLeft") point = { ...point, x: point.x - step };
+                        if (e.key === "ArrowRight") point = { ...point, x: point.x + step };
+                        point = {
+                          x: Math.min(Math.max(point.x, 0), asset.width),
+                          y: Math.min(Math.max(point.y, 0), asset.height),
+                        };
+                        const resized = applyHandle(box, handle, point);
+                        // Same collapse guard the mouse-drag resize commit uses (see
+                        // handleMouseUp above) — a handle nudged past its own fixed
+                        // corner must not persist a near-zero-size, unselectable box.
+                        if (resized.width > MIN_BOX_PX && resized.height > MIN_BOX_PX) {
+                          onUpdate(detection.id, toNormalized(resized, asset));
+                        }
                       }}
                     />
                   );
