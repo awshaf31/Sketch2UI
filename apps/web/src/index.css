@@ -9,3 +9,39 @@ html, body, #root {
 body {
   margin: 0;
 }
+
+/* Phase 2A — docs/frontend/design-tokens.md / design-direction.md.
+   Global surface + focus-ring foundation. Deliberately minimal: this sets the base
+   background/text color and a single system-wide focus-visible ring so every existing
+   native control (buttons, links, inputs already in Dashboard/ProjectWorkspace) picks
+   up a consistent focus treatment with zero component edits. Nothing here changes
+   layout, spacing, or any existing component's markup. */
+@layer base {
+  body {
+    @apply bg-bg text-text-primary;
+  }
+
+  :focus-visible {
+    outline: 2px solid theme("colors.focus");
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: theme("colors.primary-subtle");
+    color: theme("colors.primary-active");
+  }
+}
+
+/* Motion — docs/frontend/design-direction.md "Animation philosophy" / design-tokens.md
+   "Motion". Respected globally rather than per-component so no future animated
+   component needs to remember to opt in. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

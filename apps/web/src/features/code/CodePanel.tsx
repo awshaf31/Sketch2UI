@@ -2,6 +2,15 @@ import { useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
 import type { CodeIssue } from "@sketch2ui/shared-types";
 import { validateGeneratedCode } from "@sketch2ui/shared-types";
+import { Button } from "../../components/Button.js";
+import { Tab, Tabs } from "../../components/Tabs.js";
+import { Tooltip } from "../../components/Tooltip.js";
+
+// docs/frontend/code-preview-design.md (Phase 2H) — Monaco flips from the hardcoded
+// `vs-dark` theme to light (the one permanently-dark surface in an otherwise
+// all-light app, per the Phase 1 audit's §17/§21 finding), and the surrounding chrome
+// moves onto tokens. The draft/dirty state machine and the validateGeneratedCode()
+// gate below are byte-for-byte unchanged — this phase touches presentation only.
 
 interface CodePanelProps {
   /** The HTML the panel starts from — either live-regenerated or a stored version. */
@@ -25,10 +34,10 @@ interface CodePanelProps {
   activeVersionLabel?: string;
 }
 
-type Tab = "html" | "css";
+type CodeTab = "html" | "css";
 
 export default function CodePanel({ html, css, onSave, saving, activeVersionLabel }: CodePanelProps) {
-  const [tab, setTab] = useState<Tab>("html");
+  const [tab, setTab] = useState<CodeTab>("html");
   const [editing, setEditing] = useState(false);
   const [draftHtml, setDraftHtml] = useState(html);
   const [draftCss, setDraftCss] = useState(css);
@@ -89,63 +98,43 @@ export default function CodePanel({ html, css, onSave, saving, activeVersionLabe
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-gray-200 pr-2">
-        <div className="flex">
-          {(["html", "css"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-xs font-medium uppercase tracking-wide ${
-                tab === t ? "border-b-2 border-orange-500 text-gray-900" : "text-gray-400 hover:text-gray-600"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between border-b border-border pr-sm">
+        <Tabs value={tab} onChange={(v) => setTab(v as CodeTab)} aria-label="Code language">
+          <Tab value="html">html</Tab>
+          <Tab value="css">css</Tab>
+        </Tabs>
+        <div className="flex items-center gap-sm">
           {activeVersionLabel && !editing && (
-            <span className="text-[10px] uppercase tracking-wide text-gray-400">{activeVersionLabel}</span>
+            <span className="font-mono text-2xs uppercase tracking-wide text-text-muted">{activeVersionLabel}</span>
           )}
           {editing ? (
             <>
               {dirty && (
-                <span className="text-[10px] uppercase tracking-wide text-amber-600">Unsaved</span>
+                <span className="text-2xs uppercase tracking-wide text-warning">Unsaved</span>
               )}
-              <button
-                onClick={cancelEdit}
-                disabled={saving}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-600 hover:bg-gray-100 disabled:opacity-50"
-              >
+              <Button variant="secondary" size="sm" onClick={cancelEdit} disabled={saving}>
                 Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !dirty || !onSave}
-                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-              >
+              </Button>
+              <Button variant="primary" size="sm" onClick={handleSave} disabled={saving || !dirty || !onSave}>
                 {saving ? "Saving…" : "Save edit"}
-              </button>
+              </Button>
             </>
           ) : (
-            <button
-              onClick={beginEdit}
-              disabled={!onSave}
-              title={onSave ? "Edit the generated HTML/CSS by hand" : "Nothing to edit yet"}
-              className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-            >
-              Edit code
-            </button>
+            <Tooltip content={onSave ? "Edit the generated HTML/CSS by hand" : "Nothing to edit yet"}>
+              <Button variant="secondary" size="sm" onClick={beginEdit} disabled={!onSave}>
+                Edit code
+              </Button>
+            </Tooltip>
           )}
         </div>
       </div>
 
       {(issues.length > 0 || serverError) && (
-        <div className="border-b border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-800">
+        <div className="border-b border-error/30 bg-error-subtle px-sm py-xs text-xs text-error">
           {serverError ? (
             <span>{serverError}</span>
           ) : (
-            <ul className="space-y-0.5">
+            <ul className="space-y-2xs">
               {issues.map((iss, i) => (
                 <li key={`${iss.code}-${i}`}>
                   <span className="font-medium">{iss.code}:</span> {iss.message}
@@ -163,7 +152,7 @@ export default function CodePanel({ html, css, onSave, saving, activeVersionLabe
           language={tab}
           value={value}
           onChange={(next) => editing && setValue(next ?? "")}
-          theme="vs-dark"
+          theme="light"
           options={{
             readOnly: !editing || saving,
             minimap: { enabled: false },

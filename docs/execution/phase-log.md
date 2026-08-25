@@ -2144,3 +2144,1414 @@ by this work.
 ### Next action
 
 Freeze a final-demo fixture (plan §28), then final report / demo prep (plan §37).
+
+---
+
+## Phase 10 — Frontend Design Tokens + Foundation (Design Phase 2A)
+
+**Date:** 2026-08-25
+**Goal:** Implement the design-token foundation and reusable primitive components
+approved in `docs/frontend/design-tokens.md` and `docs/frontend/component-specification.md`
+(the Phase 2 frontend redesign spec) — configuration and new, unwired components only.
+Explicitly not a Dashboard/ProjectWorkspace redesign; no backend change.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `apps/web/src/components/cn.ts` — dependency-free class-name join helper
+- `apps/web/src/components/Button.tsx`, `IconButton.tsx`, `Input.tsx` (+`Textarea`),
+  `Select.tsx`, `Field.tsx`, `Tabs.tsx` (+`Tab`), `Badge.tsx`, `Tooltip.tsx`,
+  `Panel.tsx`, `SectionHeader.tsx`, `StatusIndicator.tsx` — the primitive set
+  prioritized by the Phase 2A brief, per `docs/frontend/component-specification.md`
+- `apps/web/src/components/index.ts` — barrel export
+
+### Files changed
+
+- `apps/web/tailwind.config.js` — `theme.extend` populated with the full token set
+  (colors, fontFamily, fontSize, spacing, borderRadius, boxShadow,
+  transitionDuration, transitionTimingFunction) from `docs/frontend/design-tokens.md`.
+  Additive only — no default Tailwind key removed, so every existing hand-written
+  className string elsewhere in the app is unaffected.
+- `apps/web/index.html` — added Google Fonts `<link>`s for IBM Plex Sans (400/500/600)
+  and IBM Plex Mono (400/500/600).
+- `apps/web/src/index.css` — added a `@layer base` block (token-driven body
+  background/text color, a global `:focus-visible` ring, `::selection` color) and a
+  `prefers-reduced-motion: reduce` block.
+- `docs/frontend/frontend-implementation-roadmap.md` — Phase 2A section's Result
+  subsection filled in with the detail also recorded here.
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- Zero files under `apps/web/src/pages/`, `apps/web/src/features/`,
+  `apps/web/src/services/`, `apps/web/src/stores/`, or `apps/web/src/utils/` were
+  touched — Dashboard, ProjectWorkspace, the canvas, the UI tree, the Inspector, the
+  code editor, and the preview are all byte-for-byte unchanged.
+- `AnnotationCanvas.tsx`/`PageBoundaryOverlay.tsx` still use their original hardcoded
+  hex color literals — the new `detection-model`/`detection-manual`/`page-boundary`/
+  `primary`/`selection` tokens exist in the Tailwind config for a later phase
+  (design doc's Phase 2E) to consume, not wired in now.
+- Detection UUID override keying, model→manual correction, Geometry/Structure/Style/
+  Content override behavior, correction history, code generation, immutable
+  `CodeVersion` behavior, the preview iframe's `sandbox=""`, export behavior, and
+  page-boundary behavior — all untouched (no file in any of those paths was edited).
+- No API/backend file touched.
+
+### Design decisions
+
+1. **Token application via `theme.extend`, not a wholesale theme replacement.** Every
+   table in `design-tokens.md` was added as new or overridden-in-place Tailwind keys
+   under `extend`, never by replacing `theme` outright — this is what lets an
+   unmigrated component (all of them, in this phase) keep working on Tailwind's
+   defaults while new components opt into the named tokens.
+2. **`fontFamily.sans`/`.mono` override, not append.** Tailwind's `extend` merges by
+   top-level key, so redefining `fontFamily.sans` replaces the default stack entirely.
+   Because Tailwind's own preflight sets `html { font-family: theme('fontFamily.sans') }`,
+   this one config change re-fonts the whole app without touching a single component
+   file — verified live (see Manual verification).
+3. **Global `:focus-visible` rule in `index.css`, not a per-component prop.** Applies a
+   consistent `2px solid` primary-blue ring to every native focusable element
+   site-wide with zero component edits; a component that already sets its own focus
+   style (Dashboard's project-name input, pre-existing) keeps winning via Tailwind's
+   `utilities` cascade layer outranking `base` — confirmed as expected behavior, not a
+   bug, during manual verification.
+4. **`Input`/`Select`'s `size` prop required `Omit<..., "size">`** against the native
+   HTML attributes interface — the DOM's `size` is `number`, ours is `"sm" | "md"`.
+   Caught by `tsc`, fixed before the first typecheck pass completed clean.
+5. **No new dependency for class-name joining** (`cn.ts` is ~3 lines) or tooltip
+   positioning (`Tooltip.tsx` is fixed centered placement, no collision/flip logic) —
+   consistent with the brief's "do not introduce a new styling framework" and this
+   phase's zero-risk mandate. Both are flagged as a deliberately minimal foundation,
+   not a finished component, in `component-specification.md`'s cross-reference.
+
+### Tests
+
+| Command | Result | Delta from Phase 9 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean (after the `size`-prop fix) | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 96 modules, 681ms | unchanged module count (new components aren't imported anywhere yet, so Vite correctly excludes them from the bundle) |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts` | 1 passed | unchanged |
+| `npx playwright test e2e/inspector-overrides.spec.ts` | 2 passed | unchanged |
+
+### Manual verification
+
+Ran `npm run dev:web` against a live project (real Postgres-backed API already
+reachable in this environment) and inspected Dashboard, the Workspace toolbar/canvas/
+UI-tree/Inspector, the Code tab (Monaco), and the Preview tab:
+
+| Check | Result |
+|---|---|
+| Dashboard renders, project list loads, no console errors | ✓ |
+| `<h1>` computed font-family | `"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif` ✓ |
+| `<h1>` computed size | `28px` — the new `text-2xl` token ✓ |
+| `document.fonts` | 3 IBM Plex Sans weights report `loaded` ✓ |
+| `body` computed background / text color | `rgb(244,245,247)` / `rgb(23,26,33)` — exactly `bg`/`text-primary` tokens ✓ |
+| Keyboard focus on a project-row button → computed outline | `rgb(47,95,221) solid 2px` — exactly the `primary`/`focus` token, confirming the new global rule fires where no component overrides it ✓ |
+| Dashboard's existing project-name input keeps its own pre-existing focus style | ✓ (expected — see Design decision 3, not a regression) |
+| Open a project → canvas renders detection boxes (original colors, unchanged), UI tree, Inspector (Detection/Style sections) | ✓ |
+| Code tab → Monaco loads, `vs-dark` theme (unchanged, Phase 2E/2H scope), own monospace font unaffected by the page-wide font change | ✓ |
+| Preview tab → sandboxed iframe renders the generated page correctly | ✓ |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed. Net effect on the running app today: new
+global background/text/focus tokens and IBM Plex Sans/Mono typography are live
+everywhere via the base-layer CSS and Tailwind's preflight; a new, currently-unused
+primitive component set exists under `apps/web/src/components/` ready for Phase 2B
+onward to consume. No visible change to Dashboard's or ProjectWorkspace's layout,
+copy, or behavior.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. This sandbox has no Docker/Postgres provisioning available, so the manual
+   verification pass relied on whatever local Postgres the dev API was already
+   connected to rather than a freshly provisioned instance. Not a gap in the
+   phase's own evidence — both Playwright suites (the reproducible, isolated
+   evidence) ran clean against throwaway JSON storage per `playwright.config.ts`.
+2. Detection/canvas color tokens are defined but not yet applied inside
+   `AnnotationCanvas.tsx`/`PageBoundaryOverlay.tsx` — deliberately deferred to the
+   design spec's Phase 2E, not an oversight.
+3. No visual-regression or component-test harness exists in this repo to snapshot
+   the new primitives against (pre-existing gap, `PROJECT_STATUS.md` §2.6) —
+   verified instead by typecheck, build, and the manual checks above.
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2B — App shell /
+navigation** (new `AppHeader`/`BrandMark` mounted on both routes, plus inert
+`ToastStack`/`DialogHost` scaffolding). Not started — stopping here per this phase's
+explicit stop condition; awaiting confirmation before continuing.
+
+---
+
+## Phase 11 — App Shell / Navigation (Design Phase 2B)
+
+**Date:** 2026-08-25
+**Goal:** Implement `docs/frontend/frontend-implementation-roadmap.md`'s Phase 2B —
+a shared `AppHeader`/`BrandMark` and app-root-level `ToastStack`/`DialogHost`
+scaffolding, per `docs/frontend/component-specification.md`'s Dialog/Toast specs and
+`docs/frontend/accessibility.md`'s dialog-focus contract. No Dashboard/ProjectWorkspace
+redesign; no backend change.
+**Status:** ✅ Complete, with one scoped deviation from the roadmap's original file
+list — see Design decisions.
+
+### Files added
+
+- `apps/web/src/components/BrandMark.tsx`, `AppHeader.tsx` — built, not mounted (see
+  Design decisions)
+- `apps/web/src/components/Toast.tsx`, `ToastStack.tsx` — presentational shell +
+  `ToastProvider`/`useToast()`
+- `apps/web/src/components/Dialog.tsx`, `DialogHost.tsx` — presentational shell +
+  `DialogProvider`/`useDialog().confirm()`
+
+### Files changed
+
+- `apps/web/src/App.tsx` — wrapped `<Routes>` in `<ToastProvider><DialogProvider>`
+- `apps/web/src/components/index.ts` — barrel export updated
+- `docs/frontend/frontend-implementation-roadmap.md` — Phase 2B Result section added
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+Same as Phase 10: zero files under `apps/web/src/pages/`, `features/`, `services/`,
+`stores/`, `utils/`, and zero API files touched. `App.tsx`'s only change is wrapping
+existing `<Routes>` in two context providers that render no DOM node of their own when
+inactive.
+
+### Design decisions
+
+1. **`AppHeader` built but not mounted — deviation from the Phase 2B file list in
+   `frontend-implementation-roadmap.md`, which said "mounted on both routes."**
+   Discovered while implementing: mounting it globally via `App.tsx` (the only route
+   that doesn't require editing `Dashboard.tsx`/`ProjectWorkspace.tsx`, both still
+   off-limits) has two real costs, not just a theoretical one — it would sit directly
+   above Dashboard's own existing `<h1>Sketch2UI</h1>` (redundant branding), and it
+   would push ProjectWorkspace's `h-screen`-rooted layout past 100vh, forcing a
+   page-level scroll that doesn't exist today (a real regression against this phase's
+   own "no existing page content moves or breaks" acceptance criterion). Both
+   conflicts resolve naturally once the page that needs the header is being edited
+   anyway — Phase 2C (Dashboard) and Phase 2D (Workspace shell) each already own that
+   edit. Full writeup in the roadmap doc's Phase 2B Result section.
+2. **Toast/Dialog use React Context + `createPortal`, no new dependency.** Consistent
+   with Phase 2A's "no new styling framework" and general minimal-footprint approach —
+   this is application state/behavior, not styling, but the same discipline applied:
+   a small hand-rolled provider was sufficient for the actual requirement.
+3. **`Dialog`'s focus trap is hand-rolled** (`querySelectorAll` for focusable
+   descendants, manual Tab/Shift+Tab interception) rather than a focus-trap library —
+   same reasoning as #2. Handles the standard case; not hardened against dynamically
+   changing dialog content, since nothing in the app produces that yet.
+4. **Destructive confirms default focus to Cancel and disable overlay-click-to-
+   dismiss**, non-destructive confirms default focus to the primary action and allow
+   overlay-click — directly implements `docs/frontend/accessibility.md`'s "safer
+   default action" rule at the primitive level so no future call site has to
+   re-derive it.
+
+### Tests
+
+| Command | Result | Delta from Phase 10 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged |
+| `npm run build` (all 4 workspaces) | Success — Vite 103 modules (up from 96), 697ms | `App.tsx` now actually imports the new providers, so their dependency chain (Button, IconButton, Toast, Dialog, cn) is bundled for the first time |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged |
+
+### Manual verification
+
+Ran `npm run dev:web` against a live project:
+
+| Check | Result |
+|---|---|
+| Dashboard renders byte-identical to Phase 10 (confirms the `AppHeader` deferral didn't leak in) | ✓ |
+| No console errors on either route | ✓ |
+| ProjectWorkspace toolbar/banners/canvas/tree/Inspector/version strip load real project data, no layout shift | ✓ |
+
+`Toast`/`Dialog` have no call site yet — nothing in the app invokes
+`useToast()`/`useDialog()` today — so their interactive behavior was verified by code
+review against `accessibility.md`'s contract plus typecheck/build, not a live trigger.
+They get their first real caller in Phase 2C (`ConfirmDialog` replacing
+`Dashboard.tsx`'s `window.confirm()`) and later phases (toast replacing
+`window.alert()` in `ProjectWorkspace.tsx`).
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above. Net effect on the running app today: identical to Phase 10 visually
+and behaviorally — the two new providers are mounted but produce no visible output
+until a later phase calls them.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. `AppHeader`/`BrandMark` are complete but unused pending Phase 2C/2D — see Design
+   decision 1.
+2. `Dialog`'s focus trap is not hardened against dynamically-changing dialog content
+   (see Design decision 3) — not currently exercised, since no dialog in the app is
+   dynamic.
+3. No visual-regression harness exists in this repo (pre-existing gap,
+   `PROJECT_STATUS.md` §2.6) — Toast/Dialog verified by code review + typecheck/build.
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2C — Dashboard**
+(implement `dashboard-design.md` in full: `Field`/`Card`/`EmptyState`/`ErrorState`/
+`ConfirmDialog`, restructure `Dashboard.tsx`, retire its `window.confirm()` in favor of
+`useDialog()`, and this is also where `AppHeader` gets its first real mount). Not
+started — awaiting confirmation before continuing.
+
+---
+
+## Phase 12 — Dashboard (Design Phase 2C)
+
+**Date:** 2026-08-25
+**Goal:** Implement `docs/frontend/dashboard-design.md` in full — restructure
+`Dashboard.tsx` onto the token/primitive foundation from Phases 10–11, replace
+`window.confirm()` with the Phase 11 `Dialog` system, mount `AppHeader` for the first
+time. List/create/delete behavior must be identical to today.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `apps/web/src/components/Card.tsx` — bordered surface, optional `interactive`
+  hover/focus-within lift (border-strong + shadow-subtle)
+- `apps/web/src/components/EmptyState.tsx` — icon-agnostic empty-state layout
+- `apps/web/src/components/ErrorState.tsx` — full-panel error block with `role="alert"`
+  and an optional retry action
+
+### Files changed
+
+- `apps/web/src/pages/Dashboard.tsx` — full restructure (see Design decisions)
+- `apps/web/src/components/index.ts` — barrel updated
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `handleCreate`/`handleDelete`'s actual API calls (`api.createProject`,
+  `api.deleteProject`, `api.listProjects`) are byte-identical to before this phase —
+  only what wraps them (confirm mechanism, success/failure feedback, loading/empty/
+  error rendering) changed.
+- No file outside `apps/web/src/pages/Dashboard.tsx` and the three new components was
+  touched. No API/backend file touched.
+
+### Design decisions
+
+1. **No `ConfirmDialog.tsx`.** `docs/frontend/frontend-implementation-roadmap.md`'s
+   Phase 2C row listed one, but Phase 11's `DialogHost.tsx` already provides
+   `useDialog().confirm()` — the identical shape (promise-returning, imperative,
+   destructive-aware). Building a second wrapper around the same `Dialog` shell would
+   have been the exact kind of duplication the brief's "search before creating"
+   rule exists to prevent. `Dashboard.tsx` calls `useDialog().confirm()` directly,
+   with the retired `window.confirm()`'s exact message text preserved verbatim in the
+   `body` option.
+2. **`AppHeader` mounted, Dashboard's old `<h1>Sketch2UI</h1>` retired in favor of
+   `<h1>Projects</h1>`.** Keeping both would stack two adjacent "Sketch2UI" labels —
+   `AppHeader`'s wordmark directly above a page heading that repeats the same word
+   reads as an oversight, not a design. "Projects" names what this page actually
+   contains, matching the header-logo-plus-content-heading pattern used elsewhere
+   (e.g. a code host's own logo bar next to a "Repositories" title). Checked both
+   `e2e/golden-path.spec.ts` and `e2e/inspector-overrides.spec.ts` before making this
+   change — neither asserts on the Dashboard H1's text, only on the input placeholder
+   and the "Create project" button's accessible name, both unchanged.
+3. **List loading state is 3 flat skeleton rectangles**, not spinner text — matches
+   `dashboard-design.md`'s "no shimmer, a static skeleton is enough signal" call.
+4. **Delete outcome now shows a toast** (`useToast().showToast("success"/"error", …)`)
+   instead of silently updating state or (on failure) leaving only inline text — the
+   create-project failure path still uses inline error text per
+   `dashboard-design.md`'s explicit spec ("replacing nothing structural"), so the two
+   failure surfaces in this one page are deliberately different: create is a form
+   validation-adjacent error shown at the form, delete is a transient outcome shown as
+   a toast, matching each interaction's actual shape.
+5. **Card's delete `IconButton` is `opacity-0` at rest**, shown via
+   `hover:`/`focus-visible:opacity-100` (and forced visible while its own delete is
+   in flight) — visible on hover for mouse users and on focus for keyboard users, per
+   `dashboard-design.md`'s "visible on hover/focus, not always-on."
+
+### Tests
+
+| Command | Result | Delta from Phase 11 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 109 modules (up from 103), 737ms | +6 modules: Dashboard now actually imports Card/EmptyState/ErrorState/AppHeader/BrandMark and their dependency chain |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged |
+
+### Manual verification
+
+Ran `npm run dev:web` against the live project list and walked the actual delete flow
+rather than only inspecting code:
+
+| Check | Result |
+|---|---|
+| `AppHeader` renders (wordmark + "Sketch2UI") above the "Projects" H1 | ✓ |
+| Create-form button: disabled/washed-out with empty input, solid `bg-primary` once text is entered | ✓ |
+| Project card grid renders real data (name + status), hover reveals the delete icon | ✓ |
+| Clicking the delete icon opens the dialog: title "Delete project?", body `Delete "Car marketplace"? This cannot be undone.` — compared character-for-character against the retired `window.confirm()` string | ✓ identical |
+| `document.activeElement` on dialog open | `"Cancel"` — confirms the destructive-dialog safer-default-focus contract from `docs/frontend/accessibility.md` |
+| `Escape` closes the dialog | ✓, focus returned to the trash-icon trigger |
+| Project still present in the list after Cancel (not deleted) | ✓ |
+| Console errors throughout | none |
+
+Did not execute an actual delete against real project data in this manual pass (the
+Cancel path already proves the dialog's full contract — open, focus, copy, dismiss,
+focus-restore — without risking a real project); the delete *request* path itself is
+exercised by the unchanged `handleDelete` function, which no line of this phase's diff
+touches.
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. `TrashIcon`/`SpinnerIcon` are small hand-written inline SVGs local to
+   `Dashboard.tsx` — no icon library is installed yet (consistent with the "no new
+   dependency" precedent set in Phases 10–11). `docs/frontend/design-direction.md`
+   recommends Lucide for a later phase to replace these in place.
+2. The always-hidden-until-hover delete affordance was not verified under touch/
+   no-hover input — that is `docs/frontend/responsive-design.md`'s Phase 2J concern.
+3. No visual-regression harness exists in this repo (pre-existing gap) — verified by
+   typecheck/build/e2e/manual walkthrough, consistent with Phases 10–11.
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2D — Workspace
+shell** (extract `WorkspaceToolbar` and the new consolidated `StatusBar` from
+`ProjectWorkspace.tsx`; introduce the 4-region `WorkspaceBody` grid shell). Not
+started — awaiting confirmation before continuing.
+
+---
+
+## Phase 13 — Workspace Shell (Design Phase 2D)
+
+**Date:** 2026-08-25
+**Goal:** Rebuild `ProjectWorkspace.tsx`'s shell on `docs/frontend/workspace-design.md`
+— extract the toolbar, consolidate the four stacked banners into one fixed-height
+status bar, and move from the old 3-column layout (canvas / tree+inspector sharing a
+column / a fixed 480px right column) to the new 4-region layout (Layers / Canvas /
+Inspector / bottom dock). Every existing detection/override/codegen/preview/export
+behavior must survive untouched — this phase moves JSX, not logic.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `apps/web/src/features/workspace/WorkspaceToolbar.tsx`
+- `apps/web/src/features/workspace/StatusBar.tsx` — `StatusBar` container +
+  `DetectJobSegment`/`PageBoundarySegment`/`ActiveVersionSegment`/`ExportsPopover`
+- `apps/web/src/features/workspace/WorkspaceBody.tsx` — the 4-region shell
+
+### Files changed
+
+- `apps/web/src/pages/ProjectWorkspace.tsx` — render section rebuilt; all state/
+  effects/memos/handlers above `return` untouched (see Preservation posture)
+- `apps/web/src/components/StatusIndicator.tsx` — added a `"boundary"` tone
+- `e2e/golden-path.spec.ts` — "Save code version" → "Save version" (2 references)
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- Every `useState`/`useEffect`/`useMemo`/`useCallback` and every handler function
+  (`handleCreate`, `handleUpdate`, `handleDeleteSelected`, `handleChangeClass`,
+  `handleBoundaryChange`, `handleApproveTraining`, `handleExport`,
+  `handleSaveVersion`, `handleSaveEdit`, `handleActivateVersion`,
+  `handleApplyStyle`/`handleResetStyle` and the Content/Geometry/Structure
+  equivalents) in `ProjectWorkspace.tsx` is byte-for-byte identical to before this
+  phase — confirmed by diff. Only the JSX below the `if (!project) return …` guards
+  changed.
+- `AnnotationCanvas`, `ClassPicker`, `UITreePanel`, `InspectorPanel`, `PreviewPane`,
+  `CodePanel` all receive the exact same props as before — none of those five files
+  were opened for editing this phase.
+- Detection UUID override keying, model→manual correction, the four override groups,
+  correction history, code generation, immutable `CodeVersion` behavior, the preview
+  iframe's `sandbox=""`, export behavior, and page-boundary sticky-correction — all
+  untouched (no file in any of those paths was edited).
+- No API/backend file touched.
+
+### Design decisions
+
+1. **"Empty regions at first" (the original roadmap wording) was not implemented
+   literally.** Actually leaving the four content regions empty until Phases 2E–2H
+   would have meant the canvas, tree, Inspector, and Preview/Code stopped rendering
+   for the duration of this phase — a severe regression against this whole exercise's
+   "absolutely preserve" mandate. Instead, every existing feature component moved into
+   its new region, unchanged internally, in this same phase. 2E–2H now mean "restyle
+   what's already there," not "add what's missing." Recorded as Deviation 1 in
+   `docs/frontend/frontend-implementation-roadmap.md`'s Phase 2D result.
+2. **The interactive version-switcher pill row moved directly to the bottom dock**
+   (next to the Preview/Code tabs it controls), matching where
+   `code-preview-design.md` already said it belongs, rather than parking it
+   temporarily in the status bar and moving it again later. The status bar's
+   `ActiveVersionSegment` is a new read-only summary chip alongside it.
+3. **One, and only one, `window.alert()` → `showToast()` swap** — the version-activate
+   click handler's inline `.catch()`, which this phase was already relocating. Every
+   other `alert()` call site lives inside a handler function this phase did not open,
+   so those stay exactly as they were; a full alert→toast migration is not yet
+   scheduled to a specific roadmap phase and shouldn't be inferred as done here.
+4. **`StatusBar`'s five segments live in one file, not five.** Each is small and has
+   exactly one caller; splitting them into five files for its own sake would be
+   fragmentation without benefit. `RejectedCountSegment` specifically was folded into
+   `PageBoundarySegment` — a rejected-box count is meaningless without the boundary
+   context it's reported alongside.
+5. **Added a `"boundary"` tone to `StatusIndicator`** rather than reusing `"error"` or
+   `"warning"` — page-boundary rose is its own distinct semantic color on the canvas
+   (canvas-design.md), and conflating it with error/warning would blur a distinction
+   the product already draws carefully elsewhere.
+
+### Tests
+
+| Command | Result | Delta from Phase 12 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean on the first pass | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 117 modules (up from 109), 811ms | +8 modules: the three new workspace-shell files plus their dependency chain |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged pass count — golden-path now exercises the renamed button and the fully rebuilt shell |
+
+### Manual verification
+
+Ran `npm run dev:web` against a real project ("Wild Card Digital," 73 approved boxes,
+one saved code version, one export) at a genuine desktop width (1440×900 — the
+Browser pane's default viewport is narrower and gives a misleading "canvas looks
+starved" read for a shell that hasn't had its responsive pass yet; re-checked wide
+before drawing any conclusion):
+
+| Check | Result |
+|---|---|
+| Toolbar renders with correct tinted button colors (violet Detect, success Approve, info Export, primary Save) | ✓ |
+| Status bar: single fixed-height row, `v1 · generated · active` + `Exports (1)` | ✓ |
+| Layers (240px) / Canvas (flex, majority of width) / Inspector (320px) proportions | ✓ matches spec, canvas is no longer the starved panel |
+| Click a Layers tree row (`nav_item` / "Work") | ✓ same node highlights orange **on the canvas** and **populates the Inspector** — full cross-panel selection sync verified through the new panel boundaries, not just visually similar panels sitting next to each other |
+| Console errors throughout | none |
+
+One false alarm during this check, recorded for anyone reproducing it: navigating via
+a stale client-side route right after three consecutive Vite HMR updates left the page
+stuck on "Loading project…" with all network requests already returned 200 — a dev-
+server HMR artifact, not a real bug. A hard navigation to the same URL rendered
+correctly on the first paint.
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. `ExportsPopover`'s outside-click dismissal is a small hand-rolled listener, not a
+   shared `Popover` primitive (component-specification.md's Dropdown/Popover is still
+   unbuilt) — same "minimal foundation, no new dependency" precedent as Tooltip/Dialog.
+2. Bottom dock height is fixed at 40%, not resizable/collapsible yet — 2H/2I scope.
+3. Not verified below desktop width this phase — narrow-viewport behavior is 2J scope.
+4. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2E — Canvas**
+(restyle `AnnotationCanvas`/`PageBoundaryOverlay` stroke/fill colors onto tokens,
+preserving all pointer-math; add `CanvasToolbar` with zoom/pan/fit-to-screen and
+`CanvasLegend`, both new capabilities). Not started — awaiting confirmation before
+continuing.
+
+---
+
+## Phase 14 — Canvas (Design Phase 2E)
+
+**Date:** 2026-08-25
+**Goal:** Restyle `AnnotationCanvas`/`PageBoundaryOverlay`'s hardcoded hex stroke/fill
+values onto the design-token palette, add zoom/pan/fit-to-screen (new — the canvas had
+no zoom control before) and an on-canvas color legend (new — closes the Phase 1
+audit's most-cited gap, the color mapping existing only in code comments). Every
+pointer-math function (draw/move/resize coordinate transforms) must survive untouched.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `apps/web/src/features/annotation/CanvasToolbar.tsx`
+- `apps/web/src/features/annotation/CanvasLegend.tsx`
+- `apps/web/src/features/annotation/CanvasPanel.tsx` — owns zoom state, composes
+  `ClassPicker`+`CanvasToolbar`+`AnnotationCanvas`+`CanvasLegend` (not in the
+  roadmap's original file list — see Design decision 1)
+
+### Files changed
+
+- `apps/web/src/features/annotation/AnnotationCanvas.tsx` — hex→Tailwind token
+  classes for every stroke/fill; zero changes to any coordinate-transform function or
+  event handler
+- `apps/web/src/features/detection/PageBoundaryOverlay.tsx` — same treatment; zero
+  changes to its drag logic
+- `apps/web/src/pages/ProjectWorkspace.tsx` — canvas slot now renders `<CanvasPanel>`
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `getImagePoint`, `toPixels`, `toNormalized`, `normalizeRect`, `applyHandle` in
+  `AnnotationCanvas.tsx` — byte-for-byte unchanged, confirmed by diff.
+- Every `onMouseDown`/drag/draw/resize handler — unchanged.
+- `PageBoundaryOverlay.tsx`'s drag/resize logic — unchanged.
+- Detection UUID identity, model→manual correction, override behavior, correction
+  history, code generation, immutable `CodeVersion`, preview sandbox, export, and the
+  page-boundary sticky-correction rule — none of those files were touched.
+
+### Design decisions
+
+1. **Zoom needed zero changes to the pointer-math file.** `getImagePoint` computes
+   its screen→image scale from `svgRef.current.getBoundingClientRect()` — the actual
+   rendered size, not an assumed one. Since `AnnotationCanvas`'s root is `w-full` with
+   an `aspect-ratio`, giving its *parent* an explicit pixel width
+   (`asset.width * zoom`) inside a scrollable container makes zoom work correctly
+   with zero edits to the file the Phase 1 audit called "hard-won, correct." This is
+   the reason `CanvasPanel.tsx` exists — zoom state has to live in the component that
+   controls that parent's width, one level above `AnnotationCanvas` itself.
+2. **Color classes are a static `Record<DetectionTone, string>` lookup, not template-
+   interpolated strings.** Tailwind's JIT scanner requires each class name to appear
+   literally in source; `` `fill-${tone}` `` would silently fail to generate CSS in a
+   production build even though it works in dev (where Tailwind sometimes has broader
+   matching). Every branch (`selected`/`model`/`container`/`manual`) is a complete
+   static string.
+3. **Label text now matches its own box's color exactly**, replacing the previous
+   flat `#1f2937` (leaf and container both) / `#7e22ce` (model, a separately-darkened
+   shade from the box's own `#a855f7` stroke). Matches canvas-design.md's explicit
+   "Label: … matching stroke color" spec — a deliberate consistency improvement, not
+   an accidental color drift.
+4. **The on-canvas boundary-confidence label from canvas-design.md §1 was not
+   built.** Its justification assumed the status banner had been *removed*; Phase 2D
+   relocated that information into the `StatusBar` instead, so it's still visible.
+   Building the label anyway would mean threading `confidence` through two files
+   scoped to "color constants only" for information already on screen elsewhere.
+5. **Pan is the browser's native scroll/trackpad panning inside the zoomed,
+   scrollable container**, not a custom space-drag gesture. Covers the same
+   functional need (see the canvas at any pan position when zoomed beyond fit)
+   without new pointer-event wiring in a phase already touching sensitive files.
+
+### Tests
+
+| Command | Result | Delta from Phase 13 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 120 modules (up from 117), 735ms | +3 modules: the three new canvas files |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged pass count — **critically, the `svg g rect` structural selector in `inspector-overrides.spec.ts` still resolves**, confirming the `<g>`/`<rect>` nesting order survived converting inline `fill`/`stroke` attributes to Tailwind classes |
+
+### Manual verification
+
+Ran `npm run dev:web` against the same live "Wild Card Digital" project (73 approved
+boxes) at 1440×900, verifying function over appearance wherever a screenshot alone
+would be ambiguous:
+
+| Check | Method | Result |
+|---|---|---|
+| Zoom in/out | Click, then read the DOM zoom-percentage text in a **separate** follow-up call (React's state update is async — reading in the same synchronous batch as the click showed the stale value and looked like a bug until this was accounted for) | ✓ 29% → 54% after one +25% step |
+| Fit to screen | Click, read zoom % | ✓ recomputes from the container's actual measured size |
+| Legend | `aria-label="Show canvas legend"` → all 5 labels present (Model/Container/Manual/Selected/Outside page) | ✓ (see Known limitations for a tooling note on how this was clicked) |
+| Selection → color → Inspector | Dispatched a real `mousedown`/`mouseup` `MouseEvent` directly on a canvas `<rect>` (not a coordinate click) | ✓ the detection's `<rect>` gained the `fill-selection/8` class; all 6 Inspector sections (Layers, Detection, Style, Geometry, Structure, Content, History) populated |
+| Console errors | — | See Known limitations — one artifact investigated and ruled out as a tooling issue, not a live bug |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. **Two tooling artifacts, investigated and resolved as non-issues, recorded so a
+   future session doesn't re-debug them:**
+   - `read_console_messages` reported a persistent `ReferenceError: ClassPicker is
+     not defined` pointing at a Vite dependency-cache chunk, with an **identical
+     timestamp** across a full dev-server restart and `.vite` cache clear. `grep`
+     confirmed zero references to `ClassPicker` in `ProjectWorkspace.tsx`, and the
+     app rendered and functioned correctly throughout — a real uncaught render error
+     would have unmounted the component tree, not left a fully working UI on screen.
+     Concluded: a stale/accumulated buffer in the browser-automation tool's console
+     reader, not a live page error.
+   - The Browser pane's coordinate-based click tool intermittently missed
+     `CanvasLegend`'s small (24×24px) button; a real `MouseEvent` dispatched directly
+     on the element via JS worked immediately. Automation-precision note, not an
+     application defect.
+2. `CanvasLegend` has no `Escape`-to-dismiss — same "foundation, not finished"
+   precedent as Tooltip (Phase 10) and `ExportsPopover` (Phase 13).
+3. Explicit space-drag pan gesture not implemented — native scroll/trackpad panning
+   inside the zoomed container covers the same need (see Design decision 5).
+4. Not re-verified below desktop width — Phase 2J scope.
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2F — UI Tree**
+(extract `LayersPanel` into its own `WorkspaceBody` region if not already fully
+separated; add per-type icons and collapse/expand to `TreeNode`, both new). Not
+started — awaiting confirmation before continuing.
+
+---
+
+## Phase 15 — UI Tree (Design Phase 2F)
+
+**Date:** 2026-08-25
+**Goal:** Restyle `UITreePanel.tsx` onto the design-token palette and add per-type
+icons plus collapse/expand for nodes with children (both new). The "extract Layers
+into its own region" half of the original roadmap row turned out to already be done
+by Phase 13/2D's `WorkspaceBody` shell.
+**Status:** ✅ Complete.
+
+### Files changed
+
+- `apps/web/src/features/tree/UITreePanel.tsx` — hex→token colors; indent 14px→16px
+  (`space-lg`); added `TypeIcon` (5 icon families) and `ChevronIcon`
+  (collapse/expand, local `useState` per node). Root `<ul className="p-2">` and each
+  `<li>`'s single direct-child `<button>` kept exactly as before.
+
+### Files added / removed
+
+None.
+
+### Preservation posture
+
+- `buildTreeAndCode`'s output and the `selectedId`/`onSelect` wiring are untouched —
+  `UITreePanel` still receives the same `root`/`selectedDetectionId`/`onSelect`/
+  `modelDetectionIds` props from `ProjectWorkspace.tsx`, unmodified.
+- No detection/override/codegen/persistence file touched. No API file touched.
+
+### Design decisions
+
+1. **Chevron is a `<span onClick>` nested inside the row's `<button>`, not a second
+   sibling `<button>`.** Both e2e suites resolve a tree row via
+   `page.locator("ul.p-2 > li > button").first()`, which requires exactly one
+   direct-child `<button>` per `<li>`. Nesting a real `<button>`/`tabindex` element
+   inside a `<button>` violates HTML's content model (browsers render it, but
+   focus/activation semantics get unpredictable); a plain `<span>` has no such
+   restriction. `stopPropagation()` on the span's click keeps it from also firing the
+   row's select handler. Traded off: mouse-only for now — full keyboard tree
+   navigation is already `docs/frontend/accessibility.md`'s Phase 2J scope.
+2. **Five icon families (container/text/media/interactive/list) via `Set`-based
+   lookup, not 41 per-taxonomy-class glyphs.** `node.type` draws from the 41-class
+   taxonomy plus synthetic types the layout engine introduces (e.g. `group`) — a
+   `Set`-per-family lookup with a safe "container" fallback covers all of them
+   without hand-drawing 41 unique icons for a first pass.
+3. **Collapsed state is local, unpersisted `useState` per `TreeNode`.** UI-IR node
+   ids are reassigned from a per-generation counter on every detection change (a
+   pre-existing fact, not new to this phase — see Phase 1's report), so a tree
+   rebuild already remounts every node under a new React `key`. Local state resetting
+   to its default (expanded) on remount is correct, not a bug — it directly satisfies
+   the acceptance criterion ("collapse state doesn't crash on tree rebuild") since
+   there's no persisted reference across rebuilds to go stale.
+
+### Tests
+
+| Command | Result | Delta from Phase 14 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 120 modules, 727ms | unchanged module count (edits only, no new files) |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged — `ul.p-2 > li > button` still resolves |
+
+### Manual verification
+
+Ran `npm run dev:web` against the "Wild Card Digital" project (a deeply nested real
+tree — page → header/navbar/section×5 → cards/lists), verifying via direct DOM
+inspection rather than screenshots alone:
+
+| Check | Result |
+|---|---|
+| Root `<ul>` class, buttons-per-`<li>` | `rootClass: "p-2"`; exactly 1 direct-child `<button>` per `<li>` |
+| Icons render | 2 `<svg>`s in the first row's button (chevron + type icon) |
+| Collapse | Dispatched a real click on the chevron `<span>` — nested `<ul>` (11 children) unmounted; **Inspector was not touched**, confirming `stopPropagation` correctly separated "toggle collapse" from "select" |
+| Expand | Second click on the same chevron restored all 11 children |
+| Row click still selects | Clicked a `logo` row — `#detection-class`'s value became `"logo"` **and** the row's own classes picked up `bg-selection-subtle text-selection`, confirming selection wiring and the new token colors both work together |
+| Console errors | The same cached `ClassPicker is not defined` tooling artifact from Phase 14 reappeared (identical timestamp, third occurrence across a hard navigation) — reconfirmed as a stale buffer in the console-reading tool, not a live error, given the app was simultaneously fully functional throughout every check above |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. Chevron collapse/expand is mouse-only — keyboard tree navigation is
+   `docs/frontend/accessibility.md`'s Phase 2J scope.
+2. Five icon families rather than a unique glyph per taxonomy class — revisit only
+   if real usage shows the grouping is too coarse.
+3. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2G — Inspector** —
+flagged in the roadmap as the single highest-risk phase in the whole plan (restructure
+`InspectorPanel.tsx`'s six flat sections into accordion sections while preserving
+every handler prop, validator call, and the `EMPTY_STYLE_OVERRIDE` reference-identity
+contract; touches the most e2e-asserted selectors of any phase). Not started —
+awaiting confirmation before continuing.
+
+---
+
+## Phase 16 — Inspector (Design Phase 2G)
+
+**Date:** 2026-08-25
+**Goal:** Restructure `InspectorPanel.tsx`'s six always-expanded sections into
+collapsible accordion sections with a shared footer, per
+`docs/frontend/inspector-design.md`. Flagged as the highest-risk phase in the entire
+Phase 2 plan — every handler, validator, and the `EMPTY_STYLE_OVERRIDE`
+reference-identity contract had to survive exactly, and this phase touches the most
+e2e-asserted selectors of any phase (`#detection-class`, `#geo-width`, `#content-text`,
+three `button[title="..."]` locators, `getByText("Saved")`, `getByText(/may not
+contain/i)`).
+**Status:** ✅ Complete — two real issues found and fixed during this phase's own
+verification, exactly the outcome the roadmap's "do not merge without a full green
+run" requirement exists to force.
+
+### Files added
+
+- `apps/web/src/features/inspector/AccordionSection.tsx`
+- `apps/web/src/features/inspector/InspectorSectionFooter.tsx`
+
+### Files changed
+
+- `apps/web/src/features/inspector/InspectorPanel.tsx` — JSX restructured onto the
+  two new components; every draft/dirty/validation helper function and every handler
+  is at the identical scope it was in before this phase (verified by direct
+  comparison, not just by test passing)
+- `e2e/inspector-overrides.spec.ts` — two lines added (see "Issue 1" below)
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `EMPTY_STYLE_OVERRIDE` in `ProjectWorkspace.tsx` and its consumption in
+  `InspectorPanel.tsx`'s `useEffect([selected?.id, currentStyle])` — untouched;
+  `ProjectWorkspace.tsx` was not edited this phase at all.
+- All five Apply/Reset handler functions (`handleApplyStyle` … `handleRevertToModelClass`)
+  — identical logic, identical scope, only their surrounding JSX moved.
+- `#detection-class`, `#geo-x`/`#geo-y`/`#geo-width`/`#geo-height`,
+  `#content-text`/`#content-alt`/`#content-href`, `#structure-parent`/
+  `#structure-order`, `#style-*` — every id preserved exactly.
+- No detection/override/codegen/persistence file touched. No API file touched.
+
+### Design decisions
+
+1. **Did not build the six per-section files the roadmap's table listed**
+   (`DetectionSection.tsx` etc.). Full extraction would mean threading 15–20 props
+   into six new components — real surface area for a mismatch bug in the phase this
+   whole exercise called "riskiest." `AccordionSection`/`InspectorSectionFooter` are
+   genuinely reusable and state-free, so they were built as specified; the six
+   sections' actual field JSX stayed inline in `InspectorPanel.tsx`, each now wrapped
+   in `<AccordionSection>` in place — zero logic relocation.
+2. **Footer labels keep their exact original per-section text**, not
+   `inspector-design.md`'s simplified generic table (which proposed one shared
+   "No override"/"Applied"/"Unapplied" vocabulary). `e2e/golden-path.spec.ts` asserts
+   `getByText("Saved")` verbatim for Detection's clean state — generalizing that
+   string would have broken the test for a purely cosmetic gain. The shared
+   `InspectorSectionFooter` still standardizes color-by-tone and layout; only the
+   label text itself stayed section-specific.
+3. **Every button keeps its native `title` attribute alongside the new `Tooltip` and
+   `aria-label`** — see Issue 2 below.
+
+### Issue 1 — caught by the required e2e run (not by code review)
+
+First full e2e run after the rewrite: **2 of 3 tests failed.**
+`inspector-overrides.spec.ts`'s Geometry and Content tests both timed out with
+Playwright reporting `<element> intercepts pointer events` on `#geo-width` /
+`#content-text`. Root cause: those sections now default to **collapsed** per
+`inspector-design.md`'s explicit spec, but both tests interacted with those fields
+immediately after selecting a node, assuming the old always-expanded layout — the
+same category of change as Phase 13's toolbar-rename (a deliberate design change a
+real user also has to act on, not an application bug). Fixed with one line per test:
+`page.getByRole("button", { name: "Geometry"/"Content", exact: true }).click()`
+before the first interaction with that section. Re-ran twice more after the fix —
+both green, no flakiness traced to the accordion's CSS transition.
+
+### Issue 2 — caught by code review before the first e2e run
+
+The `title=` → `Tooltip`+`aria-label` migration, taken literally, would have removed
+the native `title` HTML attribute from every button — silently breaking all three
+`button[title="..."]` e2e locators, since a `Tooltip` renders its text in a separate
+`role="tooltip"` element on hover/focus, not as a `title` attribute. Caught while
+writing the component, before ever running the suites. Fixed with the lowest-risk
+option: keep the native `title` **in addition to** the `Tooltip` wrapper and
+`aria-label` on every button — zero e2e selector changes needed, at the minor,
+documented cost of two tooltip mechanisms technically being present on one element.
+
+### Tests
+
+| Command | Result | Delta from Phase 15 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean on the first pass | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 124 modules (up from 120), 749ms | +4 modules: `AccordionSection`, `InspectorSectionFooter`, plus `Field`/`Select`/`Input`/`Tooltip` now actually imported by the Inspector |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test` — run 1 | **2 failed** (Issue 1) | — |
+| `npx playwright test` — run 2 (after fix) | 3 passed | — |
+| `npx playwright test` — run 3 (flakiness check) | 3 passed | — |
+
+### Manual verification
+
+| Check | Method | Result |
+|---|---|---|
+| Collapsed section is genuinely non-interactive | Checked the clipping ancestor's own `getBoundingClientRect().height` (not the input's — a clipped descendant still reports its own natural size) and `document.elementFromPoint()` at the input's nominal position | Ancestor height `0`; hit-test resolved to a **different** element than `#geo-width` — collapse is real, not just visual |
+| Style section dirty-detection (not covered by either e2e suite) | Real simulated keystrokes into `#style-gap` (a raw DOM `.value` assignment does **not** reliably trigger React's controlled-input `onChange` — tried first, confirmed it silently fails, switched to real keystrokes) | Footer flipped from "No style overrides" to "Unapplied" correctly |
+| Console errors | — | The same cached `ClassPicker is not defined` tooling artifact reappeared a fourth time, identical timestamp — reconfirmed as a stale automation-tool buffer, not a live error, given every functional check above succeeded simultaneously |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. Every Apply/Reset button carries both a native `title` and a custom `Tooltip` —
+   deliberate (Issue 2); a future `data-testid` migration of the three e2e locators
+   would allow dropping the redundant native `title`.
+2. **Testing note for future sessions**: simulating input into a React-controlled
+   field via `element.value = x; dispatchEvent(new Event(...))` does not reliably
+   trigger React's `onChange` — use real simulated keystrokes (or RTL's
+   `fireEvent`/`userEvent` in an actual test file). Cost real debugging time this
+   phase; recorded so it isn't rediscovered from scratch.
+3. Structure section's dirty-detection was not independently re-verified (identical
+   code shape to Style/Geometry, both verified) — analogy-based confidence, not a
+   gap.
+4. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2H — Code panel**
+(flip Monaco's `theme` prop from `vs-dark` to a light theme; restyle surrounding
+chrome; move into the `BottomDock`). The Inspector — the roadmap's single highest-risk
+phase — is now behind this plan. Not started — awaiting confirmation before
+continuing.
+
+---
+
+## Phase 17 — Code Panel (Design Phase 2H)
+
+**Date:** 2026-08-25
+**Goal:** Flip Monaco's hardcoded `vs-dark` theme to light (the one permanently-dark
+surface in an otherwise all-light app, per Phase 1's §17/§21 finding) and restyle
+`CodePanel.tsx`'s surrounding chrome onto tokens. The draft/dirty state machine and
+the `validateGeneratedCode()` gate must survive untouched.
+**Status:** ✅ Complete.
+
+### Files changed
+
+- `apps/web/src/features/code/CodePanel.tsx` — `theme="vs-dark"` → `theme="light"`;
+  HTML/CSS sub-tabs now use the shared `Tabs`/`Tab` components; Cancel/Save edit/Edit
+  code buttons now use `Button`; validation/error banner restyled onto tokens. Zero
+  changes to `beginEdit`/`cancelEdit`/`handleSave` or the validator call itself.
+
+### Files added / removed
+
+None.
+
+### Preservation posture
+
+- `validateGeneratedCode()` still gates every Save attempt before any network call —
+  verified live, not just by reading the unchanged source (see Manual verification).
+- The not-editing/editing draft-tracking `useEffect` and the `dirty` computation are
+  untouched.
+- No detection/override/codegen/persistence file touched. No API file touched.
+
+### Design decision
+
+**The "Edit code" button's tooltip has no redundant native `title` attribute**,
+unlike every Apply/Reset button restyled in Phase 16. That phase kept `title`
+alongside the new `Tooltip` specifically because three `button[title="..."]` e2e
+locators depended on it; "Edit code" has no such dependency, so this is the first
+instance of the pattern's "clean" end state — worth noting as the template for
+future buttons once Phase 16's legacy-selector constraint no longer applies elsewhere.
+
+### Tests
+
+| Command | Result | Delta from Phase 16 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 125 modules (up from 124), 754ms | +1 module |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged |
+
+### Manual verification
+
+The one check that actually matters for this phase — whether the validation gate
+still blocks a bad save through the restyled component, not just whether the suites
+stay green (neither e2e suite exercises this path):
+
+| Check | Result |
+|---|---|
+| Monaco theme, computed style | `rgb(255, 255, 254)` editor background — confirmed light |
+| Entered edit mode, typed `<div><span>unclosed</div>` (a real mouse click into Monaco was required before `Cmd+A`/typed keystrokes registered — a programmatic `.focus()` alone was not enough), clicked Save edit | The exact validator fired: `HTML_UNBALANCED_TAG: Closing </div> does not match the open <span>.` Save was blocked; the panel stayed in editing mode (`Cancel`/`Save edit` still visible, confirming `setEditing(false)` was never reached) |
+| Console errors | The same cached `ClassPicker is not defined` tooling artifact reappeared a fifth time, identical timestamp — reconfirmed as a stale automation-tool buffer given every functional check above succeeded |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. No automated e2e coverage for the validation-gate path (pre-existing gap, not
+   introduced here) — verified manually instead.
+2. Automation-tooling note for future sessions: Monaco requires a real mouse click
+   into the editor before keyboard shortcuts/typed input register via browser
+   automation — a programmatic `.focus()` call is not sufficient. Same category as
+   Phase 16's React-controlled-input finding.
+3. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2I — Preview** (add
+frame chrome and a loading progress line around `PreviewPane`; the iframe's
+`sandbox=""` and `srcDoc` composition logic are explicitly not to be touched — this is
+this app's one deliberate security boundary). Not started — awaiting confirmation
+before continuing.
+
+---
+
+## Phase 18 — Preview (Design Phase 2I)
+
+**Date:** 2026-08-25
+**Goal:** Add frame chrome (viewport width label), a loading progress line, and an
+empty state around `PreviewPane.tsx`. The iframe's `sandbox=""` attribute and
+`composeDocument()`'s asset-path rewrite are the app's one deliberate security
+boundary and are explicitly a hard gate for this phase — any change there needs
+explicit sign-off, not routine review.
+**Status:** ✅ Complete.
+
+### Files changed
+
+- `apps/web/src/features/preview/PreviewPane.tsx` — width label, loading progress
+  line (new optional `loading?: boolean` prop), empty state, viewport toggle restyled
+  onto tokens. `composeDocument()` and the iframe's `sandbox`/`srcDoc`/`title`
+  attributes are byte-for-byte unchanged.
+- `apps/web/src/pages/ProjectWorkspace.tsx` — one call site passes the new `loading`
+  prop, reusing the same busy expression already computed for `InspectorPanel`.
+
+### Files added / removed
+
+None.
+
+### Preservation posture — the sandbox gate
+
+Checked three independent ways, per this phase's own "hard gate, explicit sign-off"
+requirement:
+
+1. `grep -n 'sandbox' apps/web/src/features/preview/PreviewPane.tsx` — one match,
+   `sandbox=""`, run directly against the diff.
+2. Live DOM read in the browser: `iframe.getAttribute('sandbox')` → `""`.
+3. Full `e2e/golden-path.spec.ts` run, including the export step, which depends on
+   the preview pipeline working end to end.
+
+`composeDocument()`'s asset-path rewrite regex and its two-branch style-tag insertion
+are unchanged (no lines touched inside that function).
+
+### Design decision
+
+**"Version activation" was left out of the `loading` prop's trigger expression**,
+though `code-preview-design.md` named it. `handleActivateVersion` in
+`ProjectWorkspace.tsx` has never tracked its own busy flag — confirmed by reading the
+function, a bare `await api.activateCodeVersion(...)` with no `setXxx(true/false)`
+around it. Adding one to satisfy the doc's literal wording would have contradicted
+that same doc's "no new state" instruction one sentence later. Followed the intent
+(no new state) over the letter (include version activation) — recorded as a
+deviation, not silently dropped.
+
+### Tests
+
+| Command | Result | Delta from Phase 17 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 125 modules (unchanged count), 742ms | edits only |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test e2e/golden-path.spec.ts e2e/inspector-overrides.spec.ts` | 3 passed | unchanged |
+
+### Manual verification
+
+| Check | Result |
+|---|---|
+| `iframe.getAttribute('sandbox')` | `""` |
+| Click "Tablet" → width label + iframe width | Both read `"768px"` |
+| Style Apply round-trip (proxy for the loading line) | Footer transitioned to "Applied," confirming `applyingStyle` toggled true→false — the same boolean now drives `loading` |
+| Console errors | The same cached `ClassPicker is not defined` tooling artifact reappeared a sixth time, identical timestamp — reconfirmed as a stale automation-tool buffer |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. The loading progress line's on-screen appearance was not caught mid-flight — the
+   local dev API resolves well under 100ms, faster than polling could catch. Verified
+   indirectly instead: `loading` is a type-checked direct pass-through of state
+   already proven to toggle correctly (the Apply succeeded). A quick visual glance
+   under real network latency would close this gap if it ever feels unconvincing.
+2. Empty-state rendering (`html.trim() === ""`) not exercised against a live
+   zero-detection project — low risk, single-condition JSX, not independently
+   confirmed live.
+3. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2J — Responsive /
+accessibility** (canvas keyboard-selection/nudge, full Layers-tree keyboard
+navigation, drawer patterns at tablet width, the `WorkspaceUnavailable` mobile
+screen, ARIA labeling sweep across every component landed in 2B–2I). This is the
+broadest-surface-area phase remaining — it touches most components from prior phases
+to add responsive classes and ARIA attributes, per
+`docs/frontend/frontend-implementation-roadmap.md`'s own acceptance criteria. Not
+started — awaiting confirmation before continuing.
+
+---
+
+## Phase 19 — Responsive / Accessibility (Design Phase 2J)
+
+**Date:** 2026-08-25
+**Goal:** Implement `responsive-design.md`'s breakpoint behavior (tablet drawers,
+mobile `WorkspaceUnavailable`) and `accessibility.md`'s keyboard/ARIA additions
+across every component landed in Phases 10–18. The broadest-surface-area phase in
+the plan — touches the canvas, the tree, the workspace shell, and adds two new pages.
+**Status:** ✅ Complete.
+
+### Files added
+
+- `apps/web/src/components/useMediaQuery.ts`
+- `apps/web/src/components/Drawer.tsx`
+- `apps/web/src/pages/WorkspaceUnavailable.tsx`
+
+### Files changed
+
+- `apps/web/src/features/annotation/AnnotationCanvas.tsx` — new separate
+  `useEffect` for arrow-key nudge (reuses `onUpdate`, no existing function touched);
+  each detection `<rect>` gained `tabIndex`/`role`/`aria-label`/Enter-Space
+  `onKeyDown`; the `<svg>` root gained `role="application"` + a live `aria-label`.
+- `apps/web/src/features/tree/UITreePanel.tsx` — `onKeyDown` for →/← expand/collapse
+  (calls the existing `setCollapsed`) + `aria-expanded`.
+- `apps/web/src/features/workspace/WorkspaceBody.tsx` — new `isTablet` prop; renders
+  `Drawer`s instead of fixed columns when true. Same content in both branches.
+- `apps/web/src/pages/ProjectWorkspace.tsx` — `isMobile`/`isTablet` via
+  `useMediaQuery`; early-returns `WorkspaceUnavailable` on mobile, after the
+  existing loading/error/not-found guards (hook-call order unaffected).
+
+### Files removed
+
+None.
+
+### Preservation posture
+
+- `AnnotationCanvas.tsx`'s pointer-math functions (`getImagePoint`, `toPixels`,
+  `toNormalized`, `normalizeRect`, `applyHandle`) and every existing drag/draw/
+  resize/delete handler — untouched; the nudge logic lives in a new, separate effect.
+- `UITreePanel.tsx`'s `ul.p-2 > li > button` shape — unchanged (verified by both
+  e2e suites still passing).
+- No detection/override/codegen/persistence file touched beyond the additive changes
+  above. No API file touched.
+
+### Design decisions
+
+1. **Canvas Tab-cycling is native focus order, not a custom Tab-key interceptor.**
+   Hijacking the browser's own Tab key while the canvas has focus risks a keyboard
+   trap. Making each detection `tabIndex={0}` achieves the same reachability through
+   the platform's own mechanism.
+2. **Focus does not auto-select** — only Enter/Space does, matching how every other
+   focusable control in the app already separates "focused" from "activated."
+3. **Tablet-drawer content remounts on a live breakpoint crossing** (window resize
+   across 768/1024px mid-session loses canvas zoom/tree-collapse state) — accepted
+   as a narrow-scenario MVP trade-off over the added complexity of portal-based
+   reparenting.
+
+### Tests
+
+| Command | Result | Delta from Phase 18 |
+|---|---|---|
+| `npm run typecheck -w apps/web` | Clean on the first pass | unchanged elsewhere |
+| `npm run build` (all 4 workspaces) | Success — Vite 128 modules (up from 125), 756ms | +3 modules |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed / 0 failed | unchanged |
+| `npx playwright test` (both suites, default desktop viewport) | 3 passed | unchanged — confirms new mobile/tablet branches don't affect the desktop path the suites run at |
+
+### Manual verification
+
+The most thorough live-verification pass of any phase so far — every new
+interactive surface was exercised, not inferred from source:
+
+| Check | Method | Result |
+|---|---|---|
+| Canvas arrow-key nudge | Selected a detection, dispatched `ArrowRight` then `Shift+ArrowDown`, read the rendered `<rect>`'s `x`/`y` between each | `x: 78→79` (1px-equiv.), `y: 78→~88` (10px-equiv., Shift) |
+| Nudge actually persists | Read the network log after both nudges | **Two real `PATCH .../detections/:id` → 200** — confirms the nudge round-trips through `handleUpdate`, the same path a mouse drag uses, not a local-only visual change |
+| Tree →/← expand/collapse | Focused the root row, dispatched `ArrowLeft` then `ArrowRight` | Collapsed (nested `<ul>`, 11 children, unmounted) then fully restored |
+| Tablet drawers (900px) | Clicked "Layers", then "Inspector", toggle buttons | Layers opened left-anchored with the live tree (a prior selection's highlight preserved); Inspector opened right-anchored showing that same node's full accordion state; `Escape` closed the Layers drawer |
+| Mobile screen (390px) | Loaded the workspace route directly | `WorkspaceUnavailable` rendered: brand header, project name, explanation copy, status + sketch thumbnail, "View live preview" → full-screen `PreviewPane` with working viewport toggles and "← Back" |
+| ARIA attributes | Queried `svg[role="application"]` and a detection `<rect>` directly | Correct live `aria-label` (with the real detection count) on the svg; `tabindex="0"`/`role="button"`/`aria-label="page, manual"` on the rect — first attempt queried the wrong `<svg>` (an icon, not the canvas root) and was corrected with a more specific selector |
+| Console errors | — | The same cached `ClassPicker is not defined` tooling artifact reappeared a seventh time, identical timestamp — reconfirmed as a stale automation-tool buffer, not a live error |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files added/changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. Tablet-drawer content remounts on a live breakpoint crossing (Design decision 3).
+2. `Drawer` has no focus-trap — Escape + overlay-click only, same scoping precedent
+   as Tooltip/ExportsPopover/CanvasLegend.
+3. No automated axe/contrast tooling added — optional per this phase's own
+   requirement; manual keyboard passes were the verification method.
+4. No visual-regression harness in this repo (pre-existing gap).
+
+### Next phase
+
+Per `docs/frontend/frontend-implementation-roadmap.md`, **Phase 2K — Visual QA /
+polish** — the final phase: a full-app pass against every design doc, fixing drift,
+followed by the complete manual `docs/execution/regression-checklist.md` (15
+core-pipeline steps + preservation checks). Not started — awaiting confirmation
+before continuing.
+
+---
+
+## Phase 20 — Visual QA / Polish (Design Phase 2K)
+
+**Date:** 2026-08-25
+**Goal:** Final phase of the Phase 2 frontend redesign. Full-app pass against every
+design doc to catch drift, the full automated suite including `test:py` (not run
+once during 2A–2J), both e2e suites, and a live manual regression walkthrough.
+**Status:** ✅ Complete. **Phase 2 (design tokens through responsive/accessibility)
+is complete as of this entry.**
+
+### Files changed
+
+- `apps/web/src/features/annotation/ClassPicker.tsx` — rewritten onto the `Select`
+  primitive (was still on its original `gray-300`/`orange-500` classes — never
+  touched by any earlier Phase 2 sub-phase)
+- `apps/web/src/features/upload/UploadDropzone.tsx` — restyled onto tokens (same
+  reason — never touched before this phase)
+
+### Files added / removed
+
+None.
+
+### What the QA pass actually found
+
+A repo-wide `grep` for legacy Tailwind color classes (`text-gray-*`, `bg-orange-*`,
+`border-red-*`, `text-purple-*`, etc.) across every `.tsx` file in `apps/web/src`
+turned up exactly two files with real hits: `ClassPicker.tsx` and
+`UploadDropzone.tsx`. Both are small, self-contained components that happened to sit
+outside every prior phase's stated scope (`ClassPicker` is only rendered inside
+`CanvasPanel`, built in Phase 14 but never itself opened for editing; `UploadDropzone`
+only appears in the empty-workspace state, which no phase's acceptance criteria
+named directly). Fixed both; a second grep pass (legacy classes, raw hex, `rgba()`
+fills/strokes) came back clean — one hit remained, inside a code comment referencing
+an already-removed hex value, not a live style.
+
+### Tests — full suite, run fresh for this phase
+
+| Command | Result |
+|---|---|
+| `npm run typecheck` (web + api + scripts) | Clean |
+| `npm run test` (Vitest, shared-types + api) | 124 + 386 passed |
+| `npm run test:py` (Pytest, cv-worker) | **19 passed** — first run of this suite in the entire Phase 2 effort; confirms the TS/Python boundary-overlap-parity fixture (untouched by any frontend phase) is still intact |
+| `npm run build` (all 4 workspaces) | Success — Vite 128 modules, 703ms |
+| `npx playwright test` (both e2e suites) | 3 passed |
+
+### Manual regression walkthrough
+
+Real clicks and real typed keystrokes throughout — not JS-dispatched shortcuts,
+except where noted:
+
+| Step | Result |
+|---|---|
+| Dashboard: create "Phase 2K Regression Check" (typed name, clicked Create) | ✅ navigated into a fresh empty workspace showing the newly-restyled `UploadDropzone` |
+| Dashboard: delete that project (clicked delete icon → confirm dialog → clicked Delete) | ✅ dialog showed the correct title/body, project removed from the list |
+| **Structure section dirty-check** — the one gap Phase 16 explicitly flagged as not independently verified | ✅ typed into `#structure-order`: footer → "Unapplied"; Apply: footer → "Applied"; Reset: footer → "No structure override" — full cycle confirmed, closing that gap |
+| Export ZIP | Button present and enabled; not clicked live (would start a real, uninspectable download in this session — `golden-path.spec.ts` already asserts the download event and `.zip` filename on every run) |
+| Console errors | The cached `ClassPicker is not defined` tooling artifact reappeared an **eighth** time across a fresh navigation, identical timestamp — final reconfirmation it is a stale automation-tool buffer, not a live error |
+
+**Not performed this phase, and why it's still covered:** a brand-new upload→detect
+walkthrough — this session's browser-automation surface has no equivalent to
+Playwright's `setInputFiles`, so a live file upload couldn't be driven manually.
+`e2e/golden-path.spec.ts` exercises exactly this path (upload → detect → correct →
+generate → preview → export) and has been green on every phase's e2e run throughout
+Phase 2, which is the reproducible evidence for that step.
+
+### Preservation checks (from `regression-checklist.md`)
+
+| Check | Evidence |
+|---|---|
+| Model→manual flip on correction | `golden-path.spec.ts`'s class-change step, unchanged code path, green every run |
+| Immutable `CodeVersion` rows | No file under `code-versions` routes or the save/activate handlers was touched in any Phase 2 sub-phase |
+| Preview sandbox (`sandbox=""`, no `allow-scripts`) | Triple-checked in Phase 18 (grep, live DOM read, e2e); unchanged since |
+| Content-override `<`/`>` and href-scheme rejection | Exercised live by `inspector-overrides.spec.ts` on every run |
+| Boundary-parity fixture (TS ↔ Python) | `test:py`, 19/19, this phase |
+
+### Database changes
+
+None.
+
+### API changes
+
+None.
+
+### Frontend changes
+
+Summarized above under Files changed.
+
+### ML changes
+
+None.
+
+### Known limitations / open decisions
+
+1. A brand-new upload→detect live walkthrough wasn't performed this session
+   (tooling gap) — covered by `golden-path.spec.ts` instead.
+2. Export ZIP's download wasn't triggered live this phase — covered by the same
+   suite's explicit download-event assertion.
+3. No visual-regression harness or automated axe/contrast tooling exists in this
+   repo — a pre-existing gap noted in every phase of Phase 2, still open, and a
+   reasonable candidate for future work rather than something this phase needed to
+   close.
+
+### Phase 2 — closing summary
+
+Eleven sub-phases (2A–2K), logged here as Phases 10–20, took the frontend from zero
+design tokens and a 1,035-line God-component workspace to: a full token system;
+a primitive component library (Button, Input, Select, Field, Tabs, Badge, Tooltip,
+Panel, Card, EmptyState, ErrorState, Dialog, Toast, Drawer, and more); a rebuilt
+4-region workspace shell; a token-restyled canvas with new zoom/pan/fit/legend
+capabilities and zero changes to its pointer-math; an icon-and-keyboard-enabled
+Layers tree; an accordion Inspector preserving every handler, validator, and the
+`EMPTY_STYLE_OVERRIDE` identity contract exactly; a light-themed Monaco code panel;
+a Preview pane with frame chrome, a loading indicator, and an untouched security
+sandbox; full responsive behavior (desktop/tablet drawers/mobile fallback) and
+keyboard/ARIA coverage; and a final QA pass that found and fixed real, previously
+undetected drift rather than rubber-stamping the prior ten phases.
+
+Zero regressions to detection behavior, override behavior, code generation,
+code-version immutability, preview sandboxing, export behavior, or page-boundary
+behavior — verified at every phase boundary (typecheck, build, Vitest, both e2e
+suites) and repeatedly cross-checked live (DOM state, network requests, real
+persisted API calls) well beyond what the automated suites alone assert. Two
+deliberate, tracked breaking changes to test selectors (the toolbar button rename in
+Phase 13, the accordion-collapse expand-step in Phase 16) were each fixed in the same
+phase that introduced them, never left for later.
+
+### Next phase
+
+None — Phase 2 is complete. Any further frontend work (a visual-regression harness,
+automated accessibility tooling, the `data-testid` selector migration flagged as
+insurance in Phase 16, or a new design-spec phase) would begin a new, separately
+scoped effort.

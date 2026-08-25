@@ -134,13 +134,12 @@ export default function PageBoundaryOverlay({
           .map(([x, y]) => `${x * asset.width},${y * asset.height}`)
           .join(" L")} Z`}
         fillRule="evenodd"
-        fill="rgba(15,23,42,0.30)"
-        style={{ pointerEvents: "none" }}
+        className="pointer-events-none fill-text-primary/30"
       />
       <polygon
         points={pixelPoints}
         fill="none"
-        stroke="#e11d48"
+        className="stroke-page-boundary"
         strokeWidth={3}
         strokeDasharray="10 5"
         style={{ pointerEvents: editable ? "auto" : "none", cursor: editable ? "move" : "default" }}
@@ -162,8 +161,7 @@ export default function PageBoundaryOverlay({
               y={hy - HANDLE_SIZE / 2}
               width={HANDLE_SIZE}
               height={HANDLE_SIZE}
-              fill="#e11d48"
-              stroke="#fff"
+              className="fill-page-boundary stroke-white"
               strokeWidth={1.5}
               style={{ cursor: `${handle}-resize` }}
               onMouseDown={(e) => {

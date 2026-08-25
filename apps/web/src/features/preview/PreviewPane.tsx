@@ -1,4 +1,12 @@
 import { useMemo, useState } from "react";
+import { cn } from "../../components/cn.js";
+
+// docs/frontend/code-preview-design.md (Phase 2I) — frame chrome, a loading progress
+// line, and an empty state, all new. The iframe's `sandbox=""` attribute, its
+// `srcDoc`/`title="Live preview"`, and `composeDocument()`'s asset-path rewrite logic
+// are byte-for-byte unchanged below — this is the app's one deliberate security
+// boundary (docs/frontend/README.md's non-negotiable constraints table), and this
+// phase's diff must be reviewable as touching none of it.
 
 interface PreviewPaneProps {
   html: string;
@@ -12,6 +20,12 @@ interface PreviewPaneProps {
    * substitution.
    */
   resolveAssetPath?: (relPath: string) => string | null;
+  /**
+   * True while any Inspector Apply or code save is in flight — shows a thin progress
+   * line so a regenerate-in-progress isn't silently invisible. The caller passes its
+   * own existing busy signals; no new state lives in this component for it.
+   */
+  loading?: boolean;
 }
 
 const VIEWPORTS = {
@@ -41,36 +55,55 @@ function composeDocument(
   return out.replace("</head>", `${styleTag}\n</head>`);
 }
 
-export default function PreviewPane({ html, css, resolveAssetPath }: PreviewPaneProps) {
+export default function PreviewPane({ html, css, resolveAssetPath, loading }: PreviewPaneProps) {
   const [viewport, setViewport] = useState<ViewportKey>("desktop");
   const doc = useMemo(
     () => composeDocument(html, css, resolveAssetPath),
     [html, css, resolveAssetPath]
   );
+  const isEmpty = html.trim() === "";
+  const widthLabel = VIEWPORTS[viewport].width === "100%" ? "Desktop" : VIEWPORTS[viewport].width;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center gap-1 border-b border-gray-200 px-2 py-1.5">
+    <div className="relative flex h-full flex-col">
+      {loading && (
+        <div aria-hidden="true" className="absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden bg-primary-subtle">
+          <div className="h-full w-full animate-pulse bg-primary motion-reduce:animate-none" />
+        </div>
+      )}
+
+      <div className="flex items-center gap-2xs border-b border-border px-sm py-xs">
         {(Object.keys(VIEWPORTS) as ViewportKey[]).map((key) => (
           <button
             key={key}
             onClick={() => setViewport(key)}
-            className={`rounded px-2 py-1 text-xs ${
-              viewport === key ? "bg-gray-900 text-white" : "text-gray-500 hover:bg-gray-100"
-            }`}
+            className={cn(
+              "rounded-sm px-sm py-2xs text-xs transition-colors duration-fast",
+              viewport === key ? "bg-primary text-text-inverse" : "text-text-muted hover:bg-surface-sunken"
+            )}
           >
             {VIEWPORTS[key].label}
           </button>
         ))}
       </div>
-      <div className="flex flex-1 justify-center overflow-auto bg-gray-100 p-4">
-        <iframe
-          title="Live preview"
-          srcDoc={doc}
-          sandbox=""
-          className="h-full rounded border border-gray-200 bg-white shadow-sm"
-          style={{ width: VIEWPORTS[viewport].width }}
-        />
+
+      <div className="flex flex-1 flex-col overflow-auto bg-surface-sunken p-lg">
+        {isEmpty ? (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-sm text-text-muted">Nothing to preview yet — add a component to the sketch.</p>
+          </div>
+        ) : (
+          <div className="flex flex-1 flex-col items-center gap-2xs">
+            <span className="shrink-0 font-mono text-2xs text-text-muted">{widthLabel}</span>
+            <iframe
+              title="Live preview"
+              srcDoc={doc}
+              sandbox=""
+              className="min-h-0 flex-1 rounded-md border border-border bg-surface shadow-subtle"
+              style={{ width: VIEWPORTS[viewport].width }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

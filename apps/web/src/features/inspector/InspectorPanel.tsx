@@ -7,6 +7,13 @@ import type {
   StructureOverride,
 } from "@sketch2ui/shared-types";
 import { ALL_CLASSES, contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
+import { AccordionSection } from "./AccordionSection.js";
+import { InspectorSectionFooter } from "./InspectorSectionFooter.js";
+import { Button } from "../../components/Button.js";
+import { Field } from "../../components/Field.js";
+import { Input, Textarea } from "../../components/Input.js";
+import { Select } from "../../components/Select.js";
+import { Tooltip } from "../../components/Tooltip.js";
 
 // Style + Content + Geometry inspector — plan §6.7 / §17.3. Field set matches the
 // plan's grouping exactly: Style is display/gap/padding/margin/font-size/alignment
@@ -14,6 +21,16 @@ import { ALL_CLASSES, contentFieldsFor, validateGeometryOverride } from "@sketch
 // is x/y/width/height (§17.3 Geometry group). Debounce-then-apply (§6.12): drafts
 // live locally in this panel and are pushed to the API only when the user hits
 // Apply, so typing a value never triggers a codegen round-trip.
+//
+// docs/frontend/inspector-design.md (Phase 2G) — accordion shell + shared footer.
+// EVERY draft/dirty/validation/handler function below is unchanged from before this
+// phase, including the EMPTY_STYLE_OVERRIDE reference-identity contract this
+// component's props depend on (see ProjectWorkspace.tsx's own comment on that
+// constant) — only the JSX this component RETURNS was restructured. Per-section
+// status labels keep their EXACT original text (e.g. Detection's clean-state
+// "Saved") rather than inspector-design.md's simplified generic table, because
+// e2e/golden-path.spec.ts asserts `getByText("Saved")` verbatim — preserving that
+// assertion overrides the doc's illustrative label table.
 
 export type StyleOverride = Record<string, string>;
 
@@ -317,6 +334,14 @@ function formatCorrectionTime(iso: string): string {
     : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+function ErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="mx-md mb-xs rounded-sm border border-error/30 bg-error-subtle px-sm py-xs text-xs text-error">
+      {message}
+    </div>
+  );
+}
+
 export default function InspectorPanel({
   selected,
   currentStyle,
@@ -533,52 +558,56 @@ export default function InspectorPanel({
 
   const classDirty = !!selected && classDraft !== selected.className;
 
-  return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-        Inspector
-      </div>
-
-      {!selected ? (
-        <div className="px-3 py-4 text-xs text-gray-500">
+  if (!selected) {
+    return (
+      <div className="flex h-full flex-col">
+        <h2 className="border-b border-border px-md py-sm text-2xs font-medium uppercase tracking-wide text-text-muted">
+          Inspector
+        </h2>
+        <div className="px-md py-lg text-xs text-text-muted">
           Select a component on the canvas or in the tree to edit its class, style, geometry, structure and content.
         </div>
-      ) : (
-        <div className="flex flex-1 flex-col overflow-auto">
-          {/* -------- Detection section (§17.3 Detection) -------- */}
+      </div>
+    );
+  }
 
-          <div className="px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Detection
-          </div>
+  return (
+    <div className="flex h-full flex-col">
+      <h2 className="border-b border-border px-md py-sm text-2xs font-medium uppercase tracking-wide text-text-muted">
+        Inspector
+      </h2>
 
-          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-2 text-xs">
-            <label className="text-gray-500" htmlFor="detection-class">class</label>
-            <select
-              id="detection-class"
-              value={classDraft}
-              onChange={(e) => setClassDraft(e.target.value)}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            >
-              {ALL_CLASSES.map((cls) => (
-                <option key={cls} value={cls}>
-                  {cls}
-                </option>
-              ))}
-            </select>
+      <div className="flex flex-1 flex-col overflow-auto">
+        {/* -------- Detection section (§17.3 Detection) -------- */}
+        <AccordionSection title="Detection" defaultOpen dot={classDirty ? "dirty" : null}>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
+            <Field label="class" htmlFor="detection-class" layout="inline-80">
+              <Select
+                id="detection-class"
+                value={classDraft}
+                onChange={(e) => setClassDraft(e.target.value)}
+                disabled={busy}
+              >
+                {ALL_CLASSES.map((cls) => (
+                  <option key={cls} value={cls}>
+                    {cls}
+                  </option>
+                ))}
+              </Select>
+            </Field>
           </div>
 
           {/* Confidence is READ-ONLY by design (§17.3): a user can correct the class,
               never falsify the model's own score. Manual boxes are 1.0 by definition. */}
-          <div className="px-3 pb-2 text-xs text-gray-500">
+          <div className="px-md pb-sm text-xs text-text-muted">
             <div>
               Model confidence:{" "}
-              <span className="font-medium text-gray-700">
+              <span className="font-mono font-medium text-text-secondary">
                 {Math.round(selected.confidence * 100)}%
               </span>
             </div>
             <div>
-              Source: <span className="font-medium text-gray-700">{selected.source}</span>
+              Source: <span className="font-medium text-text-secondary">{selected.source}</span>
               {selected.modelVersionId && (
                 <>
                   {" · "}
@@ -594,368 +623,399 @@ export default function InspectorPanel({
             )}
           </div>
 
-          {detectionError && (
-            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
-              {detectionError}
-            </div>
-          )}
+          {detectionError && <ErrorBanner message={detectionError} />}
 
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-            <span className="text-[10px] uppercase tracking-wide text-gray-400">
-              {busy ? "Working…" : classDirty ? "Unapplied" : "Saved"}
-            </span>
-            <div className="flex gap-1">
-              {selected.originalClassName && (
-                <button
-                  onClick={handleRevertToModelClass}
-                  disabled={busy}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                  title={`Revert to what the model originally proposed: ${selected.originalClassName}`}
-                >
-                  Revert to model
-                </button>
-              )}
-              <button
-                onClick={handleApplyClass}
-                disabled={busy || !classDirty}
-                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                title="Save this class and regenerate the code"
+          <InspectorSectionFooter
+            label={busy ? "Working…" : classDirty ? "Unapplied" : "Saved"}
+            tone={busy ? "muted" : classDirty ? "warning" : "success"}
+            actions={
+              <>
+                {selected.originalClassName && (
+                  <Tooltip content={`Revert to what the model originally proposed: ${selected.originalClassName}`}>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleRevertToModelClass}
+                      disabled={busy}
+                      title={`Revert to what the model originally proposed: ${selected.originalClassName}`}
+                    >
+                      Revert to model
+                    </Button>
+                  </Tooltip>
+                )}
+                <Tooltip content="Save this class and regenerate the code">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyClass}
+                    disabled={busy || !classDirty}
+                    aria-label="Apply Detection changes"
+                    title="Save this class and regenerate the code"
+                  >
+                    Apply
+                  </Button>
+                </Tooltip>
+              </>
+            }
+          />
+        </AccordionSection>
+
+        {/* -------- Style section -------- */}
+        <AccordionSection
+          title="Style"
+          dot={styleDirty ? "dirty" : hasStyleOverride ? "applied" : null}
+        >
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
+            <Field label="display" htmlFor="style-display" layout="inline-80">
+              <Select
+                id="style-display"
+                value={styleDraft.display}
+                onChange={(e) => setStyleDraft({ ...styleDraft, display: e.target.value })}
+                disabled={busy}
               >
-                Apply
-              </button>
-            </div>
+                {DISPLAY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="gap" htmlFor="style-gap" layout="inline-80">
+              <Input
+                id="style-gap"
+                value={styleDraft.gap}
+                placeholder="e.g. 12px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, gap: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="padding" htmlFor="style-padding" layout="inline-80">
+              <Input
+                id="style-padding"
+                value={styleDraft.padding}
+                placeholder="e.g. 16px or 8px 12px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, padding: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="margin" htmlFor="style-margin" layout="inline-80">
+              <Input
+                id="style-margin"
+                value={styleDraft.margin}
+                placeholder="e.g. 0 0 16px 0"
+                onChange={(e) => setStyleDraft({ ...styleDraft, margin: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="font-size" htmlFor="style-font-size" layout="inline-80">
+              <Input
+                id="style-font-size"
+                value={styleDraft["font-size"]}
+                placeholder="e.g. 16px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, "font-size": e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="alignment" htmlFor="style-text-align" layout="inline-80">
+              <Select
+                id="style-text-align"
+                value={styleDraft["text-align"]}
+                onChange={(e) => setStyleDraft({ ...styleDraft, "text-align": e.target.value })}
+                disabled={busy}
+              >
+                {ALIGN_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
           </div>
 
-          {/* -------- Style section -------- */}
+          {styleError && <ErrorBanner message={styleError} />}
 
-          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Style
-          </div>
-
-          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-3 text-xs">
-            <label className="text-gray-500" htmlFor="style-display">display</label>
-            <select
-              id="style-display"
-              value={styleDraft.display}
-              onChange={(e) => setStyleDraft({ ...styleDraft, display: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            >
-              {DISPLAY_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-
-            <label className="text-gray-500" htmlFor="style-gap">gap</label>
-            <input
-              id="style-gap"
-              value={styleDraft.gap}
-              placeholder="e.g. 12px"
-              onChange={(e) => setStyleDraft({ ...styleDraft, gap: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
-
-            <label className="text-gray-500" htmlFor="style-padding">padding</label>
-            <input
-              id="style-padding"
-              value={styleDraft.padding}
-              placeholder="e.g. 16px or 8px 12px"
-              onChange={(e) => setStyleDraft({ ...styleDraft, padding: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
-
-            <label className="text-gray-500" htmlFor="style-margin">margin</label>
-            <input
-              id="style-margin"
-              value={styleDraft.margin}
-              placeholder="e.g. 0 0 16px 0"
-              onChange={(e) => setStyleDraft({ ...styleDraft, margin: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
-
-            <label className="text-gray-500" htmlFor="style-font-size">font-size</label>
-            <input
-              id="style-font-size"
-              value={styleDraft["font-size"]}
-              placeholder="e.g. 16px"
-              onChange={(e) => setStyleDraft({ ...styleDraft, "font-size": e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
-
-            <label className="text-gray-500" htmlFor="style-text-align">alignment</label>
-            <select
-              id="style-text-align"
-              value={styleDraft["text-align"]}
-              onChange={(e) => setStyleDraft({ ...styleDraft, "text-align": e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            >
-              {ALIGN_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-
-          {styleError && (
-            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
-              {styleError}
-            </div>
-          )}
-
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-            <span className="text-[10px] uppercase tracking-wide text-gray-400">
-              {busy
+          <InspectorSectionFooter
+            label={
+              busy
                 ? "Working…"
                 : styleDirty
                   ? "Unapplied"
                   : hasStyleOverride
                     ? "Applied"
-                    : "No style overrides"}
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={handleResetStyle}
-                disabled={busy || !hasStyleOverride}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                title="Clear this component's style overrides and revert to the auto-inferred layout"
-              >
-                Reset
-              </button>
-              <button
-                onClick={handleApplyStyle}
-                disabled={busy || !styleDirty}
-                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                title="Save these style tweaks and regenerate the code"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
+                    : "No style overrides"
+            }
+            tone={busy ? "muted" : styleDirty ? "warning" : hasStyleOverride ? "success" : "muted"}
+            actions={
+              <>
+                <Tooltip content="Clear this component's style overrides and revert to the auto-inferred layout">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleResetStyle}
+                    disabled={busy || !hasStyleOverride}
+                    aria-label="Reset Style override"
+                    title="Clear this component's style overrides and revert to the auto-inferred layout"
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Save these style tweaks and regenerate the code">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyStyle}
+                    disabled={busy || !styleDirty}
+                    aria-label="Apply Style changes"
+                    title="Save these style tweaks and regenerate the code"
+                  >
+                    Apply
+                  </Button>
+                </Tooltip>
+              </>
+            }
+          />
+        </AccordionSection>
 
-          {/* -------- Geometry section (§17.3 Geometry) -------- */}
-
-          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Geometry
-          </div>
-
-          <div className="px-3 pb-1 text-[10px] text-gray-400">
+        {/* -------- Geometry section (§17.3 Geometry) -------- */}
+        <AccordionSection
+          title="Geometry"
+          dot={geometryDirty ? "dirty" : hasGeometryOverride ? "applied" : null}
+        >
+          <div className="px-md pb-2xs text-2xs text-text-muted">
             Normalized [0..1] relative to the sketch. Leave a field blank to inherit the
             detection's stored value.
           </div>
 
-          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-3 text-xs">
-            <label className="text-gray-500" htmlFor="geo-x">x</label>
-            <input
-              id="geo-x"
-              type="number"
-              step="0.001"
-              min={0}
-              max={1}
-              value={geometryDraft.x}
-              placeholder={selected.bbox.x.toFixed(4)}
-              onChange={(e) => setGeometryDraft({ ...geometryDraft, x: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
+            <Field label="x" htmlFor="geo-x" layout="inline-80">
+              <Input
+                id="geo-x"
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={geometryDraft.x}
+                placeholder={selected.bbox.x.toFixed(4)}
+                onChange={(e) => setGeometryDraft({ ...geometryDraft, x: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
 
-            <label className="text-gray-500" htmlFor="geo-y">y</label>
-            <input
-              id="geo-y"
-              type="number"
-              step="0.001"
-              min={0}
-              max={1}
-              value={geometryDraft.y}
-              placeholder={selected.bbox.y.toFixed(4)}
-              onChange={(e) => setGeometryDraft({ ...geometryDraft, y: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
+            <Field label="y" htmlFor="geo-y" layout="inline-80">
+              <Input
+                id="geo-y"
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={geometryDraft.y}
+                placeholder={selected.bbox.y.toFixed(4)}
+                onChange={(e) => setGeometryDraft({ ...geometryDraft, y: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
 
-            <label className="text-gray-500" htmlFor="geo-width">width</label>
-            <input
-              id="geo-width"
-              type="number"
-              step="0.001"
-              min={0}
-              max={1}
-              value={geometryDraft.width}
-              placeholder={selected.bbox.width.toFixed(4)}
-              onChange={(e) => setGeometryDraft({ ...geometryDraft, width: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
+            <Field label="width" htmlFor="geo-width" layout="inline-80">
+              <Input
+                id="geo-width"
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={geometryDraft.width}
+                placeholder={selected.bbox.width.toFixed(4)}
+                onChange={(e) => setGeometryDraft({ ...geometryDraft, width: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
 
-            <label className="text-gray-500" htmlFor="geo-height">height</label>
-            <input
-              id="geo-height"
-              type="number"
-              step="0.001"
-              min={0}
-              max={1}
-              value={geometryDraft.height}
-              placeholder={selected.bbox.height.toFixed(4)}
-              onChange={(e) => setGeometryDraft({ ...geometryDraft, height: e.target.value })}
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
+            <Field label="height" htmlFor="geo-height" layout="inline-80">
+              <Input
+                id="geo-height"
+                type="number"
+                step="0.001"
+                min={0}
+                max={1}
+                value={geometryDraft.height}
+                placeholder={selected.bbox.height.toFixed(4)}
+                onChange={(e) => setGeometryDraft({ ...geometryDraft, height: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
           </div>
 
-          {geometryError && (
-            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
-              {geometryError}
-            </div>
-          )}
+          {geometryError && <ErrorBanner message={geometryError} />}
 
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-            <span className="text-[10px] uppercase tracking-wide text-gray-400">
-              {busy
+          <InspectorSectionFooter
+            label={
+              busy
                 ? "Working…"
                 : geometryDirty
                   ? "Unapplied"
                   : hasGeometryOverride
                     ? "Applied"
-                    : "No geometry override"}
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={handleResetGeometry}
-                disabled={busy || !hasGeometryOverride}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                title="Clear this component's geometry override and revert to the raw detection bbox"
-              >
-                Reset
-              </button>
-              <button
-                onClick={handleApplyGeometry}
-                disabled={busy || !geometryDirty}
-                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                title="Save this position/size and regenerate the code"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
+                    : "No geometry override"
+            }
+            tone={busy ? "muted" : geometryDirty ? "warning" : hasGeometryOverride ? "success" : "muted"}
+            actions={
+              <>
+                <Tooltip content="Clear this component's geometry override and revert to the raw detection bbox">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleResetGeometry}
+                    disabled={busy || !hasGeometryOverride}
+                    aria-label="Reset Geometry override"
+                    title="Clear this component's geometry override and revert to the raw detection bbox"
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Save this position/size and regenerate the code">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyGeometry}
+                    disabled={busy || !geometryDirty}
+                    aria-label="Apply Geometry changes"
+                    title="Save this position/size and regenerate the code"
+                  >
+                    Apply
+                  </Button>
+                </Tooltip>
+              </>
+            }
+          />
+        </AccordionSection>
 
-          {/* -------- Structure section (§17.3 Structure) -------- */}
-
-          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Structure
-          </div>
-
-          <div className="px-3 pb-1 text-[10px] text-gray-400">
+        {/* -------- Structure section (§17.3 Structure) -------- */}
+        <AccordionSection
+          title="Structure"
+          dot={structureDirty ? "dirty" : hasStructureOverride ? "applied" : null}
+        >
+          <div className="px-md pb-2xs text-2xs text-text-muted">
             Reparent this node or pin its position among its siblings. Leave a field
             blank to keep auto-inferred behaviour.
           </div>
 
-          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-3 pb-3 text-xs">
-            <label className="text-gray-500" htmlFor="structure-parent">parent</label>
-            <select
-              id="structure-parent"
-              value={structureDraft.parent}
-              onChange={(e) =>
-                setStructureDraft({ ...structureDraft, parent: e.target.value })
-              }
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            >
-              <option value="">Auto (from containment)</option>
-              <option value={STRUCTURE_ROOT_SENTINEL}>Root (page)</option>
-              {parentCandidates.map((candidate) => (
-                <option key={candidate.id} value={candidate.id}>
-                  {candidate.className} · {candidate.id.slice(0, 8)}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
+            <Field label="parent" htmlFor="structure-parent" layout="inline-80">
+              <Select
+                id="structure-parent"
+                value={structureDraft.parent}
+                onChange={(e) =>
+                  setStructureDraft({ ...structureDraft, parent: e.target.value })
+                }
+                disabled={busy}
+              >
+                <option value="">Auto (from containment)</option>
+                <option value={STRUCTURE_ROOT_SENTINEL}>Root (page)</option>
+                {parentCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.className} · {candidate.id.slice(0, 8)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
 
-            <label className="text-gray-500" htmlFor="structure-order">order</label>
-            <input
-              id="structure-order"
-              type="number"
-              min={0}
-              step={1}
-              value={structureDraft.displayOrder}
-              placeholder="Auto"
-              onChange={(e) =>
-                setStructureDraft({ ...structureDraft, displayOrder: e.target.value })
-              }
-              disabled={busy}
-              className="rounded border border-gray-300 px-1.5 py-1"
-            />
+            <Field label="order" htmlFor="structure-order" layout="inline-80">
+              <Input
+                id="structure-order"
+                type="number"
+                min={0}
+                step={1}
+                value={structureDraft.displayOrder}
+                placeholder="Auto"
+                onChange={(e) =>
+                  setStructureDraft({ ...structureDraft, displayOrder: e.target.value })
+                }
+                disabled={busy}
+                mono
+              />
+            </Field>
           </div>
 
-          {structureError && (
-            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
-              {structureError}
-            </div>
-          )}
+          {structureError && <ErrorBanner message={structureError} />}
 
-          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-            <span className="text-[10px] uppercase tracking-wide text-gray-400">
-              {busy
+          <InspectorSectionFooter
+            label={
+              busy
                 ? "Working…"
                 : structureDirty
                   ? "Unapplied"
                   : hasStructureOverride
                     ? "Applied"
-                    : "No structure override"}
-            </span>
-            <div className="flex gap-1">
-              <button
-                onClick={handleResetStructure}
-                disabled={busy || !hasStructureOverride}
-                className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                title="Clear parent/order overrides and let auto containment inference decide"
-              >
-                Reset
-              </button>
-              <button
-                onClick={handleApplyStructure}
-                disabled={busy || !structureDirty}
-                className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                title="Save this parent/order and regenerate the code"
-              >
-                Apply
-              </button>
-            </div>
-          </div>
+                    : "No structure override"
+            }
+            tone={busy ? "muted" : structureDirty ? "warning" : hasStructureOverride ? "success" : "muted"}
+            actions={
+              <>
+                <Tooltip content="Clear parent/order overrides and let auto containment inference decide">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleResetStructure}
+                    disabled={busy || !hasStructureOverride}
+                    aria-label="Reset Structure override"
+                    title="Clear parent/order overrides and let auto containment inference decide"
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Save this parent/order and regenerate the code">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyStructure}
+                    disabled={busy || !structureDirty}
+                    aria-label="Apply Structure changes"
+                    title="Save this parent/order and regenerate the code"
+                  >
+                    Apply
+                  </Button>
+                </Tooltip>
+              </>
+            }
+          />
+        </AccordionSection>
 
-          {/* -------- Content section (§17.3 Content, Appendix Q) -------- */}
-
-          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            Content
-          </div>
-
+        {/* -------- Content section (§17.3 Content, Appendix Q) -------- */}
+        <AccordionSection
+          title="Content"
+          dot={contentDirty ? "dirty" : hasContentOverride ? "applied" : null}
+        >
           {applicableFields.size === 0 ? (
-            <div className="px-3 pb-3 text-xs text-gray-500">
+            <div className="px-md pb-sm text-xs text-text-muted">
               Content editing does not apply to <span className="font-mono">{selected.className}</span>.
               This is a container class in the plan's content mapping (Appendix P).
             </div>
           ) : (
-            <div className="grid grid-cols-[80px_1fr] items-start gap-x-2 gap-y-2 px-3 pb-3 text-xs">
+            <div className="grid grid-cols-[80px_1fr] items-start gap-x-2 gap-y-2 px-md pb-sm">
               {applicableFields.has("text") && (
-                <>
-                  <label className="pt-1 text-gray-500" htmlFor="content-text">text</label>
-                  <textarea
+                <Field label="text" htmlFor="content-text" layout="inline-80">
+                  <Textarea
                     id="content-text"
                     value={contentDraft.text}
                     placeholder="Placeholder used if left blank"
                     onChange={(e) => setContentDraft({ ...contentDraft, text: e.target.value })}
                     disabled={busy}
                     rows={3}
-                    className="rounded border border-gray-300 px-1.5 py-1 font-sans"
                   />
-                </>
+                </Field>
               )}
 
               {applicableFields.has("altText") && (
-                <>
-                  <label className="text-gray-500" htmlFor="content-alt">alt text</label>
-                  <input
+                <Field label="alt text" htmlFor="content-alt" layout="inline-80">
+                  <Input
                     id="content-alt"
                     value={contentDraft.altText}
                     placeholder="e.g. Portrait of the founder"
@@ -963,78 +1023,80 @@ export default function InspectorPanel({
                       setContentDraft({ ...contentDraft, altText: e.target.value })
                     }
                     disabled={busy}
-                    className="rounded border border-gray-300 px-1.5 py-1"
                   />
-                </>
+                </Field>
               )}
 
               {applicableFields.has("href") && (
-                <>
-                  <label className="text-gray-500" htmlFor="content-href">link</label>
-                  <input
+                <Field label="link" htmlFor="content-href" layout="inline-80">
+                  <Input
                     id="content-href"
                     value={contentDraft.href}
                     placeholder="/about or https://example.com"
                     onChange={(e) => setContentDraft({ ...contentDraft, href: e.target.value })}
                     disabled={busy}
-                    className="rounded border border-gray-300 px-1.5 py-1"
+                    mono
                   />
-                </>
+                </Field>
               )}
             </div>
           )}
 
-          {contentError && (
-            <div className="mx-3 mb-2 rounded border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">
-              {contentError}
-            </div>
-          )}
+          {contentError && <ErrorBanner message={contentError} />}
 
           {applicableFields.size > 0 && (
-            <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
-              <span className="text-[10px] uppercase tracking-wide text-gray-400">
-                {busy
+            <InspectorSectionFooter
+              label={
+                busy
                   ? "Working…"
                   : contentDirty
                     ? "Unapplied"
                     : hasContentOverride
                       ? `Applied · ${currentContent?.contentState}`
-                      : "Unknown (placeholder)"}
-              </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={handleResetContent}
-                  disabled={busy || !hasContentOverride}
-                  className="rounded border border-gray-300 px-2 py-0.5 text-xs text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                  title="Clear this component's content override and revert to the placeholder"
-                >
-                  Reset
-                </button>
-                <button
-                  onClick={handleApplyContent}
-                  disabled={busy || !contentDirty}
-                  className="rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-                  title="Save this content and regenerate the code"
-                >
-                  Apply
-                </button>
-              </div>
-            </div>
+                      : "Unknown (placeholder)"
+              }
+              tone={busy ? "muted" : contentDirty ? "warning" : hasContentOverride ? "success" : "muted"}
+              actions={
+                <>
+                  <Tooltip content="Clear this component's content override and revert to the placeholder">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleResetContent}
+                      disabled={busy || !hasContentOverride}
+                      aria-label="Reset Content override"
+                      title="Clear this component's content override and revert to the placeholder"
+                    >
+                      Reset
+                    </Button>
+                  </Tooltip>
+                  <Tooltip content="Save this content and regenerate the code">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={handleApplyContent}
+                      disabled={busy || !contentDirty}
+                      aria-label="Apply Content changes"
+                      title="Save this content and regenerate the code"
+                    >
+                      Apply
+                    </Button>
+                  </Tooltip>
+                </>
+              }
+            />
           )}
+        </AccordionSection>
 
-          {/* -------- History section (§4.3 — read-only correction audit trail) -------- */}
-
-          <div className="border-t border-gray-100 px-3 pt-3 pb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
-            History
-          </div>
-
+        {/* -------- History section (§4.3 — read-only correction audit trail) -------- */}
+        <AccordionSection title="History" defaultOpen>
           {history.length === 0 ? (
-            <div className="px-3 pb-3 text-xs text-gray-500">No corrections recorded yet.</div>
+            <div className="px-md pb-sm text-xs text-text-muted">No corrections recorded yet.</div>
           ) : (
-            <ul className="space-y-1 px-3 pb-3 text-xs text-gray-600">
+            <ul className="space-y-xs px-md pb-sm text-xs text-text-secondary">
               {history.map((record) => (
-                <li key={record.id} className="flex gap-2">
-                  <span className="shrink-0 font-mono text-gray-400">
+                <li key={record.id} className="flex gap-sm">
+                  <span className="shrink-0 font-mono text-text-muted">
                     {formatCorrectionTime(record.timestamp)}
                   </span>
                   <span>{describeCorrection(record)}</span>
@@ -1042,8 +1104,8 @@ export default function InspectorPanel({
               ))}
             </ul>
           )}
-        </div>
-      )}
+        </AccordionSection>
+      </div>
     </div>
   );
 }

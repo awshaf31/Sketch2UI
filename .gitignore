@@ -9,6 +9,13 @@ apps/api/data/store.json
 data/uploads/*
 !data/uploads/.gitkeep
 
+# apps/api/data/ (as opposed to the repo-root data/ above) only ever appears by
+# accident: env.ts's defaults resolve to repo-root data/, so anything landing under
+# apps/api/data/ means a process ran with STORE_FILE/UPLOADS_DIR resolved relative to
+# a cwd of apps/api/ instead of the repo root. Ignore the whole directory rather than
+# letting that debris get committed piecemeal.
+apps/api/data/
+
 # Generated export ZIPs — rebuildable from any stored CodeVersion.
 data/exports/
 

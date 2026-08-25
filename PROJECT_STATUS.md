@@ -24,7 +24,8 @@ memory — file paths and route registrations are named so they can be checked d
 | YOLO detector | **Working but explicitly a smoke test** (156 images, 16/41 classes) |
 | Persistence | **PostgreSQL via Prisma — fully migrated and live** (Phase 8; JSON store retired as of 2026-08-25). Every domain (projects, assets, detections, boundaries, code versions, the four override groups, training/corrections, exports, jobs) is behind a repository layer with JSON+Prisma adapters proven equivalent by a shared contract-test suite (see `docs/execution/phase-8-architecture-amendment.md` and `docs/execution/phase-log.md`). |
 | Background jobs | **In-process execution, Postgres-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
-| E2E test coverage | **One golden-path Playwright suite** (`e2e/golden-path.spec.ts`) — create → upload → detect (mocked) → correct → generate → preview → export, against isolated throwaway storage |
+| E2E test coverage | **Two Playwright suites** — `e2e/golden-path.spec.ts` (create → upload → detect (mocked) → correct → generate → preview → export) and `e2e/inspector-overrides.spec.ts` (Geometry override + Content XSS rejection), both against isolated throwaway storage |
+| Frontend design system | **Done** (Phase 2, 2026-08-25) — token system, primitive component library, rebuilt workspace shell, restyled canvas/tree/Inspector/code panel/preview, responsive (desktop/tablet/mobile) + keyboard/ARIA coverage. See `docs/frontend/README.md` (spec) and `docs/execution/phase-log.md` Phases 10–20 (implementation record). Zero behavior changes — same detection/override/codegen/persistence this table describes throughout, just restyled and reorganized. |
 | Auth / accounts | **Not started** (no users, no login, single implicit workspace) |
 | Multi-page projects | **Not started** |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
@@ -107,6 +108,62 @@ All 12 steps are implemented and wired together:
 - **PostgreSQL cutover**: `PERSISTENCE_DRIVER=postgres` is set in `.env`; the JSON store (`apps/api/data/store.json`) is no longer read or written at runtime. Verified live: full 15-step regression checklist run against the real dev Postgres database, including real CV-worker inference, with before/after row counts confirming every write landed in Postgres and the JSON file's mtime proving it was untouched throughout.
 - **Contract tests**: every repository has a shared contract (`apps/api/src/repositories/__tests__/*.contract.ts`) executed identically against the JSON adapter and against a real Postgres test database (`sketch2ui_test`, isolated from dev by `vitest.setup.ts`'s guards).
 - See `docs/execution/phase-log.md` for the full per-domain migration log and `docs/execution/phase-8-architecture-amendment.md` for why a repository layer was needed at all (the JSON store's `db.state` was a synchronous mutable object graph, not the swappable abstraction the original plan assumed).
+
+### 2.8 Frontend design system redesign (Phase 2 — complete)
+
+A full audit-then-redesign of `apps/web`'s frontend, run as its own numbered
+sub-plan (Phases 2A–2K, logged as `docs/execution/phase-log.md` Phases 10–20)
+separate from the backend/persistence work above. **Zero behavior change** — every
+detection/override/codegen/persistence/export behavior this document describes is
+identical before and after; only the frontend's visual system, component structure,
+and responsive/accessibility coverage changed.
+
+- **Design specification**: `docs/frontend/` — direction, design tokens,
+  information architecture, per-screen specs (Dashboard, Workspace, Canvas,
+  Inspector, Code/Preview), component specification, responsive strategy,
+  accessibility strategy, and a design-to-code mapping, written before any
+  implementation began.
+- **Foundation**: a real token system (`apps/web/tailwind.config.js` — colors,
+  type scale, spacing, radius, shadows, motion) and a primitive component library
+  (`apps/web/src/components/` — Button, Input, Select, Field, Tabs, Badge, Tooltip,
+  Panel, Card, EmptyState, ErrorState, Dialog, Toast, Drawer, and more).
+- **Workspace rebuilt**: the old 3-column layout (canvas / tree+inspector sharing a
+  column / a fixed 480px right column) became a 4-region shell (Layers / Canvas /
+  Inspector / a bottom Code+Preview dock), with the four old stacked status banners
+  consolidated into one fixed-height status bar.
+- **Canvas**: restyled onto tokens with zero changes to its pointer-math (draw/move/
+  resize coordinate transforms untouched); gained zoom/pan/fit-to-screen and an
+  on-canvas color legend (previously undocumented outside code comments); gained
+  keyboard support (arrow-key nudge of the selected detection, Tab-reachable
+  detections via native focus order).
+- **Inspector**: its six sections became a collapsible accordion while every
+  handler, validator, and the `EMPTY_STYLE_OVERRIDE` reference-identity contract
+  were preserved exactly — verified by direct code comparison, not just by tests
+  passing.
+- **Code panel**: Monaco's theme flipped from a hardcoded dark theme to light
+  (previously the one permanently-dark surface in an all-light app); the
+  `validateGeneratedCode()` save gate is unchanged and was verified live (typed an
+  unbalanced tag, confirmed the save was blocked with the exact validator message).
+- **Preview**: frame chrome, a loading indicator, and an empty state added; the
+  `sandbox=""` iframe attribute and `srcDoc` composition were explicitly treated as
+  a hard gate and checked three independent ways (source `grep`, live DOM read, and
+  the full e2e export flow).
+- **Responsive**: desktop (full 4-region shell), tablet 768–1023px (Layers/Inspector
+  become toggleable overlay drawers), and mobile <768px (a dedicated
+  `WorkspaceUnavailable` screen — the full annotation editor is not attempted on a
+  phone screen, by deliberate product decision, stated on screen rather than left
+  as a silently-broken layout).
+- **Accessibility**: keyboard nudge/selection on the canvas, keyboard expand/
+  collapse on the Layers tree, `aria-label` enforced at the type level on every
+  icon-only button, dialog/drawer focus handling.
+- **Verification discipline**: every sub-phase ran `typecheck` + `build` + Vitest +
+  both e2e suites before being called complete; two deliberate, tracked breaking
+  changes to e2e selectors (a toolbar button rename, an accordion-collapse expand
+  step) were each fixed in the same phase that introduced them. The final phase
+  (2K) ran the full suite including `test:py` (not run once during the rest of
+  Phase 2) and a live manual regression pass, which caught and fixed real drift in
+  two components (`ClassPicker.tsx`, `UploadDropzone.tsx`) that had escaped every
+  earlier phase's scope.
 
 ---
 

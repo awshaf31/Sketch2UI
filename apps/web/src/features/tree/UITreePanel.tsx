@@ -1,4 +1,22 @@
+import { useState } from "react";
 import type { UINode, UIRoot } from "@sketch2ui/shared-types";
+import { cn } from "../../components/cn.js";
+
+// docs/frontend/component-specification.md — Tree Node. Restyled onto tokens; adds a
+// per-type icon (replacing the bare font-mono type label as the primary visual — the
+// label moves to a secondary position, still present) and a collapse/expand chevron
+// for any node with children (both new).
+//
+// DOM-shape constraint: e2e/golden-path.spec.ts and e2e/inspector-overrides.spec.ts
+// both locate a tree row via `page.locator("ul.p-2 > li > button").first()` — the
+// root <ul className="p-2"> and each <li>'s single direct-child <button> are
+// preserved EXACTLY. The chevron is a plain <span onClick> nested INSIDE that button
+// (not a second sibling <button>), so `<li>`'s direct-child-button count and position
+// are unchanged. A <span> has no HTML content-model restriction the way a nested
+// <button>/tabindex element would, so this stays valid markup; the tradeoff is the
+// chevron is mouse-only for now (stopPropagation keeps a chevron click from also
+// selecting the row) — full keyboard tree navigation (arrow keys, →/← to expand/
+// collapse) is docs/frontend/accessibility.md's Phase 2J scope, not this one.
 
 interface UITreePanelProps {
   root: UIRoot;
@@ -7,6 +25,103 @@ interface UITreePanelProps {
   /** Ids of detections produced by the detector, marked so model-derived nodes are
    *  visually distinct from hand-drawn ones (same convention as the canvas). */
   modelDetectionIds: ReadonlySet<string>;
+}
+
+type IconFamily = "container" | "text" | "media" | "interactive" | "list";
+
+// A small set of icon families rather than one glyph per taxonomy class (41+ classes)
+// — differentiates the tree at a glance without 41 hand-drawn SVGs for a first pass.
+// Unlisted/synthetic types (e.g. the layout engine's "group" nodes) fall back to
+// "container", a safe default since most of them are structural.
+const CONTAINER_TYPES = new Set([
+  "page", "header", "section", "footer", "navbar", "sidebar", "form", "card", "table", "group",
+]);
+const TEXT_TYPES = new Set(["heading", "text", "card_title", "card_text", "testimonial"]);
+const MEDIA_TYPES = new Set(["image", "video", "avatar", "logo", "icon", "social_icon"]);
+const INTERACTIVE_TYPES = new Set([
+  "button", "link", "input", "textarea", "select", "menu_button", "search_box",
+  "checkbox", "radio_button", "card_button", "carousel_prev", "carousel_next",
+  "carousel_indicator", "nav_item",
+]);
+const LIST_TYPES = new Set(["list", "list_item", "breadcrumb"]);
+
+function iconFamily(type: string): IconFamily {
+  if (TEXT_TYPES.has(type)) return "text";
+  if (MEDIA_TYPES.has(type)) return "media";
+  if (INTERACTIVE_TYPES.has(type)) return "interactive";
+  if (LIST_TYPES.has(type)) return "list";
+  return "container";
+}
+
+function TypeIcon({ type }: { type: string }) {
+  const family = iconFamily(type);
+  const shared = {
+    width: 12,
+    height: 12,
+    viewBox: "0 0 14 14",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.4,
+    "aria-hidden": true as const,
+  };
+  switch (family) {
+    case "text":
+      return (
+        <svg {...shared} strokeLinecap="round">
+          <path d="M2 3h10M2 7h10M2 11h6" />
+        </svg>
+      );
+    case "media":
+      return (
+        <svg {...shared} strokeLinejoin="round">
+          <rect x="1.5" y="2" width="11" height="10" rx="1" />
+          <circle cx="5" cy="5.5" r="1.1" />
+          <path d="M2 10l3-3 2.5 2.5L11 6l1.5 1.5" />
+        </svg>
+      );
+    case "interactive":
+      return (
+        <svg {...shared}>
+          <rect x="1.5" y="4" width="11" height="6" rx="3" />
+        </svg>
+      );
+    case "list":
+      return (
+        <svg {...shared} strokeLinecap="round">
+          <circle cx="2.3" cy="3.5" r="0.8" fill="currentColor" stroke="none" />
+          <path d="M5 3.5h7" />
+          <circle cx="2.3" cy="7" r="0.8" fill="currentColor" stroke="none" />
+          <path d="M5 7h7" />
+          <circle cx="2.3" cy="10.5" r="0.8" fill="currentColor" stroke="none" />
+          <path d="M5 10.5h7" />
+        </svg>
+      );
+    default:
+      return (
+        <svg {...shared}>
+          <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" />
+        </svg>
+      );
+  }
+}
+
+function ChevronIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 10 10"
+      width="10"
+      height="10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={cn("transition-transform duration-fast", collapsed && "-rotate-90")}
+    >
+      <path d="M2.5 3.5L5 6.5L7.5 3.5" />
+    </svg>
+  );
 }
 
 function TreeNode({
@@ -22,32 +137,69 @@ function TreeNode({
   onSelect: (id: string | null) => void;
   modelDetectionIds: ReadonlySet<string>;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const selected = node.sourceDetectionId === selectedDetectionId;
   const fromModel = node.sourceDetectionId !== undefined && modelDetectionIds.has(node.sourceDetectionId);
+  const hasChildren = node.children.length > 0;
+
   return (
     <li>
       <button
         onClick={() => onSelect(node.sourceDetectionId ?? null)}
-        style={{ paddingLeft: depth * 14 }}
-        className={`flex w-full items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-gray-100 ${
-          selected ? "bg-orange-50 text-orange-700" : fromModel ? "text-purple-700" : "text-gray-700"
-        }`}
+        // docs/frontend/accessibility.md — →/← expand/collapse. Native Tab order
+        // already reaches every row (each is a real <button>); this adds the
+        // standard tree-widget arrow-key convention for the one interaction that
+        // otherwise had no keyboard path (the mouse-only chevron span).
+        onKeyDown={(e) => {
+          if (!hasChildren) return;
+          if (e.key === "ArrowRight" && collapsed) {
+            e.preventDefault();
+            setCollapsed(false);
+          } else if (e.key === "ArrowLeft" && !collapsed) {
+            e.preventDefault();
+            setCollapsed(true);
+          }
+        }}
+        style={{ paddingLeft: depth * 16 }}
+        aria-expanded={hasChildren ? !collapsed : undefined}
+        className={cn(
+          "flex w-full items-center gap-xs rounded-sm px-xs py-2xs text-left text-sm transition-colors duration-fast hover:bg-surface-sunken",
+          selected ? "bg-selection-subtle text-selection" : fromModel ? "text-detection-model" : "text-text-secondary"
+        )}
       >
+        <span
+          aria-hidden="true"
+          onClick={(e) => {
+            if (!hasChildren) return;
+            e.stopPropagation();
+            setCollapsed((c) => !c);
+          }}
+          className={cn(
+            "flex h-4 w-4 shrink-0 items-center justify-center",
+            hasChildren && "text-text-muted hover:text-text-primary"
+          )}
+        >
+          {hasChildren && <ChevronIcon collapsed={collapsed} />}
+        </span>
         {fromModel && (
           <span
             title="Detected by the model"
-            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-purple-500"
+            aria-hidden="true"
+            className="h-1.5 w-1.5 shrink-0 rounded-full bg-detection-model"
           />
         )}
-        <span className="font-mono text-[10px] text-gray-400">{node.type}</span>
+        <span className="shrink-0 text-text-muted">
+          <TypeIcon type={node.type} />
+        </span>
+        <span className="truncate font-mono text-2xs text-text-muted">{node.type}</span>
         {node.layout && (
-          <span className="rounded bg-gray-100 px-1 text-[9px] uppercase text-gray-400">
+          <span className="shrink-0 rounded-sm bg-surface-sunken px-2xs text-2xs uppercase text-text-muted">
             {node.layout.display}
             {node.layout.display === "grid" ? ` ${node.layout.columns}` : ""}
           </span>
         )}
       </button>
-      {node.children.length > 0 && (
+      {hasChildren && !collapsed && (
         <ul>
           {node.children.map((child) => (
             <TreeNode
@@ -72,7 +224,7 @@ export default function UITreePanel({
   modelDetectionIds,
 }: UITreePanelProps) {
   if (root.children.length === 0) {
-    return <p className="p-3 text-xs text-gray-400">Draw boxes on the sketch to build the UI tree.</p>;
+    return <p className="p-md text-xs text-text-muted">Draw boxes on the sketch to build the UI tree.</p>;
   }
 
   return (

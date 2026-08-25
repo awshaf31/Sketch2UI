@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import type {
   BBox,
   CodeVersion,
@@ -22,20 +22,53 @@ import type { CodeVersionSummaryEntry } from "../services/api.js";
 import { api } from "../services/api.js";
 import { useProjectStore } from "../stores/projectStore.js";
 import UploadDropzone from "../features/upload/UploadDropzone.js";
-import ClassPicker from "../features/annotation/ClassPicker.js";
-import AnnotationCanvas from "../features/annotation/AnnotationCanvas.js";
+import { CanvasPanel } from "../features/annotation/CanvasPanel.js";
 import UITreePanel from "../features/tree/UITreePanel.js";
 import CodePanel from "../features/code/CodePanel.js";
 import PreviewPane from "../features/preview/PreviewPane.js";
 import InspectorPanel from "../features/inspector/InspectorPanel.js";
 import { useDetectionJob } from "../features/detection/useDetectionJob.js";
 import { buildTreeAndCode } from "../utils/tree.js";
+import { WorkspaceToolbar } from "../features/workspace/WorkspaceToolbar.js";
+import { WorkspaceBody } from "../features/workspace/WorkspaceBody.js";
+import {
+  ActiveVersionSegment,
+  DetectJobSegment,
+  ExportsPopover,
+  PageBoundarySegment,
+  StatusBar,
+} from "../features/workspace/StatusBar.js";
+import { useToast } from "../components/ToastStack.js";
+import { cn } from "../components/cn.js";
+import { useMediaQuery } from "../components/useMediaQuery.js";
+import { WorkspaceUnavailable } from "./WorkspaceUnavailable.js";
+
+// docs/frontend/workspace-design.md — Phase 2D. The shell (toolbar, status bar, the
+// 4-region body layout) is rebuilt on the new primitives; every piece of state, every
+// handler, and every prop passed to AnnotationCanvas/UITreePanel/InspectorPanel/
+// PreviewPane/CodePanel below is byte-identical to before this phase — only WHERE
+// those components render changed, not what they do or receive. See
+// docs/frontend/design-to-code-mapping.md for the full preserve/move/change ledger.
+
+// Stable reference for "no style override" — InspectorPanel resets its style draft
+// whenever this prop's identity changes (see its useEffect on [selected?.id,
+// currentStyle]), so a fresh `{}` literal here would wipe an unsaved style draft on
+// every unrelated re-render (e.g. every 1s detect-job poll tick).
+const EMPTY_STYLE_OVERRIDE: Record<string, string> = {};
 
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
+  const { showToast } = useToast();
+  // docs/frontend/responsive-design.md's breakpoint tiers (Phase 2J) — plain media
+  // queries, not a JS-measured width, so there's no drift from what CSS breakpoint
+  // classes elsewhere would show for the same viewport.
+  const isMobile = useMediaQuery("(max-width: 767px)");
+  const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"preview" | "code">("preview");
   const [saving, setSaving] = useState(false);
   // Section 10: the page boundary for the current asset, plus UI toggles.
@@ -132,11 +165,16 @@ export default function ProjectWorkspace() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    setLoadError(null);
     Promise.all([api.getProject(id), api.listAssets(id), api.listDetections(id)])
       .then(([proj, assets, dets]) => {
         setProject(proj);
         setAsset(assets[assets.length - 1] ?? null);
         setDetections(dets);
+      })
+      .catch((e) => {
+        setProject(null);
+        setLoadError((e as Error).message);
       })
       .finally(() => setLoading(false));
     void refreshVersions().catch(() => {});
@@ -277,9 +315,12 @@ export default function ProjectWorkspace() {
   async function handleUpload(file: File) {
     if (!id) return;
     setUploading(true);
+    setUploadError(null);
     try {
       const uploaded = await api.uploadAsset(id, file);
       setAsset(uploaded);
+    } catch (e) {
+      setUploadError((e as Error).message);
     } finally {
       setUploading(false);
     }
@@ -287,18 +328,35 @@ export default function ProjectWorkspace() {
 
   async function handleCreate(bbox: BBox) {
     if (!id || !asset) return;
-    const detection = await api.createDetection(id, { className: activeClass, bbox, sourceAssetId: asset.id });
-    addDetection(detection);
-    void refreshCorrections();
+    try {
+      const detection = await api.createDetection(id, { className: activeClass, bbox, sourceAssetId: asset.id });
+      addDetection(detection);
+      void refreshCorrections();
+    } catch (e) {
+      // The box the user just drew has no local representation until this resolves
+      // (unlike update/delete there's nothing optimistic to roll back) — surface why
+      // it didn't appear rather than letting it silently vanish.
+      window.alert(`Could not create the box: ${(e as Error).message}`);
+    }
   }
 
   async function handleUpdate(detectionId: string, bbox: BBox) {
     if (!id) return;
+    const previous = detections.find((d) => d.id === detectionId);
     updateDetection(detectionId, { bbox }); // optimistic, keeps the drag responsive
     // Adopt the server's record: correcting a model detection flips it to source
     // "manual" (so a later Detect run cannot wipe the correction), and the canvas and
     // tree restyle off `source`. Without this the box would stay purple until reload.
-    const saved = await api.updateDetection(id, detectionId, bbox);
+    let saved;
+    try {
+      saved = await api.updateDetection(id, detectionId, bbox);
+    } catch (e) {
+      // Roll back the optimistic move/resize so the canvas doesn't disagree with
+      // what the server actually has, and tell the user why the drag didn't stick.
+      if (previous) updateDetection(detectionId, previous);
+      window.alert(`Could not save the change: ${(e as Error).message}`);
+      return;
+    }
     updateDetection(detectionId, saved);
     void refreshCorrections();
     // A canvas drag is the user committing a concrete new geometry directly to the
@@ -323,9 +381,18 @@ export default function ProjectWorkspace() {
   async function handleDeleteSelected() {
     if (!id || !selectedId) return;
     const target = selectedId;
+    const previous = detections.find((d) => d.id === target);
     removeDetection(target);
-    await api.deleteDetection(id, target);
-    void refreshCorrections();
+    try {
+      await api.deleteDetection(id, target);
+      void refreshCorrections();
+    } catch (e) {
+      // Bring the box back rather than leaving the UI showing it gone when the
+      // server still has it — a reload would otherwise "resurrect" it with no
+      // explanation of why it came back.
+      if (previous) addDetection(previous);
+      window.alert(`Could not delete the box: ${(e as Error).message}`);
+    }
   }
 
   /**
@@ -367,9 +434,16 @@ export default function ProjectWorkspace() {
       overlapThreshold: DEFAULT_OVERLAP_THRESHOLD,
     };
     setBoundary(next); // optimistic — the drag stays responsive
-    // Persist so it survives reload and is not clobbered by the next Detect run.
+    // Persist so it survives reload and is not clobbered by the next Detect run. The
+    // in-memory boundary already reflects the user's drag either way; a failed save
+    // only matters on reload, but silently swallowing it means that surprise is the
+    // only way they'd ever find out, so warn instead.
     if (id && asset) {
-      void api.savePageBoundary(id, asset.id, next).catch(() => {});
+      void api
+        .savePageBoundary(id, asset.id, next)
+        .catch((e) =>
+          window.alert(`Boundary change is not saved and won't survive a reload: ${(e as Error).message}`)
+        );
     }
   }
 
@@ -413,6 +487,8 @@ export default function ProjectWorkspace() {
       // preview would still show the previous active version and the new row would only
       // appear on a page reload.
       await refreshVersions();
+    } catch (e) {
+      window.alert(`Could not save version: ${(e as Error).message}`);
     } finally {
       setSaving(false);
     }
@@ -666,311 +742,247 @@ export default function ProjectWorkspace() {
   );
 
   if (loading) {
-    return <p className="p-6 text-sm text-gray-500">Loading project…</p>;
+    return <p className="p-6 text-sm text-text-muted">Loading project…</p>;
+  }
+  if (loadError) {
+    return <p className="p-6 text-sm text-error">Failed to load project: {loadError}</p>;
   }
   if (!project) {
-    return <p className="p-6 text-sm text-red-600">Project not found.</p>;
+    return <p className="p-6 text-sm text-error">Project not found.</p>;
   }
 
+  // docs/frontend/responsive-design.md — below 768px the full editor is not attempted
+  // (including upload, per that doc's explicit "Upload is NOT offered on mobile") —
+  // a dedicated screen instead of a silently-broken cramped layout. Checked after the
+  // loading/error/not-found guards above so it always has a real `project` to show.
+  if (isMobile) {
+    return (
+      <WorkspaceUnavailable
+        project={project}
+        asset={asset}
+        assetImageUrl={asset ? api.assetUrl(asset.storageKey) : null}
+        hasCodeVersion={versionList.length > 0}
+        html={html}
+        css={css}
+        resolveAssetPath={resolveAssetPath}
+      />
+    );
+  }
+
+  const approvedLabel = approval?.approved
+    ? `Approved · ${approval.boxCount} boxes (${approval.datasetSplit})`
+    : null;
+
   return (
-    <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-gray-200 px-4 py-2.5">
-        <div className="flex items-center gap-3">
-          <Link to="/" className="text-sm text-gray-400 hover:text-gray-600">
-            ← Projects
-          </Link>
-          <h1 className="text-sm font-semibold text-gray-900">{project.name}</h1>
-        </div>
-        {asset && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => id && void detectJob.start(id, asset.id)}
-              disabled={detectJob.running}
-              title="Run the experimental component detector on this sketch"
-              className="flex items-center gap-1.5 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-800 hover:bg-purple-100 disabled:opacity-60"
-            >
-              <span className="inline-block h-1.5 w-1.5 rounded-full bg-purple-500" />
-              {detectJob.running ? "Detecting…" : "Detect"}
-              <span className="rounded bg-purple-200 px-1 text-[9px] font-semibold uppercase tracking-wide text-purple-900">
-                Beta
-              </span>
-            </button>
-            <button
-              onClick={handleApproveTraining}
-              disabled={approving}
-              title="Snapshot this sketch's current boxes as approved training data (§36)"
-              className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-60"
-            >
-              {approving
-                ? "Approving…"
-                : approval?.approved
-                  ? `Approved · ${approval.boxCount} boxes (${approval.datasetSplit})`
-                  : "Approve for training"}
-            </button>
-            <button
-              onClick={handleExport}
-              disabled={exporting}
-              title="Download this project's generated HTML/CSS as a ZIP"
-              className="rounded-md border border-sky-300 bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-800 hover:bg-sky-100 disabled:opacity-60"
-            >
-              {exporting ? "Packaging…" : "Export ZIP"}
-            </button>
-            <button
-              onClick={handleSaveVersion}
-              disabled={saving}
-              className="rounded-md bg-gray-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-gray-700 disabled:opacity-50"
-            >
-              {saving ? "Saving…" : "Save code version"}
-            </button>
-          </div>
-        )}
-      </header>
+    <div className="flex h-screen flex-col bg-bg">
+      <WorkspaceToolbar
+        projectName={project.name}
+        hasAsset={!!asset}
+        detecting={detectJob.running}
+        onDetect={() => {
+          if (id && asset) void detectJob.start(id, asset.id);
+        }}
+        approving={approving}
+        approvedLabel={approvedLabel}
+        onApprove={handleApproveTraining}
+        exporting={exporting}
+        onExport={handleExport}
+        saving={saving}
+        onSaveVersion={handleSaveVersion}
+      />
 
-      {/* Job progress / outcome. The stage names come straight from the section 7.4-7.5
-          job contract, so the user sees the same vocabulary the API reports. */}
-      {asset && (detectJob.running || detectJob.error || modelCount > 0) && (
-        <div
-          className={`flex items-center justify-between gap-3 border-b px-4 py-1.5 text-xs ${
-            detectJob.error
-              ? "border-red-200 bg-red-50 text-red-800"
-              : "border-purple-200 bg-purple-50 text-purple-900"
-          }`}
-        >
-          {detectJob.error ? (
-            <>
-              <span>
-                <strong>Detection failed.</strong> {detectJob.error}
-                {detectJob.job?.retryable === false && " This will not succeed on retry."}
-              </span>
-              <button
-                onClick={detectJob.dismissError}
-                className="shrink-0 rounded px-2 py-0.5 text-red-700 hover:bg-red-100"
-              >
-                Dismiss
-              </button>
-            </>
-          ) : detectJob.running ? (
-            <span>
-              Detecting components…{" "}
-              <span className="text-purple-700">
-                {detectJob.job?.stage?.replace(/_/g, " ") ?? "queued"}
-                {typeof detectJob.job?.progress === "number" ? ` · ${detectJob.job.progress}%` : ""}
-              </span>
-            </span>
-          ) : (
-            <span>
-              <strong>{modelCount}</strong> box{modelCount === 1 ? "" : "es"} from the detector
-              (dashed purple). This model is <strong>experimental</strong> — accuracy varies a lot
-              by component type, so check every box and correct it as you would your own.
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Section 10.6: page boundary indicator, in the boundary's own distinct colour. */}
-      {asset && boundary && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-rose-200 bg-rose-50 px-4 py-1.5 text-xs text-rose-900">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-2 w-2 rounded-sm bg-rose-600" />
-            {boundary.applied ? (
-              <>
-                <strong>Page detected</strong> — confidence:{" "}
-                {Math.round(boundary.confidence * 100)}%
-              </>
-            ) : (
-              <>
-                <strong>No page detected</strong> — using full image
-              </>
-            )}
-          </span>
-
-          <button
-            onClick={() => setEditingBoundary((v) => !v)}
-            className="rounded border border-rose-300 px-2 py-0.5 hover:bg-rose-100"
-          >
-            {editingBoundary ? "Done adjusting" : "Adjust boundary"}
-          </button>
-
-          {rejectedCount > 0 && (
-            <>
-              <span>
-                <strong>{rejectedCount}</strong> box{rejectedCount === 1 ? "" : "es"} outside the
-                page (kept, excluded from the generated page)
-              </span>
-              <label className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={showRejected}
-                  onChange={(e) => setShowRejected(e.target.checked)}
-                />
-                Show them
-              </label>
-            </>
-          )}
-
-          {!boundary.applied && (
-            <span className="text-rose-700">
-              Drag the boundary to set it manually — detections re-filter as you move it.
-            </span>
-          )}
-        </div>
-      )}
-
-      {asset && exports.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-sky-200 bg-sky-50 px-4 py-1.5 text-xs text-sky-900">
-          <span className="font-medium">Exports:</span>
-          {exports.map((e) => (
-            <a
-              key={e.id}
-              href={api.absoluteUrl(e.downloadUrl)}
-              className="rounded border border-sky-300 px-2 py-0.5 hover:bg-sky-100"
-            >
-              v{e.versionNumber} · {(e.fileSize / 1024).toFixed(0)} KB
-            </a>
-          ))}
-        </div>
-      )}
-
-      {/* §6.9 / §39 V1: code version history. Every Save (generated or edited) is a new
-          immutable row here; clicking one activates it, which is what preview and export
-          use. The active row is highlighted so it is always clear which version the
-          panels are reflecting. */}
-      {asset && versionList.length > 0 && (
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-slate-200 bg-slate-50 px-4 py-1.5 text-xs text-slate-800">
-          <span className="font-medium">Code versions:</span>
-          {versionList.map((v) => (
-            <button
-              key={v.id}
-              onClick={() => void handleActivateVersion(v.id).catch((e) => window.alert((e as Error).message))}
-              disabled={v.isActive}
-              title={
-                v.isActive
-                  ? "Active — preview and export use this version"
-                  : "Activate this version for preview and export"
-              }
-              className={`rounded border px-2 py-0.5 ${
-                v.isActive
-                  ? "border-slate-900 bg-slate-900 text-white"
-                  : "border-slate-300 hover:bg-slate-100"
-              } ${v.source === "edited" ? "italic" : ""}`}
-            >
-              v{v.versionNumber} · {v.source}
-              {v.isActive ? " · active" : ""}
-            </button>
-          ))}
-          <span className="text-slate-500">
-            Edits create a new version; nothing above is ever mutated.
-          </span>
-        </div>
-      )}
+      <StatusBar
+        segments={[
+          asset && (detectJob.running || detectJob.error || modelCount > 0) ? (
+            <DetectJobSegment
+              running={detectJob.running}
+              error={detectJob.error}
+              stage={detectJob.job?.stage}
+              progress={detectJob.job?.progress}
+              retryable={detectJob.job?.retryable}
+              modelCount={modelCount}
+              onDismissError={detectJob.dismissError}
+            />
+          ) : null,
+          asset && boundary ? (
+            <PageBoundarySegment
+              boundary={boundary}
+              editingBoundary={editingBoundary}
+              onToggleEditing={() => setEditingBoundary((v) => !v)}
+              rejectedCount={rejectedCount}
+              showRejected={showRejected}
+              onToggleShowRejected={setShowRejected}
+            />
+          ) : null,
+          asset && versionList.length > 0 && activeVersionEntry ? (
+            <ActiveVersionSegment
+              label={`v${activeVersionEntry.versionNumber} · ${activeVersionEntry.source}${
+                activeVersionEntry.isActive ? " · active" : ""
+              }`}
+            />
+          ) : null,
+          asset && exports.length > 0 ? (
+            <ExportsPopover exports={exports} resolveDownloadUrl={(path) => api.absoluteUrl(path)} />
+          ) : null,
+        ]}
+      />
 
       {!asset ? (
-        <div className="flex-1 p-8">
-          <UploadDropzone onFile={handleUpload} uploading={uploading} />
+        <div className="flex-1 p-xl">
+          <UploadDropzone onFile={handleUpload} uploading={uploading} error={uploadError} />
         </div>
       ) : (
-        <div className="flex flex-1 overflow-hidden">
-          <div className="flex flex-1 flex-col overflow-hidden border-r border-gray-200">
-            <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2">
-              <span className="text-xs text-gray-400">New box class:</span>
-              <ClassPicker value={activeClass} onChange={setActiveClass} />
-            </div>
-            <div className="flex-1 overflow-auto bg-gray-50 p-4">
-              <AnnotationCanvas
-                asset={asset}
-                imageUrl={api.assetUrl(asset.storageKey)}
-                detections={visibleDetections}
-                selectedId={selectedId}
-                activeClass={activeClass}
+        <WorkspaceBody
+          isTablet={isTablet}
+          layers={
+            tree && (
+              <UITreePanel
+                root={tree}
+                selectedDetectionId={selectedId}
                 onSelect={select}
-                onCreate={handleCreate}
-                onUpdate={handleUpdate}
-                onDeleteSelected={handleDeleteSelected}
-                pageBoundary={boundary?.polygon ?? null}
-                boundaryEditable={editingBoundary}
-                onBoundaryChange={handleBoundaryChange}
+                modelDetectionIds={modelDetectionIds}
               />
-            </div>
-          </div>
-
-          <div className="flex w-64 flex-col overflow-hidden border-r border-gray-200">
-            <div className="border-b border-gray-200 px-3 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-              UI tree
-            </div>
-            <div className="flex-1 overflow-auto">
-              {tree && (
-                <UITreePanel
-                  root={tree}
-                  selectedDetectionId={selectedId}
-                  onSelect={select}
-                  modelDetectionIds={modelDetectionIds}
-                />
+            )
+          }
+          canvas={
+            <CanvasPanel
+              asset={asset}
+              imageUrl={api.assetUrl(asset.storageKey)}
+              detections={visibleDetections}
+              selectedId={selectedId}
+              activeClass={activeClass}
+              onActiveClassChange={setActiveClass}
+              onSelect={select}
+              onCreate={handleCreate}
+              onUpdate={handleUpdate}
+              onDeleteSelected={handleDeleteSelected}
+              pageBoundary={boundary?.polygon ?? null}
+              boundaryEditable={editingBoundary}
+              onBoundaryChange={handleBoundaryChange}
+            />
+          }
+          inspector={
+            <InspectorPanel
+              selected={selectedDetection}
+              currentStyle={
+                selectedDetection
+                  ? styleOverrides[selectedDetection.id] ?? EMPTY_STYLE_OVERRIDE
+                  : EMPTY_STYLE_OVERRIDE
+              }
+              currentContent={selectedDetection ? contentOverrides[selectedDetection.id] ?? null : null}
+              currentGeometry={
+                selectedDetection ? geometryOverrides[selectedDetection.id] ?? null : null
+              }
+              currentStructure={
+                selectedDetection ? structureOverrides[selectedDetection.id] ?? null : null
+              }
+              parentCandidates={parentCandidates}
+              onApplyStyle={handleApplyStyle}
+              onResetStyle={handleResetStyle}
+              onApplyContent={handleApplyContent}
+              onResetContent={handleResetContent}
+              onApplyGeometry={handleApplyGeometry}
+              onResetGeometry={handleResetGeometry}
+              onApplyStructure={handleApplyStructure}
+              onResetStructure={handleResetStructure}
+              onChangeClass={handleChangeClass}
+              history={selectedHistory}
+              busy={
+                applyingStyle ||
+                applyingContent ||
+                applyingGeometry ||
+                applyingStructure ||
+                applyingDetection
+              }
+            />
+          }
+          dock={
+            <div className="flex h-full flex-col">
+              {/* Interactive version switcher — relocated here from its old standalone
+                  banner, next to the Preview/Code content it controls (matches
+                  code-preview-design.md's dock-header placement). The compact
+                  ActiveVersionSegment above stays a read-only summary; this row is the
+                  full clickable list, same handleActivateVersion call as before. */}
+              {versionList.length > 0 && (
+                <div className="flex flex-wrap items-center gap-xs border-b border-border bg-surface-sunken px-md py-2xs">
+                  <span className="text-2xs font-medium uppercase tracking-wide text-text-muted">
+                    Versions:
+                  </span>
+                  {versionList.map((v) => (
+                    <button
+                      key={v.id}
+                      onClick={() =>
+                        void handleActivateVersion(v.id).catch((e) =>
+                          showToast("error", (e as Error).message)
+                        )
+                      }
+                      disabled={v.isActive}
+                      title={
+                        v.isActive
+                          ? "Active — preview and export use this version"
+                          : "Activate this version for preview and export"
+                      }
+                      className={cn(
+                        "rounded-sm border px-xs py-2xs text-2xs transition-colors duration-fast",
+                        v.isActive
+                          ? "border-primary bg-primary text-text-inverse"
+                          : "border-border text-text-secondary hover:bg-surface",
+                        v.source === "edited" && "italic"
+                      )}
+                    >
+                      v{v.versionNumber} · {v.source}
+                      {v.isActive ? " · active" : ""}
+                    </button>
+                  ))}
+                </div>
               )}
+              <div className="flex border-b border-border">
+                {(["preview", "code"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setRightTab(t)}
+                    className={cn(
+                      "px-md py-sm text-xs font-medium uppercase tracking-wide transition-colors duration-fast",
+                      rightTab === t
+                        ? "border-b-2 border-primary text-text-primary"
+                        : "text-text-muted hover:text-text-secondary"
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-hidden">
+                {rightTab === "preview" ? (
+                  <PreviewPane
+                    html={html}
+                    css={css}
+                    resolveAssetPath={resolveAssetPath}
+                    // Reuses the same busy signals InspectorPanel's `busy` prop already
+                    // combines, plus the two code-save flags — no new state (Phase 2I).
+                    loading={
+                      applyingStyle ||
+                      applyingContent ||
+                      applyingGeometry ||
+                      applyingStructure ||
+                      applyingDetection ||
+                      saving ||
+                      savingEdit
+                    }
+                  />
+                ) : (
+                  <CodePanel
+                    html={html}
+                    css={css}
+                    onSave={handleSaveEdit}
+                    saving={savingEdit}
+                    activeVersionLabel={activeVersionLabel}
+                  />
+                )}
+              </div>
             </div>
-            {/* §17.1 splits Layers and Inspector into separate columns; the workspace is
-                already dense so the inspector stacks under the tree in the same column. */}
-            <div className="min-h-72 flex-1 border-t border-gray-200 overflow-auto">
-              <InspectorPanel
-                selected={selectedDetection}
-                currentStyle={selectedDetection ? styleOverrides[selectedDetection.id] ?? {} : {}}
-                currentContent={selectedDetection ? contentOverrides[selectedDetection.id] ?? null : null}
-                currentGeometry={
-                  selectedDetection ? geometryOverrides[selectedDetection.id] ?? null : null
-                }
-                currentStructure={
-                  selectedDetection ? structureOverrides[selectedDetection.id] ?? null : null
-                }
-                parentCandidates={parentCandidates}
-                onApplyStyle={handleApplyStyle}
-                onResetStyle={handleResetStyle}
-                onApplyContent={handleApplyContent}
-                onResetContent={handleResetContent}
-                onApplyGeometry={handleApplyGeometry}
-                onResetGeometry={handleResetGeometry}
-                onApplyStructure={handleApplyStructure}
-                onResetStructure={handleResetStructure}
-                onChangeClass={handleChangeClass}
-                history={selectedHistory}
-                busy={
-                  applyingStyle ||
-                  applyingContent ||
-                  applyingGeometry ||
-                  applyingStructure ||
-                  applyingDetection
-                }
-              />
-            </div>
-          </div>
-
-          <div className="flex w-[480px] flex-col overflow-hidden">
-            <div className="flex border-b border-gray-200">
-              {(["preview", "code"] as const).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setRightTab(t)}
-                  className={`px-3 py-2 text-xs font-medium uppercase tracking-wide ${
-                    rightTab === t ? "border-b-2 border-orange-500 text-gray-900" : "text-gray-400 hover:text-gray-600"
-                  }`}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div className="flex-1 overflow-hidden">
-              {rightTab === "preview" ? (
-                <PreviewPane html={html} css={css} resolveAssetPath={resolveAssetPath} />
-              ) : (
-                <CodePanel
-                  html={html}
-                  css={css}
-                  onSave={handleSaveEdit}
-                  saving={savingEdit}
-                  activeVersionLabel={activeVersionLabel}
-                />
-              )}
-            </div>
-          </div>
-        </div>
+          }
+        />
       )}
     </div>
   );
