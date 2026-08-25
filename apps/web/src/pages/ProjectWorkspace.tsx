@@ -7,6 +7,7 @@ import type {
   CorrectionRecord,
   DetectionStatus,
   GeometryOverride,
+  Page,
   PageBoundary,
   PagePolygon,
   Project,
@@ -31,6 +32,7 @@ import { useDetectionJob } from "../features/detection/useDetectionJob.js";
 import { buildTreeAndCode } from "../utils/tree.js";
 import { WorkspaceToolbar } from "../features/workspace/WorkspaceToolbar.js";
 import { WorkspaceBody } from "../features/workspace/WorkspaceBody.js";
+import { PagesStrip } from "../features/workspace/PagesStrip.js";
 import {
   ActiveVersionSegment,
   DetectJobSegment,
@@ -65,6 +67,7 @@ export default function ProjectWorkspace() {
   const isMobile = useMediaQuery("(max-width: 767px)");
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const [project, setProject] = useState<Project | null>(null);
+  const [pages, setPages] = useState<Page[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -117,10 +120,12 @@ export default function ProjectWorkspace() {
   const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
 
   const {
+    currentPageId,
     asset,
     detections,
     selectedId,
     activeClass,
+    setCurrentPageId,
     setAsset,
     setDetections,
     addDetection,
@@ -134,10 +139,10 @@ export default function ProjectWorkspace() {
   // flow through the SAME rendering path as manual ones — canvas, tree, code, preview
   // all consume the store, and none of them know or care where a Detection came from.
   const refreshDetections = useCallback(async () => {
-    if (!id) return;
-    setDetections(await api.listDetections(id));
+    if (!id || !currentPageId) return;
+    setDetections(await api.listDetections(id, currentPageId));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, currentPageId]);
 
   const detectJob = useDetectionJob(async (job) => {
     if (job.pageBoundary) setBoundary(job.pageBoundary);
@@ -147,73 +152,94 @@ export default function ProjectWorkspace() {
   // Refresh the version list and pull the full content of whichever version is now
   // active. Called after any save (generated or edited) and after an explicit activate.
   const refreshVersions = useCallback(async () => {
-    if (!id) return;
-    const summary = await api.listCodeVersions(id);
+    if (!id || !currentPageId) return;
+    const summary = await api.listCodeVersions(id, currentPageId);
     setVersionList(summary.versions);
     if (summary.activeVersionId) {
       const active = summary.versions.find((v) => v.id === summary.activeVersionId);
       // Only refetch when the active version's id changed — otherwise a redundant fetch
       // clobbers the currently-loaded content with the same bytes.
       if (active && active.id !== activeVersion?.id) {
-        setActiveVersion(await api.getCodeVersion(id, summary.activeVersionId));
+        setActiveVersion(await api.getCodeVersion(id, currentPageId, summary.activeVersionId));
       }
     } else {
       setActiveVersion(null);
     }
-  }, [id, activeVersion?.id]);
+  }, [id, currentPageId, activeVersion?.id]);
 
+  // Load the project and its pages once; default to the first page returned. Every
+  // page-scoped effect below waits on currentPageId being set from here.
   useEffect(() => {
     if (!id) return;
     setLoading(true);
     setLoadError(null);
-    Promise.all([api.getProject(id), api.listAssets(id), api.listDetections(id)])
-      .then(([proj, assets, dets]) => {
+    Promise.all([api.getProject(id), api.listPages(id)])
+      .then(([proj, pageList]) => {
         setProject(proj);
-        setAsset(assets[assets.length - 1] ?? null);
-        setDetections(dets);
+        setPages(pageList);
+        setCurrentPageId(pageList[0]?.id ?? null);
       })
       .catch((e) => {
         setProject(null);
         setLoadError((e as Error).message);
       })
       .finally(() => setLoading(false));
-    void refreshVersions().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Reload page-scoped data whenever the current page changes (initial load or a
+  // switch via PagesStrip). Mirrors the previous project-mount effect, just re-keyed.
   useEffect(() => {
-    if (!id || !asset) return;
-    api.getTrainingApproval(id, asset.id).then(setApproval).catch(() => setApproval(null));
+    if (!id || !currentPageId) return;
+    setAsset(null);
+    setDetections([]);
+    setActiveVersion(null);
+    setVersionList([]);
+    setBoundary(null);
+    setApproval(null);
+    Promise.all([api.listAssets(id, currentPageId), api.listDetections(id, currentPageId)])
+      .then(([assets, dets]) => {
+        setAsset(assets[assets.length - 1] ?? null);
+        setDetections(dets);
+      })
+      .catch((e) => setLoadError((e as Error).message));
+    void refreshVersions().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, currentPageId]);
+
+  useEffect(() => {
+    if (!id || !currentPageId || !asset) return;
+    api.getTrainingApproval(id, currentPageId, asset.id).then(setApproval).catch(() => setApproval(null));
     api.listExports(id).then(setExports).catch(() => setExports([]));
     // Load the persisted boundary (§10.6) instead of recomputing a default. A manual
     // adjustment survives reloads and later re-detects — same sticky rule as detections.
     api
-      .getPageBoundary(id, asset.id)
+      .getPageBoundary(id, currentPageId, asset.id)
       .then((r) => { if (r.boundary) setBoundary(r.boundary); })
       .catch(() => {});
-  }, [id, asset]);
+  }, [id, currentPageId, asset]);
 
   useEffect(() => {
-    if (!id) return;
-    api.listStyleOverrides(id).then(setStyleOverrides).catch(() => setStyleOverrides({}));
-    api.listContentOverrides(id).then(setContentOverrides).catch(() => setContentOverrides({}));
-    api.listGeometryOverrides(id).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
-    api.listStructureOverrides(id).then(setStructureOverrides).catch(() => setStructureOverrides({}));
-    api.listCorrections(id).then(setCorrections).catch(() => setCorrections([]));
-  }, [id]);
+    if (!id || !currentPageId) return;
+    api.listStyleOverrides(id, currentPageId).then(setStyleOverrides).catch(() => setStyleOverrides({}));
+    api.listContentOverrides(id, currentPageId).then(setContentOverrides).catch(() => setContentOverrides({}));
+    api.listGeometryOverrides(id, currentPageId).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
+    api.listStructureOverrides(id, currentPageId).then(setStructureOverrides).catch(() => setStructureOverrides({}));
+    api.listCorrections(id, currentPageId).then(setCorrections).catch(() => setCorrections([]));
+  }, [id, currentPageId]);
 
   // Correction history (§4) is refreshed after every mutation that can produce a
   // new record — same "re-fetch after write" pattern the other override maps use.
   // Best-effort: if this fails the panel's History section just lags one refresh
   // behind, which is not worth surfacing as an error to the user.
   const refreshCorrections = useCallback(async () => {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     try {
-      setCorrections(await api.listCorrections(id));
+      setCorrections(await api.listCorrections(id, currentPageId));
     } catch {
       // leave the previous list in place
     }
-  }, [id]);
+  }, [id, currentPageId]);
 
   /**
    * Section 10.4 re-applied CLIENT-SIDE. The polygon and every bbox live in the same
@@ -263,7 +289,7 @@ export default function ProjectWorkspace() {
   // origin with no base URL, so a relative path resolves to nothing.
   const { tree, html: liveHtml, css: liveCss } = useMemo(
     () =>
-      asset && id
+      asset && id && currentPageId
         ? buildTreeAndCode(
             // effectiveDetections already has geometry overrides folded in; passing
             // an empty geometry map to buildTreeAndCode avoids a double-apply pass.
@@ -271,7 +297,7 @@ export default function ProjectWorkspace() {
             { width: asset.width, height: asset.height },
             project?.name,
             (node) =>
-              node.sourceDetectionId ? api.cropUrl(id, node.sourceDetectionId) : null,
+              node.sourceDetectionId ? api.cropUrl(id, currentPageId, node.sourceDetectionId) : null,
             styleOverrides,
             contentOverrides,
             // geometry already applied via effectiveDetections above; leave the
@@ -280,7 +306,7 @@ export default function ProjectWorkspace() {
             structureOverrides
           )
         : { tree: null, html: "", css: "" },
-    [asset, effectiveDetections, project?.name, id, styleOverrides, contentOverrides, structureOverrides]
+    [asset, effectiveDetections, project?.name, id, currentPageId, styleOverrides, contentOverrides, structureOverrides]
   );
 
   // What the code panel and preview reflect: the active saved version if one is set,
@@ -295,13 +321,13 @@ export default function ProjectWorkspace() {
   // map that was captured at generation time. Live regen already emits absolute URLs, so
   // no rewriting is needed there and the resolver stays undefined.
   const resolveAssetPath = useMemo(() => {
-    if (!id || !activeVersion?.metadata?.assets) return undefined;
+    if (!id || !currentPageId || !activeVersion?.metadata?.assets) return undefined;
     const assetMap = activeVersion.metadata.assets;
     return (relPath: string) => {
       const detectionId = assetMap[relPath];
-      return detectionId ? api.cropUrl(id, detectionId) : null;
+      return detectionId ? api.cropUrl(id, currentPageId, detectionId) : null;
     };
-  }, [id, activeVersion]);
+  }, [id, currentPageId, activeVersion]);
 
   const activeVersionEntry = activeVersion
     ? versionList.find((v) => v.id === activeVersion.id)
@@ -313,11 +339,11 @@ export default function ProjectWorkspace() {
       : undefined;
 
   async function handleUpload(file: File) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setUploading(true);
     setUploadError(null);
     try {
-      const uploaded = await api.uploadAsset(id, file);
+      const uploaded = await api.uploadAsset(id, currentPageId, file);
       setAsset(uploaded);
     } catch (e) {
       setUploadError((e as Error).message);
@@ -327,9 +353,13 @@ export default function ProjectWorkspace() {
   }
 
   async function handleCreate(bbox: BBox) {
-    if (!id || !asset) return;
+    if (!id || !currentPageId || !asset) return;
     try {
-      const detection = await api.createDetection(id, { className: activeClass, bbox, sourceAssetId: asset.id });
+      const detection = await api.createDetection(id, currentPageId, {
+        className: activeClass,
+        bbox,
+        sourceAssetId: asset.id,
+      });
       addDetection(detection);
       void refreshCorrections();
     } catch (e) {
@@ -341,7 +371,7 @@ export default function ProjectWorkspace() {
   }
 
   async function handleUpdate(detectionId: string, bbox: BBox) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     const previous = detections.find((d) => d.id === detectionId);
     updateDetection(detectionId, { bbox }); // optimistic, keeps the drag responsive
     // Adopt the server's record: correcting a model detection flips it to source
@@ -349,7 +379,7 @@ export default function ProjectWorkspace() {
     // tree restyle off `source`. Without this the box would stay purple until reload.
     let saved;
     try {
-      saved = await api.updateDetection(id, detectionId, bbox);
+      saved = await api.updateDetection(id, currentPageId, detectionId, bbox);
     } catch (e) {
       // Roll back the optimistic move/resize so the canvas doesn't disagree with
       // what the server actually has, and tell the user why the drag didn't stick.
@@ -371,7 +401,7 @@ export default function ProjectWorkspace() {
         return next;
       });
       try {
-        await api.clearGeometryOverride(id, detectionId);
+        await api.clearGeometryOverride(id, currentPageId, detectionId);
       } catch {
         // Left in place: not worth surfacing — detection.bbox already reflects the drag.
       }
@@ -379,12 +409,12 @@ export default function ProjectWorkspace() {
   }
 
   async function handleDeleteSelected() {
-    if (!id || !selectedId) return;
+    if (!id || !currentPageId || !selectedId) return;
     const target = selectedId;
     const previous = detections.find((d) => d.id === target);
     removeDetection(target);
     try {
-      await api.deleteDetection(id, target);
+      await api.deleteDetection(id, currentPageId, target);
       void refreshCorrections();
     } catch (e) {
       // Bring the box back rather than leaving the UI showing it gone when the
@@ -406,12 +436,12 @@ export default function ProjectWorkspace() {
    * follow the same Apply pattern as the other Inspector groups.
    */
   async function handleChangeClass(detectionId: string, className: string) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingDetection(true);
     try {
-      const saved = await api.updateDetection(id, detectionId, { className });
+      const saved = await api.updateDetection(id, currentPageId, detectionId, { className });
       updateDetection(detectionId, saved);
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
     } finally {
@@ -438,9 +468,9 @@ export default function ProjectWorkspace() {
     // in-memory boundary already reflects the user's drag either way; a failed save
     // only matters on reload, but silently swallowing it means that surprise is the
     // only way they'd ever find out, so warn instead.
-    if (id && asset) {
+    if (id && currentPageId && asset) {
       void api
-        .savePageBoundary(id, asset.id, next)
+        .savePageBoundary(id, currentPageId, asset.id, next)
         .catch((e) =>
           window.alert(`Boundary change is not saved and won't survive a reload: ${(e as Error).message}`)
         );
@@ -448,10 +478,10 @@ export default function ProjectWorkspace() {
   }
 
   async function handleApproveTraining() {
-    if (!id || !asset) return;
+    if (!id || !currentPageId || !asset) return;
     setApproving(true);
     try {
-      const r = await api.approveTraining(id, asset.id);
+      const r = await api.approveTraining(id, currentPageId, asset.id);
       setApproval({ approved: r.approved, datasetSplit: r.datasetSplit, boxCount: r.boxCount });
     } catch (e) {
       setApproval(null);
@@ -479,10 +509,10 @@ export default function ProjectWorkspace() {
   }
 
   async function handleSaveVersion() {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setSaving(true);
     try {
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       // Pull the newly-generated version and update the history strip. Without this the
       // preview would still show the previous active version and the new row would only
       // appear on a page reload.
@@ -495,13 +525,13 @@ export default function ProjectWorkspace() {
   }
 
   async function handleSaveEdit(input: { html: string; css: string }) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setSavingEdit(true);
     try {
       // basedOnVersionId carries the asset map forward so image paths in the edited
       // page still resolve to real crops at export time (§15.5). The server activates
       // the new version, so refreshVersions makes it the panels' new source of truth.
-      await api.saveEditedCode(id, { ...input, basedOnVersionId: activeVersion?.id });
+      await api.saveEditedCode(id, currentPageId, { ...input, basedOnVersionId: activeVersion?.id });
       await refreshVersions();
     } finally {
       setSavingEdit(false);
@@ -509,11 +539,11 @@ export default function ProjectWorkspace() {
   }
 
   async function handleActivateVersion(versionId: string) {
-    if (!id) return;
-    await api.activateCodeVersion(id, versionId);
+    if (!id || !currentPageId) return;
+    await api.activateCodeVersion(id, currentPageId, versionId);
     // The new active version's content may not be in memory yet; fetch it explicitly.
-    setActiveVersion(await api.getCodeVersion(id, versionId));
-    const summary = await api.listCodeVersions(id);
+    setActiveVersion(await api.getCodeVersion(id, currentPageId, versionId));
+    const summary = await api.listCodeVersions(id, currentPageId);
     setVersionList(summary.versions);
   }
 
@@ -523,10 +553,10 @@ export default function ProjectWorkspace() {
   // then refresh history so preview and export follow through the existing active-
   // version pointer. Live preview already reflects the draft via styleOverrides state.
   async function handleApplyStyle(detectionId: string, style: Record<string, string>) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingStyle(true);
     try {
-      const result = await api.putStyleOverride(id, detectionId, style);
+      const result = await api.putStyleOverride(id, currentPageId, detectionId, style);
       setStyleOverrides((prev) => {
         const next = { ...prev };
         if (result.style && Object.keys(result.style).length > 0) {
@@ -536,7 +566,7 @@ export default function ProjectWorkspace() {
         }
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingStyle(false);
@@ -544,16 +574,16 @@ export default function ProjectWorkspace() {
   }
 
   async function handleResetStyle(detectionId: string) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingStyle(true);
     try {
-      await api.clearStyleOverride(id, detectionId);
+      await api.clearStyleOverride(id, currentPageId, detectionId);
       setStyleOverrides((prev) => {
         const next = { ...prev };
         delete next[detectionId];
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingStyle(false);
@@ -564,10 +594,10 @@ export default function ProjectWorkspace() {
     detectionId: string,
     content: { text?: string; altText?: string; href?: string }
   ) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingContent(true);
     try {
-      const result = await api.putContentOverride(id, detectionId, content);
+      const result = await api.putContentOverride(id, currentPageId, detectionId, content);
       setContentOverrides((prev) => {
         const next = { ...prev };
         if (result.override) {
@@ -577,7 +607,7 @@ export default function ProjectWorkspace() {
         }
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingContent(false);
@@ -585,16 +615,16 @@ export default function ProjectWorkspace() {
   }
 
   async function handleResetContent(detectionId: string) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingContent(true);
     try {
-      await api.clearContentOverride(id, detectionId);
+      await api.clearContentOverride(id, currentPageId, detectionId);
       setContentOverrides((prev) => {
         const next = { ...prev };
         delete next[detectionId];
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingContent(false);
@@ -609,10 +639,10 @@ export default function ProjectWorkspace() {
     detectionId: string,
     geometry: GeometryOverride
   ) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingGeometry(true);
     try {
-      const result = await api.putGeometryOverride(id, detectionId, geometry);
+      const result = await api.putGeometryOverride(id, currentPageId, detectionId, geometry);
       setGeometryOverrides((prev) => {
         const next = { ...prev };
         if (result.geometry) {
@@ -622,7 +652,7 @@ export default function ProjectWorkspace() {
         }
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
     } finally {
@@ -631,16 +661,16 @@ export default function ProjectWorkspace() {
   }
 
   async function handleResetGeometry(detectionId: string) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingGeometry(true);
     try {
-      await api.clearGeometryOverride(id, detectionId);
+      await api.clearGeometryOverride(id, currentPageId, detectionId);
       setGeometryOverrides((prev) => {
         const next = { ...prev };
         delete next[detectionId];
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingGeometry(false);
@@ -655,10 +685,10 @@ export default function ProjectWorkspace() {
     detectionId: string,
     structure: StructureOverride
   ) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingStructure(true);
     try {
-      const result = await api.putStructureOverride(id, detectionId, structure);
+      const result = await api.putStructureOverride(id, currentPageId, detectionId, structure);
       setStructureOverrides((prev) => {
         const next = { ...prev };
         if (result.structure) {
@@ -668,7 +698,7 @@ export default function ProjectWorkspace() {
         }
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
     } finally {
@@ -677,16 +707,16 @@ export default function ProjectWorkspace() {
   }
 
   async function handleResetStructure(detectionId: string) {
-    if (!id) return;
+    if (!id || !currentPageId) return;
     setApplyingStructure(true);
     try {
-      await api.clearStructureOverride(id, detectionId);
+      await api.clearStructureOverride(id, currentPageId, detectionId);
       setStructureOverrides((prev) => {
         const next = { ...prev };
         delete next[detectionId];
         return next;
       });
-      await api.generateCode(id);
+      await api.generateCode(id, currentPageId);
       await refreshVersions();
     } finally {
       setApplyingStructure(false);
@@ -780,7 +810,7 @@ export default function ProjectWorkspace() {
         hasAsset={!!asset}
         detecting={detectJob.running}
         onDetect={() => {
-          if (id && asset) void detectJob.start(id, asset.id);
+          if (id && currentPageId && asset) void detectJob.start(id, currentPageId, asset.id);
         }}
         approving={approving}
         approvedLabel={approvedLabel}
@@ -790,6 +820,16 @@ export default function ProjectWorkspace() {
         saving={saving}
         onSaveVersion={handleSaveVersion}
       />
+
+      {id && (
+        <PagesStrip
+          projectId={id}
+          pages={pages}
+          currentPageId={currentPageId}
+          onPagesChange={setPages}
+          onSelectPage={setCurrentPageId}
+        />
+      )}
 
       <StatusBar
         segments={[

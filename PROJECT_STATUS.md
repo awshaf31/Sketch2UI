@@ -24,10 +24,11 @@ memory — file paths and route registrations are named so they can be checked d
 | YOLO detector | **Working but explicitly a smoke test** (156 images, 16/41 classes) |
 | Persistence | **PostgreSQL via Prisma — fully migrated and live** (Phase 8; JSON store retired as of 2026-08-25). Every domain (projects, assets, detections, boundaries, code versions, the four override groups, training/corrections, exports, jobs) is behind a repository layer with JSON+Prisma adapters proven equivalent by a shared contract-test suite (see `docs/execution/phase-8-architecture-amendment.md` and `docs/execution/phase-log.md`). |
 | Background jobs | **In-process execution, Postgres-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
-| E2E test coverage | **Two Playwright suites** — `e2e/golden-path.spec.ts` (create → upload → detect (mocked) → correct → generate → preview → export) and `e2e/inspector-overrides.spec.ts` (Geometry override + Content XSS rejection), both against isolated throwaway storage |
+| E2E test coverage | **Three Playwright suites** — `e2e/golden-path.spec.ts` (create → upload → detect (mocked) → correct → generate → preview → export), `e2e/inspector-overrides.spec.ts` (Geometry override + Content XSS rejection), and `e2e/multi-page.spec.ts` (a second page with independent state, cross-page link, multi-page export bundle), all against isolated throwaway storage |
 | Frontend design system | **Done** (Phase 2, 2026-08-25) — token system, primitive component library, rebuilt workspace shell, restyled canvas/tree/Inspector/code panel/preview, responsive (desktop/tablet/mobile) + keyboard/ARIA coverage. See `docs/frontend/README.md` (spec) and `docs/execution/phase-log.md` Phases 10–20 (implementation record). Zero behavior changes — same detection/override/codegen/persistence this table describes throughout, just restyled and reorganized. |
 | Auth / accounts | **Done** (Phase D1, 2026-08-25) — email/password registration, HTTP-only session cookies, `Project.ownerId`, and authorization enforced on every project-scoped route (see §2.9 and `docs/execution/phase-log.md`'s Phase D1 entry) |
-| Multi-page projects | **Not started** |
+| Multi-page projects | **Done** (Phase D3, 2026-08-25) — a project now owns a `Page[]`; every project-scoped resource is page-scoped, and export bundles every page into one ZIP (see §2.10) |
+| CI/CD | **Done** (Phase D4, 2026-08-25) — `.github/workflows/ci.yml` runs typecheck, Vitest, Pytest, a production build, and Playwright E2E on every push/PR to `main`, against isolated throwaway storage with no dev database or credentials touched (see §2.11) |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
 | Everything V3 (layout transformer, OCR, active learning ML) | **Not started** |
 
@@ -198,6 +199,71 @@ authorized resources`, per the deadline execution plan. See
   `supertest`) covering register/login/logout/`me` and cross-user ownership; both
   Playwright e2e specs updated to register+login before exercising the golden path.
 
+### 2.10 Multi-page projects (Phase D3 — complete)
+
+Converts a project from "one asset, one page" to `Project → Page[]`, per the
+deadline execution plan's §6. See `docs/execution/phase-log.md`'s Phase D3 entry for
+the full file list.
+
+- **Backend**: a new `Page` model; `pageId` added to every project-owned table
+  (`ProjectAsset`, `Detection`, `CodeVersion`, `PageBoundaryRecord`,
+  `CorrectionRecord`, the four override tables). All 13 previously project-nested
+  routers restructured to `/api/projects/:id/pages/:pageId/...`, gated by a new
+  `requirePageInProject` middleware (mirrors `requireProjectOwnership`'s 404-not-403
+  reasoning). A `PageRepository` refuses to delete a project's last page — a project
+  can never have zero pages. Pre-existing (pre-D3) projects get a synthesized
+  "Page 1" via an idempotent `backfillPages()` on every JSON-store load (and an
+  explicit `db:backfill-pages` script for the rare Postgres edge case).
+- **Export**: rewritten for multi-page bundling — one page exports as `index.html`,
+  every other page as `page-{order}.html`, sharing one concatenated `styles.css`
+  (collision-safe because `packages/codegen`'s new `idPrefix` option namespaces each
+  page's UI-IR node ids). Each page's own crops and source sketch are bundled
+  separately (`source-sketch-index.*`, `source-sketch-page-2.*`, ...).
+- **Frontend**: `apps/web/src/features/workspace/PagesStrip.tsx` — one pill per page
+  (select/rename/delete/add), built from the existing Button/IconButton/Input
+  primitives. Every page-owned `api.ts` method and `projectStore`'s `currentPageId`
+  now thread a `pageId`; switching pages clears the current selection and reloads
+  that page's asset/detections/overrides/code version from scratch.
+- **Cross-page links need no new mechanism**: a `link`-class detection's `href` set
+  to a relative path like `./page-2.html` via the existing Content Inspector survives
+  into the exported HTML unchanged — `isSafeHref()` already accepted relative paths
+  before this phase. Verified end-to-end by `e2e/multi-page.spec.ts`.
+- **Tests**: new `PageRepository` contract tests (including the last-page-delete
+  guard) and an HTTP-integration suite for the pages CRUD routes (cross-project
+  isolation, cross-page detection isolation). New `e2e/multi-page.spec.ts` — a
+  second page with independent upload/detect/generate, switching back preserves
+  Page 1's state, and the exported ZIP contains both pages, one `styles.css`, both
+  pages' source sketches, and the cross-page link verbatim.
+
+### 2.11 CI/CD (Phase D4 — complete)
+
+`.github/workflows/ci.yml` — a single linear job (`checkout → setup Node → npm ci →
+typecheck → Vitest → setup Python → Pytest → production build → Playwright E2E`),
+matching the deadline execution plan's §7.1 diagram exactly. Runs on every push and
+pull request against `main`.
+
+- A workflow file existed before this phase, but it was an untouched leftover from
+  the repo's very first baseline commit (predating Playwright/e2e entirely) with an
+  empty `services:` key under one job and no E2E check at all — effectively not a
+  real gate. This phase replaced it rather than patching around it.
+- Uses the exact existing npm scripts (`typecheck`, `test`, `test:py`, `build`,
+  `test:e2e`) with no CI-specific variants. No `DATABASE_URL`/`REDIS_URL` is ever
+  set, so Vitest's Prisma contract-test arms skip cleanly (proven locally: 241
+  passed / 16 skipped) and `test:e2e`'s throwaway-temp-dir storage means neither
+  step can touch development data — no isolation logic needed beyond what already
+  existed for local `npm test`/`npm run test:e2e`.
+- Playwright's one project pins to `channel: "chrome"` (system-installed Google
+  Chrome, not a Playwright-managed download) — a pre-existing choice made because
+  the dev sandbox can't reach Playwright's browser CDN. `ubuntu-latest` GitHub
+  runners ship Chrome pre-installed, so CI needs only `npx playwright install-deps`
+  (OS shared libraries, no browser download) rather than `playwright install`.
+- On failure, uploads the Playwright HTML report and trace directory as a build
+  artifact (7-day retention) — the one addition beyond the plan's literal five
+  checks, since `trace: "retain-on-failure"` was already being produced and
+  discarded.
+- Not done: no ML training in CI (explicitly out of scope per the plan), no
+  automatic deployment, no matrix/parallelization across Node or OS versions.
+
 ---
 
 ## 3. What's PARTIALLY done / working-but-flagged
@@ -247,7 +313,7 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 - Automatic conversion to every frontend framework
 
 ### 4.2 Named V1 items not yet built
-- **Multi-page projects** (§10.5) — the plan explicitly names this "a later implementation." One asset per project workspace today; no page-to-page navigation model, no `Project → Page[]` hierarchy.
+- ~~Multi-page projects~~ — **done, see §2.10** (Phase D3, 2026-08-25).
 - **Camera capture** — upload is file-picker/drag-drop only, no in-browser camera capture flow.
 - **Perspective correction** — page boundary can be manually adjusted (quad drag) but there's no actual perspective-warp transform applied to the image before detection.
 - **Reusable component palette** — no library of pre-built components to drag onto a page.
@@ -274,7 +340,9 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 ### 4.5 Deployment / ops (plan §44–§45)
 - No cloud deployment configured — `docker-compose.yml` is local-only.
 - No backup/recovery strategy for uploaded images or exported ZIPs (Postgres itself now has real transactional guarantees and could be backed up with standard `pg_dump`, but no scheduled backup job exists).
-- No CI/CD pipeline (plan §30) — no `.github/workflows` found in the repo.
+- ~~No CI/CD pipeline~~ — **done, see §2.11** (Phase D4, 2026-08-25). Still no
+  deployment automation — CI is test/build gating only, plan §30's broader "cloud
+  provisioning" scope stays out of scope.
 - No observability/logging infrastructure beyond ad-hoc `console.log` (plan §29 wants correlation IDs, stage-duration tracking — partially present in job records but not exported to any metrics system).
 
 ---
@@ -313,13 +381,13 @@ Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in roug
    `docs/eval/qualitative-v1.0.0/`.
 2. ~~Decide the auth question explicitly~~ — **done, see §2.9** (Phase D1,
    2026-08-25).
-3. **CI/CD** — no `.github/workflows` exists yet (plan §30); the deadline plan's
-   Phase D4.
-4. **Multi-page projects** — the deadline plan's Phase D3; a genuine usage ceiling
-   (one asset per project today).
+3. ~~CI/CD~~ — **done, see §2.11** (Phase D4, 2026-08-25).
+4. ~~Multi-page projects~~ — **done, see §2.10** (Phase D3, 2026-08-25).
 5. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
    mitigated (startup orphan-reaping is now an atomic Postgres update) but still not a
    durable queue; `docker-compose.yml` already provisions Redis, unused.
-6. **Broader test coverage** — two Playwright E2E specs exist (golden path +
-   Inspector overrides), both now auth-aware; still no React component/unit tests,
-   no CI pipeline to run any of this automatically (see item 3).
+6. **Broader test coverage** — three Playwright E2E specs exist (golden path,
+   Inspector overrides, multi-page), all auth-aware and now run automatically in CI
+   (see §2.11); still no React component/unit tests.
+7. **Final integration pass (Phase D5)** — the deadline plan's last phase: a
+   cross-cutting regression sweep of D1–D4 together (see the plan's §8 and §9).

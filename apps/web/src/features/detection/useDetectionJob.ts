@@ -42,7 +42,7 @@ export function useDetectionJob(onCompleted: (job: Job) => void | Promise<void>)
   }, [clearTimer]);
 
   const start = useCallback(
-    async (projectId: string, assetId: string) => {
+    async (projectId: string, pageId: string, assetId: string) => {
       clearTimer();
       setError(null);
       setJob(null);
@@ -50,7 +50,7 @@ export function useDetectionJob(onCompleted: (job: Job) => void | Promise<void>)
 
       let jobId: string;
       try {
-        ({ jobId } = await api.startDetection(projectId, assetId));
+        ({ jobId } = await api.startDetection(projectId, pageId, assetId));
       } catch (e) {
         setRunning(false);
         setError((e as Error).message);

@@ -5,6 +5,7 @@ import type {
   Detection,
   GeometryOverride,
   Job,
+  Page,
   Project,
   PageBoundary,
   ProjectAsset,
@@ -104,39 +105,62 @@ export const api = {
     return request(`/api/projects/${id}`, { method: "DELETE" });
   },
 
-  listAssets(projectId: string): Promise<ProjectAsset[]> {
-    return request(`/api/projects/${projectId}/assets`);
+  // Pages (§6 D3). A project always has at least one page; pageId scopes every
+  // resource below.
+  listPages(projectId: string): Promise<Page[]> {
+    return request(`/api/projects/${projectId}/pages`);
   },
-  uploadAsset(projectId: string, file: File): Promise<ProjectAsset> {
-    const formData = new FormData();
-    formData.append("file", file);
-    return request(`/api/projects/${projectId}/assets`, { method: "POST", body: formData });
+  createPage(projectId: string, name?: string): Promise<Page> {
+    return request(`/api/projects/${projectId}/pages`, {
+      method: "POST",
+      body: JSON.stringify(name ? { name } : {}),
+    });
+  },
+  renamePage(projectId: string, pageId: string, name: string): Promise<Page> {
+    return request(`/api/projects/${projectId}/pages/${pageId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name }),
+    });
+  },
+  deletePage(projectId: string, pageId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}`, { method: "DELETE" });
   },
 
-  listDetections(projectId: string): Promise<Detection[]> {
-    return request(`/api/projects/${projectId}/detections`);
+  listAssets(projectId: string, pageId: string): Promise<ProjectAsset[]> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets`);
+  },
+  uploadAsset(projectId: string, pageId: string, file: File): Promise<ProjectAsset> {
+    const formData = new FormData();
+    formData.append("file", file);
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets`, { method: "POST", body: formData });
+  },
+
+  listDetections(projectId: string, pageId: string): Promise<Detection[]> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/detections`);
   },
   createDetection(
     projectId: string,
+    pageId: string,
     input: { className: string; bbox: Detection["bbox"]; sourceAssetId: string }
   ): Promise<Detection> {
-    return request(`/api/projects/${projectId}/detections`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/detections`, {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
   updateDetection(
     projectId: string,
+    pageId: string,
     detectionId: string,
     input: Partial<{ className: string; x: number; y: number; width: number; height: number; status: string }>
   ): Promise<Detection> {
-    return request(`/api/projects/${projectId}/detections/${detectionId}`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/detections/${detectionId}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     });
   },
-  deleteDetection(projectId: string, detectionId: string): Promise<void> {
-    return request(`/api/projects/${projectId}/detections/${detectionId}`, { method: "DELETE" });
+  deleteDetection(projectId: string, pageId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/detections/${detectionId}`, { method: "DELETE" });
   },
 
   /** Build a downloadable ZIP from the project's latest saved code version (§18.8). */
@@ -149,25 +173,27 @@ export const api = {
   /** The persisted page boundary for an asset, if any (§10.6). */
   getPageBoundary(
     projectId: string,
+    pageId: string,
     assetId: string
   ): Promise<{ boundary: PageBoundary | null; source: "auto" | "manual" | null }> {
-    return request(`/api/projects/${projectId}/assets/${assetId}/page-boundary`);
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/page-boundary`);
   },
   /** Persist a user adjustment — always wins over later auto-detection. */
   savePageBoundary(
     projectId: string,
+    pageId: string,
     assetId: string,
     boundary: Pick<PageBoundary, "polygon"> & Partial<PageBoundary>
   ): Promise<{ boundary: PageBoundary; source: "auto" | "manual" }> {
-    return request(`/api/projects/${projectId}/assets/${assetId}/page-boundary`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/page-boundary`, {
       method: "PUT",
       body: JSON.stringify(boundary),
     });
   },
 
   /** Absolute URL of a detection's crop of the source sketch (§15.5). */
-  cropUrl(projectId: string, detectionId: string): string {
-    return `${API_URL}/api/projects/${projectId}/detections/${detectionId}/crop.png`;
+  cropUrl(projectId: string, pageId: string, detectionId: string): string {
+    return `${API_URL}/api/projects/${projectId}/pages/${pageId}/detections/${detectionId}/crop.png`;
   },
   /** Absolute URL for a download route, for use as an <a href>. */
   absoluteUrl(pathname: string): string {
@@ -177,30 +203,34 @@ export const api = {
   /** Approve this asset's current active detections as training data (§36, FR-11). */
   approveTraining(
     projectId: string,
+    pageId: string,
     assetId: string
   ): Promise<{ id: string; approved: boolean; datasetSplit: string; boxCount: number; replacedPrevious: boolean }> {
-    return request(`/api/projects/${projectId}/assets/${assetId}/approve-training`, { method: "POST" });
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/approve-training`, {
+      method: "POST",
+    });
   },
   getTrainingApproval(
     projectId: string,
+    pageId: string,
     assetId: string
   ): Promise<{ approved: boolean; approvedAt?: string; datasetSplit?: string; boxCount?: number }> {
-    return request(`/api/projects/${projectId}/assets/${assetId}/approve-training`);
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/approve-training`);
   },
 
   /** Start a detection job — plan section 7.4. Returns immediately; poll getJob(). */
-  startDetection(projectId: string, assetId: string): Promise<{ jobId: string; status: string }> {
-    return request(`/api/projects/${projectId}/assets/${assetId}/detect`, { method: "POST" });
+  startDetection(projectId: string, pageId: string, assetId: string): Promise<{ jobId: string; status: string }> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/detect`, { method: "POST" });
   },
   getJob(jobId: string): Promise<Job> {
     return request(`/api/jobs/${jobId}`);
   },
 
-  generateCode(projectId: string): Promise<{ jobId: string; status: string; code: CodeVersion }> {
-    return request(`/api/projects/${projectId}/code-generation-jobs`, { method: "POST" });
+  generateCode(projectId: string, pageId: string): Promise<{ jobId: string; status: string; code: CodeVersion }> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code-generation-jobs`, { method: "POST" });
   },
-  getLatestCode(projectId: string): Promise<CodeVersion> {
-    return request(`/api/projects/${projectId}/code`);
+  getLatestCode(projectId: string, pageId: string): Promise<CodeVersion> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code`);
   },
 
   // Code version history and hand-editing (§6.9, §39 V1).
@@ -208,11 +238,11 @@ export const api = {
   // Listing returns a lightweight summary; getCodeVersion pulls the full html/css bytes
   // for the one the user actually wants to view or use as an edit starting point. The
   // split keeps the workspace load small when a project has many revisions.
-  listCodeVersions(projectId: string): Promise<CodeVersionSummary> {
-    return request(`/api/projects/${projectId}/code-versions`);
+  listCodeVersions(projectId: string, pageId: string): Promise<CodeVersionSummary> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code-versions`);
   },
-  getCodeVersion(projectId: string, versionId: string): Promise<CodeVersion> {
-    return request(`/api/projects/${projectId}/code-versions/${versionId}`);
+  getCodeVersion(projectId: string, pageId: string, versionId: string): Promise<CodeVersion> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code-versions/${versionId}`);
   },
   /**
    * Persist a hand-edited page as a NEW immutable CodeVersion — never a mutation of an
@@ -221,15 +251,20 @@ export const api = {
    */
   saveEditedCode(
     projectId: string,
+    pageId: string,
     input: { html: string; css: string; basedOnVersionId?: string }
   ): Promise<CodeVersion> {
-    return request(`/api/projects/${projectId}/code-versions`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code-versions`, {
       method: "POST",
       body: JSON.stringify(input),
     });
   },
-  activateCodeVersion(projectId: string, versionId: string): Promise<{ activeVersionId: string }> {
-    return request(`/api/projects/${projectId}/code-versions/${versionId}/activate`, {
+  activateCodeVersion(
+    projectId: string,
+    pageId: string,
+    versionId: string
+  ): Promise<{ activeVersionId: string }> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/code-versions/${versionId}/activate`, {
       method: "PUT",
     });
   },
@@ -238,21 +273,22 @@ export const api = {
   // UI-IR node id — see project.ts for why. Applying a change from the inspector is a
   // put-then-generate-code sequence so the change lands in a new "generated" CodeVersion
   // (not "edited") that the existing version/preview/export plumbing picks up for free.
-  listStyleOverrides(projectId: string): Promise<Record<string, Record<string, string>>> {
-    return request(`/api/projects/${projectId}/style-overrides`);
+  listStyleOverrides(projectId: string, pageId: string): Promise<Record<string, Record<string, string>>> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/style-overrides`);
   },
   putStyleOverride(
     projectId: string,
+    pageId: string,
     detectionId: string,
     style: Record<string, string>
   ): Promise<{ detectionId: string; style: Record<string, string> | null }> {
-    return request(`/api/projects/${projectId}/style-overrides/${detectionId}`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/style-overrides/${detectionId}`, {
       method: "PUT",
       body: JSON.stringify(style),
     });
   },
-  clearStyleOverride(projectId: string, detectionId: string): Promise<void> {
-    return request(`/api/projects/${projectId}/style-overrides/${detectionId}`, {
+  clearStyleOverride(projectId: string, pageId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/style-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },
@@ -260,21 +296,22 @@ export const api = {
   // Per-node content overrides (§17.3 Content, Appendix Q). Same detection-uuid
   // keying as style overrides; the API enforces per-class applicability, so a Content
   // apply call must scope the body to fields the selected class actually accepts.
-  listContentOverrides(projectId: string): Promise<Record<string, ContentOverride>> {
-    return request(`/api/projects/${projectId}/content-overrides`);
+  listContentOverrides(projectId: string, pageId: string): Promise<Record<string, ContentOverride>> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/content-overrides`);
   },
   putContentOverride(
     projectId: string,
+    pageId: string,
     detectionId: string,
     input: { text?: string; altText?: string; href?: string }
   ): Promise<{ detectionId: string; override: ContentOverride | null }> {
-    return request(`/api/projects/${projectId}/content-overrides/${detectionId}`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/content-overrides/${detectionId}`, {
       method: "PUT",
       body: JSON.stringify(input),
     });
   },
-  clearContentOverride(projectId: string, detectionId: string): Promise<void> {
-    return request(`/api/projects/${projectId}/content-overrides/${detectionId}`, {
+  clearContentOverride(projectId: string, pageId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/content-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },
@@ -282,21 +319,22 @@ export const api = {
   // Per-node geometry overrides (§17.3 Geometry). Same detection-uuid keying as
   // style/content overrides. Body is a partial { x?, y?, width?, height? } in
   // normalized [0,1] — the API validator enforces the strict-normalized rules.
-  listGeometryOverrides(projectId: string): Promise<Record<string, GeometryOverride>> {
-    return request(`/api/projects/${projectId}/geometry-overrides`);
+  listGeometryOverrides(projectId: string, pageId: string): Promise<Record<string, GeometryOverride>> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/geometry-overrides`);
   },
   putGeometryOverride(
     projectId: string,
+    pageId: string,
     detectionId: string,
     input: GeometryOverride
   ): Promise<{ detectionId: string; geometry: GeometryOverride | null }> {
-    return request(`/api/projects/${projectId}/geometry-overrides/${detectionId}`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/geometry-overrides/${detectionId}`, {
       method: "PUT",
       body: JSON.stringify(input),
     });
   },
-  clearGeometryOverride(projectId: string, detectionId: string): Promise<void> {
-    return request(`/api/projects/${projectId}/geometry-overrides/${detectionId}`, {
+  clearGeometryOverride(projectId: string, pageId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/geometry-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },
@@ -304,21 +342,22 @@ export const api = {
   // Per-node structure overrides (§17.3 Structure). Same detection-uuid keying;
   // the API validator rejects a self-parent, a parent that is not currently active,
   // and any edit that would create a parent cycle.
-  listStructureOverrides(projectId: string): Promise<Record<string, StructureOverride>> {
-    return request(`/api/projects/${projectId}/structure-overrides`);
+  listStructureOverrides(projectId: string, pageId: string): Promise<Record<string, StructureOverride>> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/structure-overrides`);
   },
   putStructureOverride(
     projectId: string,
+    pageId: string,
     detectionId: string,
     input: StructureOverride
   ): Promise<{ detectionId: string; structure: StructureOverride | null }> {
-    return request(`/api/projects/${projectId}/structure-overrides/${detectionId}`, {
+    return request(`/api/projects/${projectId}/pages/${pageId}/structure-overrides/${detectionId}`, {
       method: "PUT",
       body: JSON.stringify(input),
     });
   },
-  clearStructureOverride(projectId: string, detectionId: string): Promise<void> {
-    return request(`/api/projects/${projectId}/structure-overrides/${detectionId}`, {
+  clearStructureOverride(projectId: string, pageId: string, detectionId: string): Promise<void> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/structure-overrides/${detectionId}`, {
       method: "DELETE",
     });
   },
@@ -326,8 +365,8 @@ export const api = {
   // Correction history / audit trail (§4). Read-only from the client — records are
   // written server-side as a side effect of the detections/geometry/structure
   // routes above, never posted directly.
-  listCorrections(projectId: string): Promise<CorrectionRecord[]> {
-    return request(`/api/projects/${projectId}/corrections`);
+  listCorrections(projectId: string, pageId: string): Promise<CorrectionRecord[]> {
+    return request(`/api/projects/${projectId}/pages/${pageId}/corrections`);
   },
 };
 

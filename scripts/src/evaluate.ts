@@ -284,7 +284,7 @@ async function main(): Promise<void> {
 
     // Build detections exactly as apps/api persists them.
     const dets: Detection[] = r.detections.map((d, i) => ({
-      id: `d${i}`, projectId: "p", sourceAssetId: "a",
+      id: `d${i}`, projectId: "p", pageId: "pg", sourceAssetId: "a",
       className: d.className, confidence: d.confidence, bbox: d.bbox,
       status: (d.status ?? "active") as Detection["status"], source: "model",
       modelVersionId: d.modelVersionId, createdAt: "", updatedAt: "",

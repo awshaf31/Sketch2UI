@@ -7,14 +7,9 @@ on:
     branches: [main]
 
 jobs:
-  lint-and-test:
-    name: Lint, Type-check & Test
+  ci:
+    name: Typecheck, Test, Build, E2E
     runs-on: ubuntu-latest
-
-    services:
-      # CV worker tests do not need a live model, but the Python test suite runs
-      # the boundary-overlap parity fixture which is pure-compute.
-      # No Postgres or Redis yet — those gates arrive with Phase 5A/5B.
 
     steps:
       - name: Checkout
@@ -28,11 +23,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Build shared packages
-        run: |
-          npm run build -w packages/shared-types
-          npm run build -w packages/codegen
 
       - name: Type-check
         run: npm run typecheck
@@ -45,7 +35,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python dependencies
+      - name: Install CV worker dependencies
         working-directory: services/cv-worker
         run: |
           python -m venv .venv
@@ -54,23 +44,30 @@ jobs:
       - name: Run Python tests
         run: npm run test:py
 
-  build:
-    name: Production Build
-    runs-on: ubuntu-latest
-    needs: lint-and-test
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Full production build
+      - name: Production build
         run: npm run build
+
+      - name: Install Playwright OS dependencies
+        run: npx playwright install-deps
+        # No browser download here: playwright.config.ts pins its one project to
+        # `channel: "chrome"` (system-installed Google Chrome), which ubuntu-latest
+        # ships pre-installed. This only installs the shared libraries headless
+        # Chrome needs to run — no Playwright-managed browser binary is used.
+
+      - name: Playwright E2E
+        run: npm run test:e2e
+        # playwright.config.ts's webServer array starts the mock CV worker, the real
+        # API, and the real web app itself (all via npx tsx/vite from source) against
+        # throwaway temp-dir storage. PERSISTENCE_DRIVER/DATABASE_URL are never set
+        # in this job, so — like the Vitest step above — this never touches Postgres
+        # or any development credentials.
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

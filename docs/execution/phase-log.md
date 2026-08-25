@@ -3724,3 +3724,228 @@ true and still require human annotation work to fix.
 
 ### Next phase
 D3 — Minimum Viable Multi-Page, per the deadline plan's sequencing.
+
+---
+
+## Phase D3 — Minimum Viable Multi-Page (Deadline Execution Plan)
+
+**Date:** 2026-08-25
+**Goal:** Convert a project from "one asset, one page" into `Project → Page[]`, per
+`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §6. Every project-owned
+resource (assets, detections, boundaries, code versions, the four override groups,
+corrections) becomes page-scoped; export bundles every page into one ZIP. This phase's
+backend half was committed as a mid-phase checkpoint (see `d30ebe9`, "Phases D1-D3
+(partial)") ahead of a session/account handoff, with
+`docs/execution/d3-multipage-handoff.md` tracking the exact resume point. This entry
+covers that handoff's completion — the frontend, e2e, and full regression — and folds
+the handoff file's content into the permanent record; the handoff file is deleted as
+of this entry.
+**Status:** ✅ Complete.
+
+### Files added (backend, from the checkpoint commit)
+- `apps/api/prisma/migrations/20260826000000_add_pages/` — new `Page` model; `pageId`
+  added to `ProjectAsset`, `Detection`, `CodeVersion`, `PageBoundaryRecord`,
+  `CorrectionRecord`, and the four override tables (unique constraint on
+  `CodeVersion` moved from `[projectId, versionNumber]` to `[pageId, versionNumber]`).
+- `apps/api/src/repositories/{json,prisma}/page.repository.ts` +
+  `__tests__/page.contract{,.json,.prisma}.test.ts` — `listByProject`, `findById`,
+  `create` (assigns `order` as `existing.length + 1`), `update` (rename), `delete`
+  (refuses when it's the project's last page), `setActiveCodeVersion`.
+- `apps/api/src/modules/pages/pages.routes.ts` + `pages.routes.test.ts` — CRUD at
+  `/api/projects/:id/pages[/:pageId]`, gated by `requireProjectOwnership` only (this
+  module defines what pages exist).
+- `apps/api/src/middleware/requirePageInProject.ts` — mirrors
+  `requireProjectOwnership`'s 404-not-403 existence-enumeration-avoidance reasoning;
+  mounted as the second middleware on every page-nested router.
+- `apps/api/scripts/backfill-pages.ts` (+ `npm run db:backfill-pages`) — explicit,
+  run-by-hand Postgres backfill for a project with zero pages and zero child rows
+  (rare, since `pageId` is `NOT NULL` everywhere it's used).
+- `packages/shared-types/src/page.ts` (`Page` type).
+
+### Files added (frontend, this session)
+- `apps/web/src/features/workspace/PagesStrip.tsx` — one pill per page
+  (`Button variant={selected ? "primary" : "ghost"}`), inline rename via a pencil
+  `IconButton` that swaps the label for an `Input` (Enter/blur commits, Escape
+  cancels), delete via a trash `IconButton` + `useDialog().confirm({ destructive:
+  true })` (hidden when it's the project's only page), and a trailing "+ Add page"
+  button. Built from existing Button/IconButton/Input primitives, not `Tabs.tsx`
+  (no add/rename/delete affordance there).
+- `e2e/multi-page.spec.ts` — a second page gets its own independent
+  upload/detect/generate cycle; switching back to Page 1 shows Page 1's own state
+  without re-running Detect; a `link`-class detection's `href` set to
+  `./page-2.html` via the Content Inspector survives into the exported
+  `index.html` verbatim; the exported ZIP contains `index.html`, `page-2.html`,
+  exactly one `styles.css`, and both pages' own `source-sketch-*` files.
+
+### Files changed (backend, from the checkpoint commit)
+- All 13 previously project-nested routers restructured from
+  `/api/projects/:id/<resource>` to `/api/projects/:id/pages/:pageId/<resource>`,
+  each switched to the new `*ByPage`/`findInPage`/etc. repository methods (old
+  `*ByProject` methods kept, not renamed — additive). `exports` stays project-level
+  (one export bundles every page); `jobs` stays top-level (`pageId` threaded through
+  as an optional field instead).
+- `apps/api/src/modules/exports/exports.routes.ts` — rewritten for multi-page
+  bundling: `order === 1` exports as `index.html`, every other page as
+  `page-{order}.html`, one shared `styles.css` built by plain concatenation (safe
+  because `packages/codegen`'s new additive `idPrefix` option namespaces each page's
+  UI-IR node ids, so no cross-page CSS id collision is possible).
+- `apps/api/src/db/jsonStore.ts` — `backfillPages()` runs on every `load()`,
+  idempotently synthesizing "Page 1" for any pre-D3 project and stamping `pageId`
+  onto its existing child rows.
+- `apps/api/src/modules/projects/projects.routes.ts` — `POST /` now also creates
+  "Page 1" for a brand-new project.
+
+### Files changed (frontend, this session)
+- `apps/web/src/services/api.ts` — added `listPages`/`createPage`/`renamePage`/
+  `deletePage`; every page-owned-resource method gained a `pageId` parameter and its
+  URL template now inserts `/pages/${pageId}` — mechanical, mirrors the backend route
+  change file-for-file. `exports`/`jobs` methods untouched (project/global-scoped).
+- `apps/web/src/stores/projectStore.ts` — added `currentPageId` + `setCurrentPageId`,
+  which also clears `selectedId` (a selection from the previous page is meaningless
+  after switching).
+- `apps/web/src/pages/ProjectWorkspace.tsx` — loads `listPages` on mount and defaults
+  to the first page; every data-loading effect and handler now depends on/passes
+  `currentPageId`; switching pages resets `asset`/`detections`/`activeVersion`/
+  `versionList`/`boundary`/`approval` before reloading that page's own data. Renders
+  `<PagesStrip>` between `<WorkspaceToolbar>` and `<StatusBar>`. No changes needed to
+  `WorkspaceBody`/`CanvasPanel`/`UITreePanel`/`InspectorPanel`/`CodePanel`/
+  `PreviewPane` — they all already consume page-shaped state.
+- `apps/web/src/features/detection/useDetectionJob.ts` — `start()` gained a `pageId`
+  parameter to match `api.startDetection`'s new signature.
+- `scripts/src/evaluate.ts` — added a stub `pageId` to the synthetic in-memory
+  `Detection` it builds for evaluation (not persisted); `Detection` gaining a
+  required `pageId` field broke this construction site independently of the
+  frontend work, caught by `npm run typecheck -w scripts` during full regression.
+- `PROJECT_STATUS.md` — §2.10 added (Phase D3 summary); TL;DR, §4.2, and §6 updated
+  to mark multi-page done.
+
+### Verification — full regression, run fresh with the frontend changes present
+| Command | Result |
+|---|---|
+| `npm run typecheck` | clean (web, api, scripts) |
+| `npm run test` | 124 (shared-types) + 241 passed / 16 skipped (`apps/api` — Prisma contract arms skip cleanly, no reachable test database) |
+| `npm run test:py` | 19 passed |
+| `npm run build` | success, all 4 workspaces |
+| `npm run test:e2e` | 4 passed — golden path, both Inspector-overrides specs, and the new multi-page spec |
+
+The multi-page e2e spec doubles as the manual regression walkthrough the handoff
+file's step 7 called for (independent per-page state, correct export bundle
+contents, the cross-page-link claim) — run against the real API/web/mock-CV-worker
+stack, not mocked at the HTTP layer. The one item from that walkthrough not
+exercised here is opening a genuinely pre-D3 project and confirming the JSON-store
+backfill shows it with exactly one page — there is no pre-D3 `store.json` in this
+environment to open (see Phase D1/D2's entries, same gap), so that path is covered
+only by `backfillPages()`'s own unit coverage, not a live walkthrough.
+
+### Known limitations
+- No page reordering — `order` is assigned once at creation (`existing.length + 1`)
+  and never changed; a page can be renamed or deleted but not moved.
+- No per-page thumbnail/preview in `PagesStrip` — pages are distinguished by name
+  only, which is fine at small page counts but would get harder to scan with many
+  pages.
+- Deleting a page is a hard delete of everything on it (assets, detections, code
+  versions, corrections) with no undo — mitigated only by the confirm dialog.
+
+### Next phase
+D4 — CI/CD, per the deadline plan's sequencing (see §6 of `PROJECT_STATUS.md`).
+
+---
+
+## Phase D4 — CI/CD (Deadline Execution Plan)
+
+**Date:** 2026-08-25
+**Goal:** A minimal automated quality gate, per
+`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §7: typecheck, Vitest,
+Pytest, a production build, and Playwright E2E, on every push/PR to `main`. No ML
+training in CI, no automatic deployment.
+**Status:** ✅ Complete.
+
+### Starting state
+`.github/workflows/ci.yml` already existed, but as an untouched leftover from the
+repo's very first baseline commit (`4bbdc0e`, 2026-08-24) — predating Playwright/e2e
+entirely. It had two real problems: an empty `services:` key under one job (YAML
+parses it as `null`, not a mapping — dead weight at best), and no E2E check at all,
+which is the plan's explicitly required fifth gate. `PROJECT_STATUS.md` §6 called
+this "no `.github/workflows` exists yet," which undersold it slightly — the file
+existed but wasn't a working gate.
+
+### Files changed
+- `.github/workflows/ci.yml` — rewritten from a two-job split (`lint-and-test` →
+  `build`, each re-running its own checkout/setup-node/npm ci) into a **single
+  linear job** matching the plan's own §7.1 diagram exactly: checkout → setup Node →
+  `npm ci` → typecheck → Vitest → setup Python → Pytest → production build →
+  Playwright E2E. Added `npx playwright install-deps` (OS shared libraries only, no
+  browser download — see below) and a failure-only Playwright report/trace upload
+  (`actions/upload-artifact`, 7-day retention) as the one addition beyond the plan's
+  literal five checks.
+- `PROJECT_STATUS.md` — §2.11 added; TL;DR, §4.5, and §6 updated to mark CI/CD done.
+
+### Design decisions
+- **One job, not two.** The removed two-job split bought nothing here (no artifacts
+  passed between jobs, no genuine parallelism since `build` already `needs:
+  lint-and-test`) while paying for a second checkout + `npm ci`. A single job also
+  matches §7.1's literal unbranched chain.
+- **No "build shared packages" pre-step.** `packages/shared-types` and
+  `packages/codegen` both set `"main"/"types": "./src/index.ts"` — every consumer
+  (`apps/api`'s plain `tsconfig.json`, `apps/web`'s `tsconfig.app.json`, both using
+  `moduleResolution: "Bundler"`, plus Vite/tsx at runtime) resolves them straight
+  from TypeScript source, with no project references. Typecheck/Vitest/Playwright
+  never needed those packages prebuilt; the old draft's explicit build step before
+  typecheck was dead weight, and `npm run build` later in the same job already
+  builds them for the production-build check.
+- **No CI-specific test isolation logic was added**, because none was needed:
+  `apps/api/vitest.setup.ts` already unconditionally redirects `STORE_FILE` to a
+  fresh temp path (with a hard assertion the redirect took) before any Vitest file
+  loads, and `playwright.config.ts`'s `webServer` array already points every service
+  at a fresh `fs.mkdtempSync` directory. `DATABASE_URL`/`REDIS_URL` are simply never
+  set in the workflow, so Prisma contract-test arms skip cleanly (see Verification)
+  — this is what "never connect to the real dev database, never use development
+  credentials" resolves to in practice: not writing any Postgres/Redis config at all.
+- **`services/cv-worker/requirements.txt` installed in full** (torch, ultralytics,
+  fastapi, the works), even though the one existing Pytest file
+  (`test_boundary_parity.py`) only imports a pure-Python module and would run fine
+  with just `pytest` installed. Kept the full install rather than a trimmed
+  test-only requirements file — matches "use the exact existing project commands"
+  and won't silently need updating the moment a heavier test is added.
+- **Python 3.11 in CI**, not 3.9.6 (the version this repo's local `.venv` happens to
+  use). `requirements.txt`'s own header comment states "Python 3.9+" — a floor, not
+  a ceiling — and torch 2.8.0 publishes wheels through newer Python versions, so
+  there's no reason to pin CI to an old dev-machine interpreter.
+- **`channel: "chrome"` in `playwright.config.ts` is a pre-existing choice**, made
+  because the sandboxed dev box this was authored in can't reach Playwright's
+  browser-binary CDN, so the config uses system-installed Google Chrome instead of a
+  Playwright-managed download. `ubuntu-latest` GitHub-hosted runners ship Google
+  Chrome pre-installed (documented in `actions/runner-images`), so this carries over
+  to CI unmodified — the workflow only needs `npx playwright install-deps` (OS
+  shared libraries headless Chrome needs; no browser binary download), not
+  `playwright install <browser>`.
+
+### Verification
+| Command | Result |
+|---|---|
+| YAML parse (`python3 -c "yaml.safe_load(...)"`) | valid — the old file's empty `services:` key is exactly the class of mistake this would have caught |
+| `npm run typecheck` | clean (web, api, scripts) |
+| `npm run test` | 124 (shared-types) + 241 passed / 16 skipped (`apps/api` — Prisma contract arms skip cleanly, no `DATABASE_URL` set, confirming the "never touch dev Postgres" property holds with zero extra CI config) |
+| `npm run test:py` | 19 passed |
+| `npm run build` | success, all 4 workspaces |
+| `npm run test:e2e` | 4 passed — golden path, both Inspector-overrides specs, multi-page |
+
+Every command in the workflow is copy-pasted verbatim from this table — nothing
+CI-specific was invented. What could **not** be verified from here: the actual
+GitHub Actions runner was never executed (no push/PR was made), so the workflow's
+correctness beyond YAML validity rests on (a) every step being a command that just
+ran green locally, and (b) the documented fact that `ubuntu-latest` ships Chrome
+pre-installed. The first real PR against `main` after this lands is the actual
+proof; watch that one.
+
+### Known limitations
+- No matrix/parallelization across Node or OS versions — a single Ubuntu/Node-20
+  run is the entire gate.
+- No branch-protection rule was configured to require this check before merge (a
+  repo-settings change, not a workflow-file change) — the workflow runs and reports
+  status, but nothing yet blocks a merge on it failing.
+- No deployment automation of any kind, per the plan's explicit scope.
+
+### Next phase
+D5 — Final Integration, per the deadline plan's sequencing (a cross-cutting
+regression pass over D1–D4 together, not new feature work).
