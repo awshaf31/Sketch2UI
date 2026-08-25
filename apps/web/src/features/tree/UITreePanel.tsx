@@ -147,18 +147,34 @@ function TreeNode({
     <li>
       <button
         onClick={() => onSelect(node.sourceDetectionId ?? null)}
-        // docs/frontend/accessibility.md — →/← expand/collapse. Native Tab order
-        // already reaches every row (each is a real <button>); this adds the
-        // standard tree-widget arrow-key convention for the one interaction that
-        // otherwise had no keyboard path (the mouse-only chevron span).
+        // docs/frontend/accessibility.md — →/← expand/collapse, ↑/↓ move focus
+        // between visible rows (standard tree-widget keyboard contract). Collapsed
+        // subtrees are removed from the DOM entirely (see the `!collapsed` guard
+        // below), so "next/previous visible row" is exactly "next/previous
+        // `li > button` in document order" within this panel's root <ul> — no
+        // separate flattened-row model needs to be tracked.
         onKeyDown={(e) => {
-          if (!hasChildren) return;
-          if (e.key === "ArrowRight" && collapsed) {
+          if (hasChildren) {
+            if (e.key === "ArrowRight" && collapsed) {
+              e.preventDefault();
+              setCollapsed(false);
+              return;
+            } else if (e.key === "ArrowLeft" && !collapsed) {
+              e.preventDefault();
+              setCollapsed(true);
+              return;
+            }
+          }
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            const treeRoot = e.currentTarget.closest("ul.p-2");
+            if (!treeRoot) return;
+            const rows = Array.from(treeRoot.querySelectorAll<HTMLButtonElement>("li > button"));
+            const currentIndex = rows.indexOf(e.currentTarget);
+            if (currentIndex === -1) return;
+            const nextIndex = e.key === "ArrowDown" ? currentIndex + 1 : currentIndex - 1;
+            if (nextIndex < 0 || nextIndex >= rows.length) return;
             e.preventDefault();
-            setCollapsed(false);
-          } else if (e.key === "ArrowLeft" && !collapsed) {
-            e.preventDefault();
-            setCollapsed(true);
+            rows[nextIndex].focus();
           }
         }}
         style={{ paddingLeft: depth * 16 }}

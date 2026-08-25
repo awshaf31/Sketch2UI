@@ -14,7 +14,9 @@ each required to cite exact file:line evidence and distinguish "confirmed" from
 Every fix below has a regression test that was confirmed to fail without the fix and
 pass with it (shown by literally reverting the fix and re-running).
 
-**Total defects logged: 14** (5 fixed, 8 deferred with rationale, 1 inconclusive).
+**Total defects logged: 14** (6 fixed, 7 deferred with rationale, 1 inconclusive).
+DEF-010 was fixed in a follow-up session on 2026-08-26, after the original audit
+pass below — see its entry for details.
 
 ---
 
@@ -196,6 +198,40 @@ pass with it (shown by literally reverting the fix and re-running).
   button (`document.activeElement === trigger`).
 - **Status:** ✅ Fixed, live-verified (round-trip focus behavior confirmed).
 
+### DEF-010 — `UITreePanel` has no arrow-key navigation between sibling rows
+
+- **Category:** ACCESSIBILITY
+- **Severity / Priority:** P2
+- **Fixed in a follow-up session (2026-08-26)**, after the rest of this audit —
+  originally logged as deferred; see git history for the exact commit.
+- **Location:** `apps/web/src/features/tree/UITreePanel.tsx`
+- **Reproduction (before fix):** Focus any Layers-tree row, press `ArrowDown` or
+  `ArrowUp`. Nothing happens — only `ArrowLeft`/`ArrowRight` (expand/collapse) had
+  handlers. A keyboard-only user had to Tab sequentially through every preceding row
+  to reach a deep one. This directly contradicted
+  `docs/frontend/accessibility.md`'s claim ("Arrow keys move focus between rows")
+  that this already existed.
+- **Fix:** The row `<button>`'s `onKeyDown` now handles `ArrowDown`/`ArrowUp` by
+  finding the panel's root `<ul className="p-2">` via `closest()`, reading all
+  `li > button` elements in document order, and calling `.focus()` on the
+  next/previous one. Because a collapsed subtree's children are removed from the
+  DOM entirely (pre-existing behavior — see the `{hasChildren && !collapsed && ...}`
+  guard just below), "next/previous visible row" falls out of plain DOM order for
+  free — no separate flattened-row model needs to be tracked, and no change to the
+  DOM shape the e2e suite's `ul.p-2 > li > button` locator depends on.
+- **Regression test:** No new automated test (project has no React component-test
+  suite yet — see `PROJECT_STATUS.md` §6.6). Live-verified via the browser against
+  a real project's tree (23 visible rows, several nesting levels): `ArrowDown` from
+  a top-level "image" row moved focus into its own nested "text" child, then to the
+  next top-level "header" row; `ArrowUp` from "text" returned to "image"; `ArrowUp`
+  at the very first row was a no-op (no wraparound/crash); collapsing "image" via
+  `ArrowLeft` and pressing `ArrowDown` again skipped straight to "header",
+  confirming the hidden child was excluded from traversal. `npm run typecheck`,
+  `npm run test` (124 + 260 passing), and `npm run test:e2e` (4/4, including both
+  specs that locate tree rows via the exact `ul.p-2 > li > button` shape) all green
+  after the change.
+- **Status:** ✅ Fixed, live-verified.
+
 ---
 
 ## Deferred (real, but out of scope for this pass — see rationale per item)
@@ -248,18 +284,6 @@ verified, not speculative.
   new dependency (e.g. `express-rate-limit`) and deciding limits/storage
   (in-memory vs. shared) — a deliberate infra decision, explicitly the kind of thing
   the deadline rule asks to not start unprompted.
-
-### DEF-010 — `UITreePanel` has no arrow-key navigation between sibling rows
-- **Category:** ACCESSIBILITY · **Priority:** P2
-- Confirmed: only `ArrowLeft`/`ArrowRight` (expand/collapse) exist; there's no
-  `ArrowUp`/`ArrowDown` "move to next visible row." A keyboard-only user must Tab
-  sequentially through every preceding row to reach a deep one. This directly
-  contradicts `docs/frontend/accessibility.md`'s claim that this already exists
-  (the doc describes Phase 2J-scoped, not-yet-built behavior as delivered).
-- **Why deferred:** A real, practically-felt gap, but implementing a proper
-  roving-tabindex/next-visible-row model is meaningful interaction-model work, not an
-  obvious patch. Recommend prioritizing this for the very next accessibility-focused
-  phase — it's the most concrete, well-scoped item in this deferred list.
 
 ### DEF-011 — Canvas detection resize handles are mouse-only
 - **Category:** ACCESSIBILITY · **Priority:** P2

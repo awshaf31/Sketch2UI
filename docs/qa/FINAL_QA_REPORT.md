@@ -30,8 +30,8 @@ repository architecture, per the stated constraints.
 | P1 | 2 |
 | P2 | 7 |
 | P3 | 4 |
-| **Fixed this pass** | **5** |
-| Deferred (real, documented rationale) | 8 |
+| **Fixed** (5 this pass + 1 in a 2026-08-26 follow-up, DEF-010) | **6** |
+| Deferred (real, documented rationale) | 7 |
 | Inconclusive (flagged, not confirmed) | 1 |
 
 **All audited P0 and P1 issues are fixed** (1/1 P0, 2/2 P1) — this claim is scoped
@@ -68,6 +68,16 @@ exactly to what this pass actually audited; see "What this does NOT claim" below
    `Dialog.tsx`'s already-correct focus-trap implementation and adding a close
    control; live-verified the full open→Tab-trap→close→focus-returns-to-trigger
    round trip.
+6. **DEF-010 (P2, ACCESSIBILITY, fixed 2026-08-26 in a follow-up session)** — The
+   Layers tree had no `ArrowUp`/`ArrowDown` navigation between rows, contradicting
+   the accessibility doc's claim that it existed. Fixed by having each row's
+   `onKeyDown` walk the panel's `li > button` elements in DOM order and move focus
+   to the next/previous one; because a collapsed subtree is removed from the DOM
+   entirely, this is automatically "next/previous *visible* row" with no separate
+   flattened-row model to maintain. Live-verified against a real 23-row tree
+   (nested-child descent, ascent, top-of-list no-op, and collapse-then-skip all
+   behaved correctly); full regression suite (typecheck, 384 unit tests, 4/4 e2e)
+   green afterward.
 
 ## Deferred (real, not fixed — see the register for full rationale per item)
 
@@ -82,9 +92,6 @@ batched-query rewrite) rather than a small, contained fix:
 - **DEF-008 (P2)** `/uploads` static file route checks authentication but not
   per-asset ownership (low-likelihood given UUID storage keys, but real).
 - **DEF-009 (P2)** No rate limiting on login/register.
-- **DEF-010 (P2)** Layers tree has no arrow-key navigation between sibling rows
-  (contradicts the accessibility doc's claim that this exists) — the most
-  concretely scoped item in this list, recommended first for a follow-up pass.
 - **DEF-011 (P2)** Canvas detection resize handles are keyboard-inaccessible.
 - **DEF-012 (P2)** N+1 query/image-decode pattern in the export route — will scale
   poorly on projects with many pages/images.
