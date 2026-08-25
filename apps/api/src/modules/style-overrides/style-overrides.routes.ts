@@ -1,7 +1,8 @@
 import { Router } from "express";
-import { db } from "../../db/jsonStore.js";
 import { sendError } from "../../middleware/apiError.js";
 import type { ProjectParams } from "../../types.js";
+import { getRepositories } from "../../repositories/index.js";
+import { asyncHandler } from "../../middleware/asyncHandler.js";
 
 // Per-node style overrides — plan §6.7 / §17.3.
 //
@@ -34,65 +35,62 @@ const ALLOWED_PROPERTIES = new Set([
 
 // GET /api/projects/:id/style-overrides — the full map for the project. Small enough
 // to send at once and needed on workspace load, so no pagination.
-styleOverridesRouter.get<ProjectParams>("/", (req, res) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-  res.json(project.styleOverrides ?? {});
-});
+styleOverridesRouter.get<ProjectParams>(
+  "/",
+  asyncHandler(async (req, res) => {
+    const project = await getRepositories().projects.findById(req.params.id);
+    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
+    res.json(await getRepositories().styleOverrides.mapForProject(project.id));
+  })
+);
 
 // PUT /api/projects/:id/style-overrides/:detectionId — upsert the override for one
 // component. Body is a { property: value } object; unknown properties are rejected so a
 // typo cannot silently persist as a no-op rule.
-styleOverridesRouter.put<OverrideParams>("/:detectionId", (req, res) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
+styleOverridesRouter.put<OverrideParams>(
+  "/:detectionId",
+  asyncHandler(async (req, res) => {
+    const project = await getRepositories().projects.findById(req.params.id);
+    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
-  const detection = db.state.detections.find(
-    (d) => d.id === req.params.detectionId && d.projectId === project.id
-  );
-  if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found in this project.");
+    const detection = await getRepositories().detections.findInProject(project.id, req.params.detectionId);
+    if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found in this project.");
 
-  const body = (req.body ?? {}) as Record<string, unknown>;
-  const cleaned: Record<string, string> = {};
-  for (const [prop, value] of Object.entries(body)) {
-    if (!ALLOWED_PROPERTIES.has(prop)) {
-      return sendError(res, 400, "VALIDATION_FAILED", `Style property not allowed: ${prop}`);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const cleaned: Record<string, string> = {};
+    for (const [prop, value] of Object.entries(body)) {
+      if (!ALLOWED_PROPERTIES.has(prop)) {
+        return sendError(res, 400, "VALIDATION_FAILED", `Style property not allowed: ${prop}`);
+      }
+      if (value === "" || value === null || value === undefined) continue;
+      if (typeof value !== "string") {
+        return sendError(res, 400, "VALIDATION_FAILED", `Style value for ${prop} must be a string.`);
+      }
+      // A stray "}" or newline in a value would let a caller close the enclosing rule
+      // and inject additional selectors when the override is emitted as CSS. The
+      // inspector never produces those characters, so refusing them is safe.
+      if (/[{};\n\r<>]/.test(value)) {
+        return sendError(res, 400, "VALIDATION_FAILED", `Style value for ${prop} contains an illegal character.`);
+      }
+      cleaned[prop] = value;
     }
-    if (value === "" || value === null || value === undefined) continue;
-    if (typeof value !== "string") {
-      return sendError(res, 400, "VALIDATION_FAILED", `Style value for ${prop} must be a string.`);
-    }
-    // A stray "}" or newline in a value would let a caller close the enclosing rule
-    // and inject additional selectors when the override is emitted as CSS. The
-    // inspector never produces those characters, so refusing them is safe.
-    if (/[{};\n\r<>]/.test(value)) {
-      return sendError(res, 400, "VALIDATION_FAILED", `Style value for ${prop} contains an illegal character.`);
-    }
-    cleaned[prop] = value;
-  }
 
-  project.styleOverrides = project.styleOverrides ?? {};
-  if (Object.keys(cleaned).length === 0) {
-    // Empty write is a delete — the inspector's Reset button uses this path so the
-    // component reverts to the auto-inferred layout with no leftover keys.
-    delete project.styleOverrides[detection.id];
-  } else {
-    project.styleOverrides[detection.id] = cleaned;
-  }
-  project.updatedAt = new Date().toISOString();
-  db.save();
+    // An empty write is a delete — the inspector's Reset button uses this path so the
+    // component reverts to the auto-inferred layout with no leftover keys. The
+    // repository detects this itself (put with an empty object).
+    const stored = await getRepositories().styleOverrides.put(project.id, detection.id, cleaned);
 
-  res.json({ detectionId: detection.id, style: project.styleOverrides[detection.id] ?? null });
-});
+    res.json({ detectionId: detection.id, style: stored });
+  })
+);
 
 // DELETE /api/projects/:id/style-overrides/:detectionId — clear one component's tweaks.
-styleOverridesRouter.delete<OverrideParams>("/:detectionId", (req, res) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
-  if (project.styleOverrides) {
-    delete project.styleOverrides[req.params.detectionId];
-    project.updatedAt = new Date().toISOString();
-    db.save();
-  }
-  res.status(204).send();
-});
+styleOverridesRouter.delete<OverrideParams>(
+  "/:detectionId",
+  asyncHandler(async (req, res) => {
+    const project = await getRepositories().projects.findById(req.params.id);
+    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
+    await getRepositories().styleOverrides.remove(project.id, req.params.detectionId);
+    res.status(204).send();
+  })
+);

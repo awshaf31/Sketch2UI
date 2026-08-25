@@ -20,9 +20,11 @@
     "eval": "tsx scripts/src/evaluate.ts",
     "test": "npm run test -w packages/shared-types && npm run test -w apps/api",
     "test:py": "cd services/cv-worker && .venv/bin/python -m pytest -q",
+    "test:e2e": "playwright test",
     "check:db-state": "tsx scripts/src/check-db-state-usage.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "tsx": "^4.16.2",
     "typescript": "^5.5.4"
   }

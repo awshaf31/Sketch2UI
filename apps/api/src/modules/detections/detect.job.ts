@@ -5,9 +5,9 @@ import { env } from "../../config/env.js";
 import type { ErrorCode } from "../../middleware/apiError.js";
 import { isRetryable } from "../../middleware/apiError.js";
 import { markCompleted, markFailed, markProcessing } from "../jobs/jobs.service.js";
-import { saveBoundary, toPageBoundary } from "../boundaries/boundaries.service.js";
+import { toPageBoundary } from "../boundaries/boundaries.service.js";
 import { shouldAccept, DEFAULT_OVERLAP_THRESHOLD } from "@sketch2ui/shared-types";
-import { clearModelDetections, createDetections } from "./detections.service.js";
+import { getRepositories } from "../../repositories/index.js";
 
 // The detect job — plan sections 7.4 (job API), 27 (queue semantics), 51 step 9.
 //
@@ -59,11 +59,11 @@ function toApiErrorCode(workerCode: string | undefined): ErrorCode {
  */
 export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<void> {
   try {
-    markProcessing(jobId, "preprocessing", 10);
+    await markProcessing(jobId, "preprocessing", 10);
 
     const imagePath = path.join(env.uploadsDir, asset.storageKey);
     if (!fs.existsSync(imagePath)) {
-      markFailed(
+      await markFailed(
         jobId,
         "INVALID_IMAGE",
         "The source image is missing from storage.",
@@ -72,7 +72,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
       return;
     }
 
-    markProcessing(jobId, "component_detection", 30);
+    await markProcessing(jobId, "component_detection", 30);
 
     const form = new FormData();
     form.append(
@@ -92,7 +92,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
       // Connection refused / DNS / timeout — the worker is down or slow, which is
       // exactly the transient class section 27.4 says to retry.
       const reason = cause instanceof Error ? cause.message : "unknown error";
-      markFailed(
+      await markFailed(
         jobId,
         "WORKER_UNREACHABLE",
         `Could not reach the detection service (${reason}).`,
@@ -104,7 +104,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
     if (!response.ok) {
       const body = (await response.json().catch(() => ({}))) as WorkerErrorBody;
       const code = toApiErrorCode(body.error?.code);
-      markFailed(
+      await markFailed(
         jobId,
         code,
         body.error?.message ?? `The detection service returned ${response.status}.`,
@@ -115,25 +115,30 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
 
     const result = (await response.json()) as WorkerResponse;
 
-    markProcessing(jobId, "persisting_detections", 80);
+    await markProcessing(jobId, "persisting_detections", 80);
 
     // Persist the auto-detected boundary — but the sticky-correction rule means a
     // MANUAL adjustment wins. `effective` is whatever is actually in force afterwards.
     let effective = result.pageBoundary;
     let preservedManual = false;
     if (result.pageBoundary) {
-      const saved = saveBoundary(asset.projectId, asset.id, result.pageBoundary, "auto");
+      const saved = await getRepositories().boundaries.saveRespectingManual(
+        asset.projectId,
+        asset.id,
+        result.pageBoundary,
+        "auto"
+      );
       effective = toPageBoundary(saved.record);
       preservedManual = saved.preservedManual;
     }
 
     // Section 27.5 (idempotency): drop this asset's previous MODEL detections so a
     // re-run replaces rather than duplicates them. Manual boxes are left alone.
-    clearModelDetections(asset.projectId, asset.id);
+    await getRepositories().detections.clearModelDetections(asset.projectId, asset.id);
 
-    // Persisted through the same service the manual annotation route uses, so these are
-    // indistinguishable from hand-drawn records apart from `source` and `modelVersionId`.
-    const created = createDetections(
+    // Persisted through the same repository the manual annotation route uses, so these
+    // are indistinguishable from hand-drawn records apart from `source` and `modelVersionId`.
+    const created = await getRepositories().detections.createMany(
       result.detections.map((d) => ({
         projectId: asset.projectId,
         sourceAssetId: asset.id,
@@ -156,7 +161,7 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
       }))
     );
 
-    markCompleted(jobId, {
+    await markCompleted(jobId, {
       detectionCount: created.length,
       modelVersionId: result.modelVersionId,
       pageBoundary: effective,
@@ -164,6 +169,6 @@ export async function runDetectJob(jobId: string, asset: ProjectAsset): Promise<
     });
   } catch (cause) {
     const reason = cause instanceof Error ? cause.message : "unknown error";
-    markFailed(jobId, "INTERNAL", `Detection job failed: ${reason}`, true);
+    await markFailed(jobId, "INTERNAL", `Detection job failed: ${reason}`, true);
   }
 }

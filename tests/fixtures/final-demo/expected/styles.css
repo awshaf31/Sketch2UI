@@ -1,0 +1,102 @@
+:root {
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+  color: #1f2937;
+  background: #ffffff;
+  line-height: 1.5;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+/* Emitted unconditionally: .ui-logo-image is applied to an <img> nested inside a logo
+   anchor, so it is not a node type and would not be picked up by used-class scanning. */
+.ui-logo-image {
+  max-height: 48px;
+  width: auto;
+}
+
+.ui-section {
+  padding: var(--space-6) 6vw;
+}
+
+.ui-image {
+  width: 100%; border-radius: 8px;
+}
+
+.ui-text {
+  margin: 0 0 var(--space-3) 0; color: #4b5563;
+}
+
+.ui-heading {
+  margin: 0 0 var(--space-3) 0;
+}
+
+.ui-button {
+  border: 0; padding: 0.75rem 1rem; border-radius: 8px; cursor: pointer; background: #1f2937; color: #fff; font: inherit;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#section-2 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#image-group-21 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+#section-5 {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+#section-16 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#text-group-22 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  #image-group-21 {
+    grid-template-columns: 1fr;
+  }
+
+  #section-5 {
+    flex-wrap: wrap;
+  }
+
+  #text-group-22 {
+    grid-template-columns: 1fr;
+  }
+}

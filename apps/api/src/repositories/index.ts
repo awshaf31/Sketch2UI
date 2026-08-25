@@ -16,11 +16,47 @@
  */
 
 import { env } from "../config/env.js";
-import type { AssetRepository, ProjectRepository } from "./types.js";
+import type {
+  AssetRepository,
+  BoundaryRepository,
+  CodeVersionRepository,
+  ContentOverrideRepository,
+  CorrectionRepository,
+  DetectionRepository,
+  ExportRepository,
+  GeometryOverrideRepository,
+  JobRepository,
+  ProjectRepository,
+  StructureOverrideRepository,
+  StyleOverrideRepository,
+  TrainingRepository,
+} from "./types.js";
 import { JsonProjectRepository } from "./json/project.repository.js";
 import { JsonAssetRepository } from "./json/asset.repository.js";
+import { JsonDetectionRepository } from "./json/detection.repository.js";
+import { JsonBoundaryRepository } from "./json/boundary.repository.js";
+import { JsonCodeVersionRepository } from "./json/code-version.repository.js";
+import { JsonStyleOverrideRepository } from "./json/style-override.repository.js";
+import { JsonContentOverrideRepository } from "./json/content-override.repository.js";
+import { JsonGeometryOverrideRepository } from "./json/geometry-override.repository.js";
+import { JsonStructureOverrideRepository } from "./json/structure-override.repository.js";
+import { JsonTrainingRepository } from "./json/training.repository.js";
+import { JsonCorrectionRepository } from "./json/correction.repository.js";
+import { JsonExportRepository } from "./json/export.repository.js";
+import { JsonJobRepository } from "./json/job.repository.js";
 import { PrismaProjectRepository } from "./prisma/project.repository.js";
 import { PrismaAssetRepository } from "./prisma/asset.repository.js";
+import { PrismaDetectionRepository } from "./prisma/detection.repository.js";
+import { PrismaBoundaryRepository } from "./prisma/boundary.repository.js";
+import { PrismaCodeVersionRepository } from "./prisma/code-version.repository.js";
+import { PrismaStyleOverrideRepository } from "./prisma/style-override.repository.js";
+import { PrismaContentOverrideRepository } from "./prisma/content-override.repository.js";
+import { PrismaGeometryOverrideRepository } from "./prisma/geometry-override.repository.js";
+import { PrismaStructureOverrideRepository } from "./prisma/structure-override.repository.js";
+import { PrismaTrainingRepository } from "./prisma/training.repository.js";
+import { PrismaCorrectionRepository } from "./prisma/correction.repository.js";
+import { PrismaExportRepository } from "./prisma/export.repository.js";
+import { PrismaJobRepository } from "./prisma/job.repository.js";
 
 export * from "./types.js";
 
@@ -28,6 +64,17 @@ export * from "./types.js";
 export interface MigratedRepositories {
   projects: ProjectRepository;
   assets: AssetRepository;
+  detections: DetectionRepository;
+  boundaries: BoundaryRepository;
+  codeVersions: CodeVersionRepository;
+  styleOverrides: StyleOverrideRepository;
+  contentOverrides: ContentOverrideRepository;
+  geometryOverrides: GeometryOverrideRepository;
+  structureOverrides: StructureOverrideRepository;
+  training: TrainingRepository;
+  corrections: CorrectionRepository;
+  exports: ExportRepository;
+  jobs: JobRepository;
 }
 
 let cached: MigratedRepositories | undefined;
@@ -37,11 +84,33 @@ function build(): MigratedRepositories {
     return {
       projects: new PrismaProjectRepository(),
       assets: new PrismaAssetRepository(),
+      detections: new PrismaDetectionRepository(),
+      boundaries: new PrismaBoundaryRepository(),
+      codeVersions: new PrismaCodeVersionRepository(),
+      styleOverrides: new PrismaStyleOverrideRepository(),
+      contentOverrides: new PrismaContentOverrideRepository(),
+      geometryOverrides: new PrismaGeometryOverrideRepository(),
+      structureOverrides: new PrismaStructureOverrideRepository(),
+      training: new PrismaTrainingRepository(),
+      corrections: new PrismaCorrectionRepository(),
+      exports: new PrismaExportRepository(),
+      jobs: new PrismaJobRepository(),
     };
   }
   return {
     projects: new JsonProjectRepository(),
     assets: new JsonAssetRepository(),
+    detections: new JsonDetectionRepository(),
+    boundaries: new JsonBoundaryRepository(),
+    codeVersions: new JsonCodeVersionRepository(),
+    styleOverrides: new JsonStyleOverrideRepository(),
+    contentOverrides: new JsonContentOverrideRepository(),
+    geometryOverrides: new JsonGeometryOverrideRepository(),
+    structureOverrides: new JsonStructureOverrideRepository(),
+    training: new JsonTrainingRepository(),
+    corrections: new JsonCorrectionRepository(),
+    exports: new JsonExportRepository(),
+    jobs: new JsonJobRepository(),
   };
 }
 

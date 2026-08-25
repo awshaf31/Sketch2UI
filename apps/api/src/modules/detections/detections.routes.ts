@@ -1,132 +1,116 @@
 import { Router } from "express";
 import type { Detection } from "@sketch2ui/shared-types";
-import { db } from "../../db/jsonStore.js";
 import type { DetectionParams, ProjectParams } from "../../types.js";
-import { createDetection, listDetections } from "./detections.service.js";
+import { getRepositories } from "../../repositories/index.js";
+import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { sendError } from "../../middleware/apiError.js";
-import { recordCorrection } from "../corrections/corrections.service.js";
 
 export const detectionsRouter = Router({ mergeParams: true });
 
 // GET /api/projects/:id/detections — plan section 18.4.
 // Returns manual and model detections together; the client tells them apart via `source`.
-detectionsRouter.get<ProjectParams>("/", (req, res) => {
-  res.json(listDetections(req.params.id));
-});
+detectionsRouter.get<ProjectParams>(
+  "/",
+  asyncHandler(async (req, res) => {
+    res.json(await getRepositories().detections.listByProject(req.params.id));
+  })
+);
 
 // POST /api/projects/:id/detections — manual annotation creation (source: "manual").
-// Shares createDetection() with the model detect job, so both produce identical records.
-detectionsRouter.post<ProjectParams>("/", (req, res) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
+// Uses the same repository the model detect job writes through, so both produce
+// identical records.
+detectionsRouter.post<ProjectParams>(
+  "/",
+  asyncHandler(async (req, res) => {
+    const project = await getRepositories().projects.findById(req.params.id);
+    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
-  const { className, bbox, sourceAssetId } = req.body ?? {};
-  if (!className || !bbox || !sourceAssetId) {
-    return sendError(res, 400, "VALIDATION_FAILED", "className, bbox and sourceAssetId are required.");
-  }
-
-  const detection = createDetection({
-    projectId: project.id,
-    sourceAssetId,
-    className,
-    bbox,
-    source: "manual",
-  });
-  recordCorrection({
-    projectId: project.id,
-    detectionId: detection.id,
-    type: "created",
-    newClassName: detection.className,
-    newBBox: detection.bbox,
-  });
-  db.save();
-  res.status(201).json(detection);
-});
-
-// PATCH /api/projects/:id/detections/:detectionId — plan section 18.5
-detectionsRouter.patch<DetectionParams>("/:detectionId", (req, res) => {
-  const detection = db.state.detections.find(
-    (d) => d.id === req.params.detectionId && d.projectId === req.params.id
-  );
-  if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
-
-  const { className, x, y, width, height, status } = req.body ?? {};
-
-  const previousClassName = detection.className;
-  const previousBBox = detection.bbox;
-  const editedClass = typeof className === "string" && className !== detection.className;
-  const editedBox = [x, y, width, height].every((v) => typeof v === "number");
-
-  if (typeof className === "string") detection.className = className;
-  if (editedBox) detection.bbox = { x, y, width, height };
-  if (typeof status === "string") detection.status = status as Detection["status"];
-
-  // A corrected model detection becomes the user's: it flips to source "manual" while
-  // keeping modelVersionId for provenance. Two reasons this matters:
-  //   1. re-running detection clears this asset's model detections (idempotency, section
-  //      27.5) — without the flip, a correction would be silently destroyed by the next
-  //      Detect run;
-  //   2. section 36's training feedback loop wants exactly these records — a human-
-  //      approved box that a known model version originally proposed.
-  if (detection.source === "model" && (editedClass || editedBox)) {
-    // Capture what the model originally said BEFORE overwriting it — section 36's
-    // active-learning signal needs the class the model got wrong, not the corrected one.
-    // Guarded so a second correction does not overwrite the model's original answer.
-    if (editedClass && detection.originalClassName === undefined) {
-      detection.originalClassName = previousClassName;
+    const { className, bbox, sourceAssetId } = req.body ?? {};
+    if (!className || !bbox || !sourceAssetId) {
+      return sendError(res, 400, "VALIDATION_FAILED", "className, bbox and sourceAssetId are required.");
     }
-    detection.source = "manual";
-    detection.confidence = 1;
-  }
 
-  detection.updatedAt = new Date().toISOString();
-
-  // Recorded AFTER the flip above so class_changed/bbox_changed correction rows
-  // reflect the corrected detection's final className/bbox, not an intermediate
-  // state — matches what a reader of the history would expect "what did this
-  // become" to mean.
-  if (editedClass) {
-    recordCorrection({
-      projectId: detection.projectId,
-      detectionId: detection.id,
-      type: "class_changed",
-      oldClassName: previousClassName,
-      newClassName: detection.className,
+    const detection = await getRepositories().detections.create({
+      projectId: project.id,
+      sourceAssetId,
+      className,
+      bbox,
+      source: "manual",
     });
-  }
-  if (editedBox) {
-    recordCorrection({
-      projectId: detection.projectId,
+    await getRepositories().corrections.append({
+      projectId: project.id,
       detectionId: detection.id,
-      type: "bbox_changed",
-      oldBBox: previousBBox,
+      type: "created",
+      newClassName: detection.className,
       newBBox: detection.bbox,
     });
-  }
+    res.status(201).json(detection);
+  })
+);
 
-  db.save();
-  res.json(detection);
-});
+// PATCH /api/projects/:id/detections/:detectionId — plan section 18.5
+//
+// The model->manual flip and originalClassName capture now live in
+// DetectionRepository.update() (Phase 8 amendment) — this handler only builds the
+// patch and turns the returned classChanged/bboxChanged flags into correction records.
+detectionsRouter.patch<DetectionParams>(
+  "/:detectionId",
+  asyncHandler(async (req, res) => {
+    const { className, x, y, width, height, status } = req.body ?? {};
+
+    // All-or-nothing: a partial bbox (e.g. only `x`) is not applied, matching the
+    // pre-migration behaviour.
+    const editedBox = [x, y, width, height].every((v) => typeof v === "number");
+
+    const result = await getRepositories().detections.update(req.params.id, req.params.detectionId, {
+      ...(typeof className === "string" ? { className } : {}),
+      ...(editedBox ? { bbox: { x, y, width, height } } : {}),
+      ...(typeof status === "string" ? { status: status as Detection["status"] } : {}),
+    });
+    if (!result) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
+
+    // Recorded AFTER the repository's flip so class_changed/bbox_changed rows reflect
+    // the corrected detection's final className/bbox, not an intermediate state.
+    if (result.classChanged) {
+      await getRepositories().corrections.append({
+        projectId: result.detection.projectId,
+        detectionId: result.detection.id,
+        type: "class_changed",
+        oldClassName: result.previous.className,
+        newClassName: result.detection.className,
+      });
+    }
+    if (result.bboxChanged) {
+      await getRepositories().corrections.append({
+        projectId: result.detection.projectId,
+        detectionId: result.detection.id,
+        type: "bbox_changed",
+        oldBBox: result.previous.bbox,
+        newBBox: result.detection.bbox,
+      });
+    }
+
+    res.json(result.detection);
+  })
+);
 
 // DELETE /api/projects/:id/detections/:detectionId
-detectionsRouter.delete<DetectionParams>("/:detectionId", (req, res) => {
-  const index = db.state.detections.findIndex(
-    (d) => d.id === req.params.detectionId && d.projectId === req.params.id
-  );
-  if (index === -1) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
+detectionsRouter.delete<DetectionParams>(
+  "/:detectionId",
+  asyncHandler(async (req, res) => {
+    const deleted = await getRepositories().detections.delete(req.params.id, req.params.detectionId);
+    if (!deleted) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
 
-  const deleted = db.state.detections[index];
-  // Snapshot the final className/bbox as "old" — once the splice below runs, the
-  // detection row is gone, so this is the last chance to capture what it was.
-  recordCorrection({
-    projectId: deleted.projectId,
-    detectionId: deleted.id,
-    type: "deleted",
-    oldClassName: deleted.className,
-    oldBBox: deleted.bbox,
-  });
+    // Snapshot of the removed row — repository already deleted it, so this is the
+    // last chance to record what it was.
+    await getRepositories().corrections.append({
+      projectId: deleted.projectId,
+      detectionId: deleted.id,
+      type: "deleted",
+      oldClassName: deleted.className,
+      oldBBox: deleted.bbox,
+    });
 
-  db.state.detections.splice(index, 1);
-  db.save();
-  res.status(204).send();
-});
+    res.status(204).send();
+  })
+);

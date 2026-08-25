@@ -152,11 +152,33 @@ export interface UpdateDetectionInput {
   status?: Detection["status"];
 }
 
+/**
+ * What an update actually did.
+ *
+ * `previous` is returned rather than left to the caller to fetch first, for two
+ * reasons: the correction-history records need the before-state (old class, old bbox),
+ * and a caller doing read-then-write would race under Postgres. The implementation
+ * reads and writes atomically and hands back both halves.
+ *
+ * The `*Changed` flags are computed by the repository against the stored row, so
+ * callers cannot disagree with it about whether something changed — which is what
+ * decides both the model→manual flip and whether a correction is recorded.
+ */
+export interface DetectionUpdateResult {
+  detection: Detection;
+  previous: Detection;
+  classChanged: boolean;
+  bboxChanged: boolean;
+}
+
 export interface DetectionRepository {
   listByProject(projectId: string): Promise<Detection[]>;
   listActiveByProject(projectId: string): Promise<Detection[]>;
-  listByAsset(assetId: string): Promise<Detection[]>;
+  listActiveByAsset(assetId: string): Promise<Detection[]>;
+  /** Unscoped lookup — only for callers that genuinely have just an id (exports). */
   findById(id: string): Promise<Detection | null>;
+  /** Project-scoped lookup: the common case, and what every route 404s on. */
+  findInProject(projectId: string, id: string): Promise<Detection | null>;
   create(input: CreateDetectionInput): Promise<Detection>;
   createMany(inputs: CreateDetectionInput[]): Promise<Detection[]>;
   /**
@@ -165,12 +187,17 @@ export interface DetectionRepository {
    * BEHAVIOUR THAT MUST BE PRESERVED (plan §26, detections.routes.ts): when the target
    * is model-sourced and the class or bbox actually changed, the implementation flips
    * `source` to "manual", pins `confidence` to 1, and records `originalClassName` the
-   * first time the class changes. This is the guarantee that a later re-detect cannot
-   * silently destroy a human correction, so it lives in the repository — not in a route
-   * that a future caller might bypass.
+   * first time the class changes — guarded, so a second correction does not overwrite
+   * what the model originally said.
+   *
+   * This is the guarantee that a later re-detect cannot silently destroy a human
+   * correction (`clearModelDetections` only removes rows still marked `model`), so it
+   * lives in the repository rather than in a route a future caller might bypass. It is
+   * the single most behaviour-critical rule in the application.
    */
-  update(id: string, patch: UpdateDetectionInput): Promise<Detection | null>;
-  delete(id: string): Promise<Detection | null>;
+  update(projectId: string, id: string, patch: UpdateDetectionInput): Promise<DetectionUpdateResult | null>;
+  /** Returns the deleted row so the caller can record what was removed. */
+  delete(projectId: string, id: string): Promise<Detection | null>;
   /** §27.5 idempotency: re-running detection must not stack duplicates. */
   clearModelDetections(projectId: string, sourceAssetId: string): Promise<number>;
 }

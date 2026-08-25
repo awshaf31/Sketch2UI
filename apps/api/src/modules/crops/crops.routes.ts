@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { db } from "../../db/jsonStore.js";
 import { sendError } from "../../middleware/apiError.js";
 import { CropError, cropDetection } from "./crop.service.js";
 import type { DetectionParams } from "../../types.js";
+import { getRepositories } from "../../repositories/index.js";
 
 // GET /api/projects/:id/detections/:detectionId/crop.png — plan §15.5.
 // Serves the source sketch's pixels for one detection so the live preview shows the
@@ -11,12 +11,10 @@ import type { DetectionParams } from "../../types.js";
 export const cropsRouter = Router({ mergeParams: true });
 
 cropsRouter.get<DetectionParams>("/", async (req, res) => {
-  const detection = db.state.detections.find(
-    (d) => d.id === req.params.detectionId && d.projectId === req.params.id
-  );
+  const detection = await getRepositories().detections.findInProject(req.params.id, req.params.detectionId);
   if (!detection) return sendError(res, 404, "NOT_FOUND", "Detection not found.");
 
-  const asset = db.state.assets.find((a) => a.id === detection.sourceAssetId);
+  const asset = await getRepositories().assets.findById(detection.sourceAssetId);
   if (!asset) return sendError(res, 404, "NOT_FOUND", "Source asset not found.");
 
   try {

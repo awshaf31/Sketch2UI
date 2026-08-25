@@ -51,12 +51,21 @@ app.use("/api/projects", projectsRouter);
 app.use(errorHandler);
 
 app.listen(env.port, () => {
-  // Detect jobs run in-process, so a restart abandons anything mid-flight. Fail those
-  // records rather than leaving a client polling "processing" forever.
-  const orphaned = failOrphanedJobs();
-  if (orphaned > 0) {
-    console.log(`Failed ${orphaned} job(s) orphaned by a previous shutdown.`);
-  }
   console.log(`Sketch2UI API listening on http://localhost:${env.port}`);
   console.log(`CV worker expected at ${env.cvWorkerUrl}`);
+
+  // Detect jobs run in-process, so a restart abandons anything mid-flight. Fail those
+  // records rather than leaving a client polling "processing" forever. The listen
+  // callback itself cannot be async (Node's return-value contract), so this is fired
+  // and handled here rather than awaited — it must not silently stop reaping orphans
+  // if the repository call ever rejects (amendment §2.3).
+  void failOrphanedJobs()
+    .then((orphaned) => {
+      if (orphaned > 0) {
+        console.log(`Failed ${orphaned} job(s) orphaned by a previous shutdown.`);
+      }
+    })
+    .catch((err) => {
+      console.error("Failed to reap orphaned jobs at startup:", err);
+    });
 });

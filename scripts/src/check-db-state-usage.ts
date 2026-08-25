@@ -31,6 +31,24 @@ const API_SRC = path.resolve(__dirname, "../../apps/api/src");
 const MIGRATED_MODULES = [
   "modules/projects/projects.routes.ts",
   "modules/assets/assets.routes.ts",
+  "modules/detections/detections.routes.ts",
+  "modules/detections/detect.routes.ts",
+  "modules/detections/detect.job.ts",
+  "modules/boundaries/boundaries.routes.ts",
+  "modules/boundaries/boundaries.service.ts",
+  "modules/codegen/code-versions.routes.ts",
+  "modules/codegen/codegen.routes.ts",
+  "modules/style-overrides/style-overrides.routes.ts",
+  "modules/content-overrides/content-overrides.routes.ts",
+  "modules/geometry-overrides/geometry-overrides.routes.ts",
+  "modules/structure-overrides/structure-overrides.routes.ts",
+  "modules/training/training.routes.ts",
+  "modules/corrections/corrections.routes.ts",
+  "modules/exports/exports.routes.ts",
+  "modules/crops/crops.routes.ts",
+  "modules/crops/crop.service.ts",
+  "modules/jobs/jobs.routes.ts",
+  "modules/jobs/jobs.service.ts",
 ];
 
 /**
@@ -43,9 +61,15 @@ const INFRASTRUCTURE = [
   "repositories/json/",
 ];
 
-/** Occurrences remaining in UNMIGRATED application modules. Ratchet downward only. */
-const BASELINE_STATE = 75;
-const BASELINE_SAVE = 25;
+/**
+ * Occurrences remaining in UNMIGRATED application modules. Ratchet downward only.
+ *
+ * Zero as of Phase 8's final domain (Jobs): every application module now goes
+ * through the repository layer. This baseline is the permanent regression floor —
+ * it can only fail upward from here.
+ */
+const BASELINE_STATE = 0;
+const BASELINE_SAVE = 0;
 
 function walk(dir: string): string[] {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

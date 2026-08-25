@@ -1,18 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Router } from "express";
-import { v4 as uuid } from "uuid";
 // Pinned to archiver v7: v8 is ESM-only and dropped the callable factory entirely
 // (it exports only named Archive classes), while @types/archiver still describes the
 // v7 API. v7's default export is the familiar archiver("zip", …) factory.
 import createArchive from "archiver";
-import type { ProjectExport } from "@sketch2ui/shared-types";
 import { env } from "../../config/env.js";
-import { db } from "../../db/jsonStore.js";
 import { sendError } from "../../middleware/apiError.js";
+import { asyncHandler } from "../../middleware/asyncHandler.js";
 import { CropError, cropDetection } from "../crops/crop.service.js";
 import { resolveActiveVersion } from "../codegen/code-versions.routes.js";
 import type { ProjectParams } from "../../types.js";
+import { getRepositories } from "../../repositories/index.js";
 
 // Export packages — plan §3.9 (FR-09), §18.8, §8.1/§43 (exports table),
 // §38 MVP item 13.
@@ -104,126 +103,132 @@ NOTE ON IMAGES
 }
 
 // POST /api/projects/:id/exports — plan §18.8
-exportsRouter.post<ProjectParams>("/", async (req, res, next) => {
-  const project = db.state.projects.find((p) => p.id === req.params.id);
-  if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
+exportsRouter.post<ProjectParams>(
+  "/",
+  asyncHandler(async (req, res, next) => {
+    const project = await getRepositories().projects.findById(req.params.id);
+    if (!project) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
-  // Optional body.codeVersionId pins a specific version; default is the active one
-  // (a user-pinned pick if set, otherwise the latest). Using resolveActiveVersion keeps
-  // export in step with preview — activating a version through the code-versions API is
-  // the single control for "this is the current version".
-  const requestedId = (req.body ?? {}).codeVersionId as string | undefined;
-  const codeVersion = requestedId
-    ? db.state.codeVersions.find((c) => c.id === requestedId && c.projectId === project.id)
-    : resolveActiveVersion(project.id);
+    // Optional body.codeVersionId pins a specific version; default is the active one
+    // (a user-pinned pick if set, otherwise the latest). Using resolveActiveVersion keeps
+    // export in step with preview — activating a version through the code-versions API is
+    // the single control for "this is the current version".
+    const requestedId = (req.body ?? {}).codeVersionId as string | undefined;
+    const codeVersion = requestedId
+      ? await getRepositories().codeVersions.findById(project.id, requestedId)
+      : await resolveActiveVersion(project.id);
 
-  if (!codeVersion) {
-    return sendError(
-      res,
-      400,
-      "VALIDATION_FAILED",
-      requestedId
-        ? "That code version does not belong to this project."
-        : "No generated code yet — save a code version before exporting."
-    );
-  }
+    if (!codeVersion) {
+      return sendError(
+        res,
+        400,
+        "VALIDATION_FAILED",
+        requestedId
+          ? "That code version does not belong to this project."
+          : "No generated code yet — save a code version before exporting."
+      );
+    }
 
-  const previous = db.state.exports.filter((e) => e.projectId === project.id);
-  const versionNumber = previous.length + 1;
-  const relPath = exportRelPath(project.id, versionNumber);
-  const absPath = exportAbsPath(relPath);
-  fs.mkdirSync(path.dirname(absPath), { recursive: true });
+    // Computed BEFORE the ZIP is streamed to disk, since the path depends on it — see
+    // ExportRepository.nextVersionNumber's doc comment for why this can't be one
+    // atomic operation with the `create()` call below.
+    const versionNumber = await getRepositories().exports.nextVersionNumber(project.id);
+    const relPath = exportRelPath(project.id, versionNumber);
+    const absPath = exportAbsPath(relPath);
+    fs.mkdirSync(path.dirname(absPath), { recursive: true });
 
-  const output = fs.createWriteStream(absPath);
-  const archive = createArchive("zip", { zlib: { level: 9 } });
+    const output = fs.createWriteStream(absPath);
+    const archive = createArchive("zip", { zlib: { level: 9 } });
 
-  // Stream errors surface through the standard error handler rather than hanging the
-  // request or leaving a truncated ZIP presented as valid.
-  // A failed archive must not leave a truncated ZIP on disk that a later request could
-  // serve as if it were valid.
-  const failWith = (err: Error) => {
-    fs.rmSync(absPath, { force: true });
-    next(err);
-  };
-  archive.on("error", failWith);
-  output.on("error", failWith);
-
-  output.on("close", () => {
-    const record: ProjectExport = {
-      id: uuid(),
-      projectId: project.id,
-      codeVersionId: codeVersion.id,
-      versionNumber,
-      storagePath: relPath,
-      fileSize: archive.pointer(),
-      createdAt: new Date().toISOString(),
+    // Stream errors surface through the standard error handler rather than hanging the
+    // request or leaving a truncated ZIP presented as valid.
+    // A failed archive must not leave a truncated ZIP on disk that a later request could
+    // serve as if it were valid.
+    const failWith = (err: Error) => {
+      fs.rmSync(absPath, { force: true });
+      next(err);
     };
-    db.state.exports.push(record);
-    db.save();
+    archive.on("error", failWith);
+    output.on("error", failWith);
 
-    res.status(201).json({
-      ...record,
-      downloadUrl: `/api/projects/${project.id}/exports/${record.id}/download`,
+    output.on("close", () => {
+      void getRepositories()
+        .exports.create({
+          projectId: project.id,
+          codeVersionId: codeVersion.id,
+          versionNumber,
+          storagePath: relPath,
+          fileSize: archive.pointer(),
+        })
+        .then((record) => {
+          res.status(201).json({
+            ...record,
+            downloadUrl: `/api/projects/${project.id}/exports/${record.id}/download`,
+          });
+        })
+        .catch(next);
     });
-  });
 
-  archive.pipe(output);
-  archive.append(codeVersion.html, { name: "index.html" });
-  archive.append(codeVersion.css, { name: "styles.css" });
+    archive.pipe(output);
+    archive.append(codeVersion.html, { name: "index.html" });
+    archive.append(codeVersion.css, { name: "styles.css" });
 
-  // Real crops from the source sketch (plan §15.5), placed at exactly the paths the
-  // stored HTML references. The map was recorded at code-generation time so an export
-  // built from an older immutable version still crops the right regions.
-  const assetMap = codeVersion.metadata?.assets ?? {};
-  for (const assetPath of referencedAssetPaths(codeVersion.html)) {
-    const detectionId = assetMap[assetPath];
-    const detection = detectionId
-      ? db.state.detections.find((d) => d.id === detectionId)
-      : undefined;
-    const cropAsset = detection
-      ? db.state.assets.find((a) => a.id === detection.sourceAssetId)
-      : undefined;
+    // Real crops from the source sketch (plan §15.5), placed at exactly the paths the
+    // stored HTML references. The map was recorded at code-generation time so an export
+    // built from an older immutable version still crops the right regions.
+    const assetMap = codeVersion.metadata?.assets ?? {};
+    for (const assetPath of referencedAssetPaths(codeVersion.html)) {
+      const detectionId = assetMap[assetPath];
+      const detection = detectionId
+        ? await getRepositories().detections.findById(detectionId)
+        : undefined;
+      const cropAsset = detection
+        ? await getRepositories().assets.findById(detection.sourceAssetId)
+        : undefined;
 
-    let bytes: Buffer = PLACEHOLDER_PNG;
-    if (detection && cropAsset) {
-      try {
-        bytes = Buffer.from(await cropDetection(detection, cropAsset));
-      } catch (cause) {
-        // A crop that cannot be produced (missing source, degenerate box) falls back to
-        // the neutral placeholder rather than failing the whole export.
-        if (!(cause instanceof CropError)) throw cause;
+      let bytes: Buffer = PLACEHOLDER_PNG;
+      if (detection && cropAsset) {
+        try {
+          bytes = Buffer.from(await cropDetection(detection, cropAsset));
+        } catch (cause) {
+          // A crop that cannot be produced (missing source, degenerate box) falls back to
+          // the neutral placeholder rather than failing the whole export.
+          if (!(cause instanceof CropError)) throw cause;
+        }
+      }
+      archive.append(bytes, { name: assetPath });
+    }
+
+    // Bundle the source sketch so the package is self-explanatory about what it came from.
+    const asset = await getRepositories().assets.findLatestForProject(project.id);
+    if (asset) {
+      const source = path.join(env.uploadsDir, asset.storageKey);
+      if (fs.existsSync(source)) {
+        archive.file(source, { name: `source-sketch${path.extname(asset.storageKey)}` });
       }
     }
-    archive.append(bytes, { name: assetPath });
-  }
 
-  // Bundle the source sketch so the package is self-explanatory about what it came from.
-  const asset = db.state.assets.filter((a) => a.projectId === project.id).at(-1);
-  if (asset) {
-    const source = path.join(env.uploadsDir, asset.storageKey);
-    if (fs.existsSync(source)) {
-      archive.file(source, { name: `source-sketch${path.extname(asset.storageKey)}` });
-    }
-  }
+    archive.append(buildReadme(project, versionNumber, codeVersion.versionNumber), {
+      name: "README.txt",
+    });
 
-  archive.append(buildReadme(project, versionNumber, codeVersion.versionNumber), {
-    name: "README.txt",
-  });
-
-  void archive.finalize();
-});
+    void archive.finalize();
+  })
+);
 
 // GET /api/projects/:id/exports — version history (§43: old exports stay traceable).
-exportsRouter.get<ProjectParams>("/", (req, res) => {
-  const list = db.state.exports
-    .filter((e) => e.projectId === req.params.id)
-    .sort((a, b) => b.versionNumber - a.versionNumber)
-    .map((e) => ({
-      ...e,
-      downloadUrl: `/api/projects/${e.projectId}/exports/${e.id}/download`,
-    }));
-  res.json(list);
-});
+exportsRouter.get<ProjectParams>(
+  "/",
+  asyncHandler(async (req, res) => {
+    const list = await getRepositories().exports.listByProject(req.params.id);
+    res.json(
+      list.map((e) => ({
+        ...e,
+        downloadUrl: `/api/projects/${e.projectId}/exports/${e.id}/download`,
+      }))
+    );
+  })
+);
 
 // GET /api/projects/:id/exports/:exportId/download
 //
@@ -231,22 +236,25 @@ exportsRouter.get<ProjectParams>("/", (req, res) => {
 // the id is validated against the project before anything is read off disk. Assets are
 // served statically because their storage keys are already public; exports are addressed
 // by record id, which keeps that check in one place.
-exportsRouter.get<ExportParams>("/:exportId/download", (req, res) => {
-  const record = db.state.exports.find(
-    (e) => e.id === req.params.exportId && e.projectId === req.params.id
-  );
-  if (!record) return sendError(res, 404, "NOT_FOUND", "Export not found.");
+exportsRouter.get<ExportParams>(
+  "/:exportId/download",
+  asyncHandler(async (req, res) => {
+    const record = await getRepositories().exports.findById(req.params.exportId);
+    if (!record || record.projectId !== req.params.id) {
+      return sendError(res, 404, "NOT_FOUND", "Export not found.");
+    }
 
-  const absPath = exportAbsPath(record.storagePath);
-  if (!fs.existsSync(absPath)) {
-    return sendError(res, 404, "NOT_FOUND", "Export file is missing from storage.");
-  }
+    const absPath = exportAbsPath(record.storagePath);
+    if (!fs.existsSync(absPath)) {
+      return sendError(res, 404, "NOT_FOUND", "Export file is missing from storage.");
+    }
 
-  const project = db.state.projects.find((p) => p.id === record.projectId);
-  const safeName = (project?.name ?? "sketch2ui")
-    .replace(/[^a-zA-Z0-9-_]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .toLowerCase();
+    const project = await getRepositories().projects.findById(record.projectId);
+    const safeName = (project?.name ?? "sketch2ui")
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .toLowerCase();
 
-  res.download(absPath, `${safeName || "sketch2ui"}-v${record.versionNumber}.zip`);
-});
+    res.download(absPath, `${safeName || "sketch2ui"}-v${record.versionNumber}.zip`);
+  })
+);

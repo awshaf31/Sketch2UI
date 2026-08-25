@@ -1,7 +1,7 @@
 ---
 title: "Sketch2UI — Project Status: Done / In Progress / Not Started"
 based_on: "Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md"
-status_as_of: "2026-08-24"
+status_as_of: "2026-08-25"
 ---
 
 # Sketch2UI — Detailed Project Status
@@ -18,20 +18,22 @@ memory — file paths and route registrations are named so they can be checked d
 | Layer | Status |
 |---|---|
 | Core pipeline (sketch → detect → correct → generate → preview → export) | **Done, working end-to-end** |
-| Style + Content inspector (§17.3) | **Done** |
+| Style + Content + Detection + Geometry + Structure inspector (§17.3, all 5 groups) | **Done** |
 | Code editor (hand-edit HTML/CSS, versioned) | **Done** |
+| Correction history / audit log | **Done** — every class/bbox/parent/order change is recorded (§4 execution plan Phase 4) |
 | YOLO detector | **Working but explicitly a smoke test** (156 images, 16/41 classes) |
-| Persistence | **JSON file, not Postgres** (deliberate, documented stand-in) |
-| Background jobs | **In-process, not queued** (no Redis/BullMQ despite docker-compose provisioning it) |
+| Persistence | **PostgreSQL via Prisma — fully migrated and live** (Phase 8; JSON store retired as of 2026-08-25). Every domain (projects, assets, detections, boundaries, code versions, the four override groups, training/corrections, exports, jobs) is behind a repository layer with JSON+Prisma adapters proven equivalent by a shared contract-test suite (see `docs/execution/phase-8-architecture-amendment.md` and `docs/execution/phase-log.md`). |
+| Background jobs | **In-process execution, Postgres-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
+| E2E test coverage | **One golden-path Playwright suite** (`e2e/golden-path.spec.ts`) — create → upload → detect (mocked) → correct → generate → preview → export, against isolated throwaway storage |
 | Auth / accounts | **Not started** (no users, no login, single implicit workspace) |
 | Multi-page projects | **Not started** |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
 | Everything V3 (layout transformer, OCR, active learning ML) | **Not started** |
 
 The project is a working single-user prototype that implements the plan's MVP and a
-meaningful slice of V1. The computer-vision model is the one piece that is explicitly
-**not** production-grade yet, and the codebase says so itself (`ml/models/ui-detector/v1.0.0/metrics.json`
-calls it a `"smoke_test"`).
+meaningful slice of V1, now running entirely on PostgreSQL. The computer-vision model
+is the one piece that is explicitly **not** production-grade yet, and the codebase says
+so itself (`ml/models/ui-detector/v1.0.0/metrics.json` calls it a `"smoke_test"`).
 
 ---
 
@@ -93,9 +95,18 @@ All 12 steps are implemented and wired together:
 
 ### 2.6 Testing
 
-- `npm run test` (Vitest) — 38 passing tests in `packages/shared-types` (boundary-parity + other unit tests).
-- `npm run test:py` (Pytest) — the Python side of the boundary-parity fixture, `services/cv-worker/tests/`.
-- No React component tests, no Playwright/E2E suite exists yet (plan §20 names Playwright and RTL; only the CV/boundary layer has automated test coverage today).
+- `npm run test` (Vitest) — 124 passing tests in `packages/shared-types`, 386 in `apps/api` (includes ~280 repository contract tests run against **both** the JSON and Prisma adapters — the same assertions, proving the two are behaviourally equivalent).
+- `npm run test:py` (Pytest) — the Python side of the boundary-parity fixture, `services/cv-worker/tests/`, 19 passing.
+- `npm run test:e2e` (Playwright) — one golden-path browser test (`e2e/golden-path.spec.ts`): create project → upload → detect (mocked CV worker) → correct a detection → generate → preview → export ZIP. Runs against isolated throwaway storage on dedicated ports; never touches real dev data.
+- No React component tests beyond the E2E suite (plan §20 names Playwright and RTL; RTL/unit-level component tests are still not present).
+
+### 2.7 Persistence migration (Phase 8 — complete)
+
+- **Repository layer**: `apps/api/src/repositories/` defines one contract interface per domain (`types.ts`), with `json/` and `prisma/` adapters for each. `apps/api/src/repositories/index.ts` is the single factory (`getRepositories()`) every route imports from — no module reaches into `db.state` or `@prisma/client` directly. Enforced by a static guard (`npm run check:db-state`), which currently reports **zero** direct-store-access occurrences across all 20 application modules, locked in as the permanent regression floor.
+- **Domains migrated**: projects, assets, detections (owns the model→manual flip, `originalClassName` capture, `clearModelDetections` idempotency), page boundaries (owns the sticky-correction rule), code versions (immutable, transactional version numbering), the four inspector override groups, training samples, correction history, exports, and jobs.
+- **PostgreSQL cutover**: `PERSISTENCE_DRIVER=postgres` is set in `.env`; the JSON store (`apps/api/data/store.json`) is no longer read or written at runtime. Verified live: full 15-step regression checklist run against the real dev Postgres database, including real CV-worker inference, with before/after row counts confirming every write landed in Postgres and the JSON file's mtime proving it was untouched throughout.
+- **Contract tests**: every repository has a shared contract (`apps/api/src/repositories/__tests__/*.contract.ts`) executed identically against the JSON adapter and against a real Postgres test database (`sketch2ui_test`, isolated from dev by `vitest.setup.ts`'s guards).
+- See `docs/execution/phase-log.md` for the full per-domain migration log and `docs/execution/phase-8-architecture-amendment.md` for why a repository layer was needed at all (the JSON store's `db.state` was a synchronous mutable object graph, not the swappable abstraction the original plan assumed).
 
 ---
 
@@ -117,16 +128,17 @@ registry's own `metrics.json` says:
 
 **What's needed to move this out of "partial":** more labeled images (the active-learning report already tells you which sketches to prioritize), training across the full 41-class taxonomy, a `v1.1.0` retrain compared against `docs/eval/baseline-v1.0.0.json`.
 
-### 3.2 Persistence layer
+### 3.2 Persistence layer — RESOLVED, see §2.7
 
-- `apps/api/src/db/jsonStore.ts` is a **file-backed JSON store** (`apps/api/data/store.json`), explicitly commented as a stand-in for the plan's §8 Postgres/Prisma schema: *"Swap for Prisma/Postgres in Phase 2+ without touching module/route code, since routes only depend on the exported functions below."*
-- `docker-compose.yml` **provisions** Postgres + Redis containers, but nothing in `apps/api` currently connects to either — confirmed via grep, no `prisma`, `pg`, `bullmq`, or `redis` imports anywhere in the API source.
-- This means: no real transactional guarantees, no concurrent-write safety, and the entire dataset lives in one JSON file that grows unbounded with every project/detection/version.
+As of Phase 8 (2026-08-25) this moved from "partial" to done: the JSON store is
+retired at runtime, every domain is behind a repository layer backed by PostgreSQL via
+Prisma, and `docker-compose.yml`'s Postgres container is now what the API actually
+talks to. `docker-compose.yml`'s Redis container is still unused — see §3.3.
 
 ### 3.3 Background jobs
 
-- Detection jobs run **in-process** (`apps/api/src/modules/detections/detect.job.ts`), not through a queue. Comment in the file: *"Runs IN-PROCESS rather than through Redis/BullMQ."*
-- A server restart mid-job orphans it — the server has a startup routine (`failOrphanedJobs()` in `server.ts`) that explicitly fails any job left in "processing" state from a previous run, rather than leaving a client polling forever. This is a reasonable mitigation but not the same as a durable queue.
+- Detection jobs run **in-process** (`apps/api/src/modules/detections/detect.job.ts`), not through a queue. Comment in the file: *"Runs IN-PROCESS rather than through Redis/BullMQ."* This is unchanged by the Phase 8 persistence migration — only *where job records are stored* moved to Postgres; *how* jobs execute did not.
+- A server restart mid-job orphans it — the server has a startup routine (`failOrphanedJobs()` in `server.ts`) that explicitly fails any job left in "processing" state from a previous run, rather than leaving a client polling forever. This is a reasonable mitigation but not the same as a durable queue. It is now backed by a single atomic `UPDATE ... WHERE status IN (...)` on Postgres rather than a JSON-array scan-and-rewrite.
 - Progress reporting is **polling only** (`apps/web/src/features/detection/useDetectionJob.ts`) — the plan's §7.5 WebSocket/SSE option was never built (comment in the code says as much).
 
 ---
@@ -150,7 +162,6 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 - **Camera capture** — upload is file-picker/drag-drop only, no in-browser camera capture flow.
 - **Perspective correction** — page boundary can be manually adjusted (quad drag) but there's no actual perspective-warp transform applied to the image before detection.
 - **Reusable component palette** — no library of pre-built components to drag onto a page.
-- **Correction history / audit log** — `audit_logs` table exists only in the plan's §8 schema design, not implemented (the "Detection / Geometry / Structure" groups of the Inspector, per §17.3, are also unbuilt — only Style and Content exist so far, per your explicit sequencing request).
 
 ### 4.3 V2 scope (plan §16)
 - Collaborative editing
@@ -173,46 +184,46 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 
 ### 4.5 Deployment / ops (plan §44–§45)
 - No cloud deployment configured — `docker-compose.yml` is local-only.
-- No backup/recovery strategy for the JSON store or uploaded images.
+- No backup/recovery strategy for uploaded images or exported ZIPs (Postgres itself now has real transactional guarantees and could be backed up with standard `pg_dump`, but no scheduled backup job exists).
 - No CI/CD pipeline (plan §30) — no `.github/workflows` found in the repo.
 - No observability/logging infrastructure beyond ad-hoc `console.log` (plan §29 wants correlation IDs, stage-duration tracking — partially present in job records but not exported to any metrics system).
 
 ---
 
-## 5. Inspector completeness (plan §17.3, since this was the most recent work)
+## 5. Inspector completeness (plan §17.3)
 
-The Inspector is speced with **four** groups. Only two exist:
+All **five** groups are built and, as of Phase 8, all persisted through PostgreSQL:
 
 | Group | Status |
 |---|---|
 | **Style** (display, gap, padding, margin, font-size, alignment) | ✅ Done |
 | **Content** (text, alt text, link) | ✅ Done |
-| **Detection** (class, confidence, model, source) | ❌ Not built |
-| **Geometry** (x, y, width, height, editable) | ❌ Not built |
-| **Structure** (parent, display order, re-parenting) | ❌ Not built |
+| **Detection** (class, confidence, model, source) | ✅ Done |
+| **Geometry** (x, y, width, height, editable) | ✅ Done |
+| **Structure** (parent, display order, re-parenting) | ✅ Done |
 
-Note: raw detection metadata (class, confidence, bbox) is *visible* elsewhere in the
-UI (canvas overlay, tree panel header, the small summary line at the top of the
-Inspector), so this isn't a functional gap in reading that data — it's specifically
-the **editable Detection/Geometry/Structure panels** described in §17.3 that don't
-exist as inspector sections yet.
+Every group is backed by its own repository (`apps/api/src/repositories/{style,content,geometry,structure}-override.repository.ts`, JSON + Prisma) keyed on detection UUID, with a shared `OverrideRepository<T>` contract and per-group contract tests.
 
 ---
 
 ## 6. Suggested next priorities
 
-In rough order of "closes the biggest gap between current state and the plan's own
-MVP/V1 definition":
+The four items previously listed here (Geometry + Structure inspector groups,
+Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in rough order of
+"closes the biggest gap between current state and the plan's own MVP/V1 definition":
 
-1. **Geometry + Structure inspector groups** — natural continuation of the Style/Content
-   work just finished, reuses the exact same override architecture (this document's
-   §2.3/§2.4 describe a pattern that a Geometry override could follow almost exactly:
-   detection-uuid-keyed, apply-then-regenerate, validated at the API boundary).
-2. **More labeled training data + a `v1.1.0` retrain** — the detector is the one piece
+1. **More labeled training data + a `v1.1.0` retrain** — the detector is the one piece
    self-flagged as not production-ready; `report:active-learning` already tells you
-   what to label next.
-3. **Decide the auth question explicitly** — either confirm "no auth is fine for this
+   what to label next. See `docs/ml/model-decision.md` for why a v1.1 retrain on the
+   same corpus was judged not worth doing without new data.
+2. **Decide the auth question explicitly** — either confirm "no auth is fine for this
    project's scope" or scope out what "lightweight" (§19) means, since right now
-   *anyone* can read/write/delete *any* project.
-4. **Postgres/Prisma swap** — the JSON store is a real risk once the dataset or user
-   count grows past what fits comfortably in one file with no locking.
+   *anyone* can read/write/delete *any* project. Confirmed still true after a manual
+   security review of the persistence migration (2026-08-25) — this is a known,
+   deliberately deferred gap, not an oversight.
+3. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
+   mitigated (startup orphan-reaping is now an atomic Postgres update) but still not a
+   durable queue; `docker-compose.yml` already provisions Redis, unused.
+4. **Broader test coverage** — one Playwright E2E test exists (`e2e/golden-path.spec.ts`)
+   covering the golden path with a mocked detector; no React component/unit tests, no
+   CI pipeline to run any of this automatically.

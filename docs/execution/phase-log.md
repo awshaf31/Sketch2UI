@@ -1804,3 +1804,343 @@ JSON store and dev Postgres both unchanged throughout (15 / 14 / 393).
 own the model→manual flip, `originalClassName` capture and `clearModelDetections`
 idempotency, all of which are currently route-level logic that a future caller could
 bypass.
+
+---
+
+## Phase 8 (part 5) — Detections domain migrated
+
+**Date:** 2026-08-25
+**Goal:** Migrate the highest-risk remaining domain: Detection persistence, including
+the model→manual flip, `originalClassName` capture, and `clearModelDetections`
+idempotency — currently route-level logic a future caller could bypass.
+**Status:** ✅ Complete.
+
+### What moved into the repository
+
+The correction rule that used to live in `detections.routes.ts`'s PATCH handler now
+lives entirely in `DetectionRepository.update()`: when a `model`-sourced detection's
+class or bbox actually changes, the implementation flips `source` to `"manual"`, pins
+`confidence` to `1`, and records `originalClassName` the first time the class changes
+(guarded so a second correction can't overwrite what the model originally said). The
+Prisma adapter wraps this in a transaction — read-decide-write has to be atomic under
+real concurrency in a way the JSON adapter gets for free from Node being
+single-threaded.
+
+`clearModelDetections` (§27.5 idempotency) and the interface itself changed shape:
+`listByAsset` → `listActiveByAsset` (matches what every real caller needed),
+`findInProject(projectId, id)` added alongside the existing unscoped `findById` (only
+legitimate for exports, which genuinely only have an id), and `update`/`delete` now
+take `projectId` first and `update` returns `{ detection, previous, classChanged,
+bboxChanged }` instead of just the row — the route needs `previous` for correction-
+history records and can no longer disagree with the repository about what changed.
+
+### Files changed
+
+- `apps/api/src/repositories/types.ts` — `DetectionRepository` extended
+- `apps/api/src/repositories/json/detection.repository.ts`,
+  `apps/api/src/repositories/prisma/detection.repository.ts` — new
+- `apps/api/src/repositories/__tests__/detection.contract.ts` (+ json/prisma runners)
+- `apps/api/src/modules/detections/detections.routes.ts` — migrated; `detections.service.ts` deleted (was a pure passthrough once persistence moved out)
+- `apps/api/src/modules/detections/detect.job.ts` — `clearModelDetections`/`createMany` now go through the repository
+- Eight other call sites that read detections directly, none of them in the detections module — `crops.routes.ts`, `codegen.routes.ts`, `exports.routes.ts`, all four override routes, `training.routes.ts` — migrated too, since leaving them on `db.state` would have meant they silently returned nothing the moment Postgres cutover happened
+
+### A bug caught before it shipped
+
+`repositories/index.ts`'s `build()` had been scaffolded with the Detection imports
+present but never wired into either the JSON or Postgres branch — `MigratedRepositories`
+declared `detections` as required but nothing constructed it. This would not have
+compiled; caught immediately by `npm run typecheck` at the start of this phase.
+
+### Tests
+
+```
+detection.contract   38 JSON + 38 Prisma
+apps/api             150 passed (6 files)
+typecheck/build       clean
+check:db-state        OK (baseline ratcheted 75/25 → 53/22; detections.routes.ts
+                       added to the zero-tolerance MIGRATED_MODULES list — the third
+                       module, after projects and assets, to reach true zero db.state)
+```
+
+### Runtime verification (live API, isolated JSON store)
+
+- PATCH a model detection's class → `source` flips to `manual`, `originalClassName`
+  captures the pre-correction class, confidence pins to 1 ✅
+- Second correction does **not** overwrite `originalClassName` ✅
+- POST manual detection, DELETE it, code-generation, style-override PUT, crop.png
+  (404 reason correctly shows "source image missing", not "detection not found" —
+  proves `findInProject` succeeded before the crop-specific failure) ✅
+- Training approve-training correctly reads via `listActiveByAsset` ✅
+
+### Next action
+
+**Boundary repository** — page-boundary persistence, owning the sticky-correction rule
+(a manual boundary must survive a later auto-detect).
+
+---
+
+## Phase 8 (parts 6–9) — Boundary, CodeVersion, the four Overrides, Training/Correction, Export, and Jobs migrated
+
+**Date:** 2026-08-25
+**Goal:** Migrate every remaining P0 persistence domain in the plan's specified order
+(Boundary → CodeVersion → Style → Content → Geometry → Structure → Correction/Training
+→ Export → Jobs), completing the repository layer for the whole application.
+**Status:** ✅ Complete — all nine domains now behind the repository layer.
+
+Consolidated into one entry since the pattern was identical for each: inspect current
+source → write the JSON adapter → write the Prisma adapter → write a shared contract
+test run against both → migrate every caller off `db.state` → typecheck/test/build/
+db-state guard → a live HTTP smoke test proving the domain's one behaviour-critical
+invariant end to end. Per-domain specifics worth recording:
+
+- **Boundary** (`BoundaryRepository`) — `saveRespectingManual` is one domain operation,
+  not read-then-write: an `auto` write against an asset with an existing `manual`
+  record is refused and the pre-existing manual record returned instead. Prisma adapter
+  wraps it in a transaction for the same race-window reason as Detection's `update`.
+  `boundaries.service.ts` trimmed to just the pure `toPageBoundary` projection helper.
+
+- **CodeVersion** (`CodeVersionRepository`) — immutability is structural, not just
+  convention: the interface has no update/delete method for a version, so a
+  mutate-in-place bug is impossible to write, not merely discouraged. `create()` computes
+  `versionNumber` internally inside a transaction (Prisma) so concurrent saves can't
+  collide; `resolveActive()` returns the pinned version if set and still present, else
+  latest. `resolveActiveVersion` in `code-versions.routes.ts` became `async` as a
+  consequence — traced every caller; caught and fixed a bug the signature change would
+  otherwise have introduced silently (`latestCodeRouter`'s 404 branch, and
+  `exports.routes.ts`'s version resolution, were both missing the new `await` and would
+  have treated a pending Promise as always-truthy).
+
+- **Four override groups** (`Style`/`Content`/`Geometry`/`StructureOverrideRepository`,
+  one shared `OverrideRepository<T>` contract) — each domain has its own "empty means
+  delete" rule (Style/Geometry: empty object; Content: no text/altText/href regardless
+  of `contentState`; Structure: neither field touched). Structure's `parentDetectionId`
+  is genuinely three-state (a detection id / explicit root `null` / "not touched"
+  `undefined`) — the Prisma schema already had a `parentDetectionIdSet` boolean
+  side-channel for exactly this, since a nullable Postgres column alone can't represent
+  three states. Also fixed `codegen.routes.ts` to read all four override maps through
+  the new repositories instead of the raw project row — without this, codegen would
+  have silently generated override-less code the moment Postgres cutover happened,
+  since override data lives in Postgres now, not the JSON file.
+
+- **Training/Correction** (`TrainingRepository`, `CorrectionRepository`) —
+  `upsertApproval` does a transactional delete-then-create, not a Prisma `upsert`: an
+  `upsert`'s update path would keep the *existing* row's id, but the caller mints a
+  fresh id per approval and the JSON adapter genuinely replaces the row — an `upsert`
+  would have been a real, silent adapter-parity bug. `CorrectionRepository` doubles the
+  three-state parent-id trick (old *and* new sides each need their own `*Set` boolean).
+  `corrections.service.ts` deleted (pure passthrough).
+
+- **Export** (`ExportRepository`) — `nextVersionNumber()` and `create()` are
+  deliberately two calls, not one transaction: the caller needs the number to compute
+  the ZIP's file path *before* streaming it to disk (seconds of I/O), and a transaction
+  can't reasonably span that. The pre-existing race window this leaves is unchanged;
+  Prisma's `@@unique([projectId, versionNumber])` at least turns a collision into a
+  loud error instead of a silently overwritten file, which JSON could not do.
+
+- **Jobs** (`JobRepository`) — the last domain. `failOrphaned` is a single atomic
+  Postgres `updateMany`, vs. a read-then-loop on JSON. All nine call sites in
+  `detect.job.ts` that mark job state needed `await` added once the service functions
+  became async; `server.ts`'s startup orphan-reaping (inside `app.listen`'s callback,
+  which cannot itself be `async`) converted to a handled promise so a rejection can't
+  silently stop orphan-reaping. Contract test caught a real bug in its own first draft:
+  a fake `sourceAssetId` that doesn't correspond to a real asset row passed silently
+  under JSON but failed the FK constraint under Postgres — fixed by seeding a real
+  asset in the test setup, exactly the kind of parity gap contract tests exist to catch.
+
+**Bonus cleanup, same pass:** the last four stray `db.state` reads anywhere in the
+application (`boundaries.routes.ts`, `crops.routes.ts`, `codegen.routes.ts`) were
+swapped for the already-migrated Project/Asset repositories, bringing the direct-store-
+access count to genuine, permanent **zero** across all 20 application modules.
+
+### Counts
+
+| Metric | End of part 4 | End of part 9 |
+|---|---:|---:|
+| Migrated domains | 2 | **9 (all)** |
+| `db.state` in application code | 75 | **0** |
+| `db.save()` in application code | 25 | **0** |
+| Zero-tolerance `MIGRATED_MODULES` | 2 | **20 (all application modules)** |
+
+### Tests
+
+```
+apps/api               386 passed (26 files) — includes ~280 contract-test assertions
+                        run identically against JSON and a real Postgres test database
+shared-types            124 passed
+typecheck/build          clean
+check:db-state           OK (0 db.state, 0 db.save — permanent regression floor)
+```
+
+### Runtime verification (live HTTP smoke tests, one per domain, isolated JSON stores)
+
+Boundary sticky-correction rule, CodeVersion immutability (activate an old version,
+confirm the newer one is untouched, export follows the reactivated version — verified
+by downloading and unzipping the actual export and grep-checking for override content),
+all four overrides folding correctly into generated HTML/CSS (verified visually: a
+structure override actually nested one element inside another in the output; a style
+override's `display: flex` landed on the right selector in the CSS), training
+re-approval superseding with a fresh id, correction history rendering chronologically,
+export ZIP round-tripped through a real unzip. Full detail in the phase-8 development
+session — not reproduced here to keep this entry a reasonable length.
+
+### Next action
+
+**PostgreSQL cutover** — flip `PERSISTENCE_DRIVER=postgres` for the real dev runtime
+and run the full regression checklist against it, per the plan's §21/§22 gate and
+procedure. All nine checklist preconditions are now met.
+
+---
+
+## Phase 8 (part 10) — PostgreSQL cutover
+
+**Date:** 2026-08-25
+**Goal:** Execute the plan's §22 cutover procedure: switch the real dev API from the
+JSON store to PostgreSQL and prove nothing regressed.
+**Status:** ✅ Complete.
+
+### Pre-cutover verification (plan §22 steps 1–3)
+
+Dev database `sketch2ui` and test database `sketch2ui_test` confirmed as separate
+databases on the same local Postgres server, with `vitest.setup.ts`'s existing guards
+preventing the test suite from ever touching dev data. Row counts compared directly
+between the JSON store and Postgres across all 13 tables **before** touching anything:
+they already matched exactly (15 projects, 14 assets, 393 detections, 7 code versions,
+12 jobs, 2 training samples, 2 exports, 0 boundaries/corrections/overrides) — the
+one-way JSON→Postgres importer had already been run comprehensively in an earlier
+phase and kept in sync, which significantly de-risked the cutover.
+
+### A real, pre-existing gap found and fixed along the way
+
+`apps/api/.env` (a symlink to the repo-root `.env`) was **never actually being loaded**
+— `apps/api/package.json`'s `dev`/`start` scripts never invoked `dotenv` or Node's
+`--env-file` flag, confirmed empirically (`process.env.DATABASE_URL` was `undefined`
+under a bare `npm run dev`). This meant `PERSISTENCE_DRIVER=postgres` in `.env` would
+have had **zero effect** on the real dev server. Fixed by adding Node's native
+`--env-file=.env` (Node 20.6+, project baseline is 20.17.0 — no new dependency) to both
+scripts. This surfaced a second, more serious latent bug: `.env`'s `STORE_FILE`/
+`DATA_DIR`/`UPLOADS_DIR` used relative paths (`./apps/api/data/store.json` etc.) that
+only resolve correctly if the process's cwd happens to be the repo root — but
+`npm run dev -w apps/api` sets cwd to `apps/api/`, so enabling `.env` loading would have
+silently redirected file storage to an **empty** directory (`apps/api/data/uploads`)
+instead of the real one holding the 14 actual uploaded files (`<repo-root>/data/uploads`).
+Fixed by removing those three lines from `.env` entirely, letting `env.ts`'s existing
+absolute-path (cwd-independent) defaults take over — never triggered before because
+`.env` was never loaded, so this was tested and confirmed working before real traffic
+ever depended on it.
+
+### Cutover
+
+`.env`: `PERSISTENCE_DRIVER=postgres` set. Real dev server started via
+`npm run dev -w apps/api`, hitting the actual `sketch2ui` Postgres database.
+
+### Full 15-step regression checklist — run live against real Postgres, with the real CV worker
+
+Project create → real image upload (reused an existing uploaded sketch) → manual box
+→ manual page boundary → **real auto-detection** (actual CV worker inference, 11
+detections found; correctly preserved the manual page boundary from the previous step
+— sticky-correction rule held under real conditions) → manual correction (renamed a
+class) → UI tree (12 detections, correctly mixed manual+model) → HTML/CSS generation →
+live preview → hand-edited code version (v4, `source: "edited"`) → style/content/
+geometry/structure overrides, regenerated and confirmed folded into the output →
+version activation (activated an older version, confirmed the newer one's content was
+unchanged, reactivated the latest) → export ZIP (downloaded, unzipped, confirmed the
+override content and the reactivated version's content were both present, not the
+intermediate reverted version).
+
+### Verification (plan §22 steps 6–7)
+
+Postgres counts increased exactly as expected across every table touched by the run
+(projects 15→16, assets 14→15, detections 393→405, code_versions 7→10, exports 2→3,
+jobs 12→13, all four override tables and page_boundaries 0→1 each). The JSON store
+file's mtime was checked before and after the entire run and never changed — direct,
+verifiable proof PostgreSQL is now the sole runtime persistence layer, not an assertion.
+
+### Tests
+
+```
+typecheck/build    clean
+apps/api           386 passed
+shared-types       124 passed
+check:db-state     OK (0/0)
+```
+
+### Next action
+
+**Minimal E2E test** (plan §24) — one Playwright golden-path test with a mocked
+detector, then a security review of the preview/upload paths (plan §33 P1 items).
+
+---
+
+## Phase 9 — Minimal E2E test and security review
+
+**Date:** 2026-08-25
+**Goal:** Add exactly one Playwright golden-path E2E test (plan §24), then a security
+review of the preview/upload paths and this phase's own changes (plan §33 P1 items).
+**Status:** ✅ Complete.
+
+### E2E test
+
+`e2e/golden-path.spec.ts`: create project → upload a deterministic fixture
+(`e2e/fixtures/sketch.png`) → detect (against `e2e/mock-cv-worker.ts`, a deterministic
+stand-in returning one fixed detection — real CV inference has its own coverage via
+`services/cv-worker`'s pytest suite and the manual regression checklist) → correct the
+detection's class via the Inspector → generate → verify the live-preview iframe →
+export ZIP (verified as a real file download, not a synthetic click).
+
+Selectors were derived directly from component source, not guessed — there are no
+`data-testid` attributes anywhere in the web app (confirmed by an exhaustive grep), so
+locators are built from placeholder text, button `title` attributes, element `id`s, and
+one structural selector (the UI-tree panel's node list, scoped so the mock's single
+detection is unambiguous). Orchestrated via `playwright.config.ts`'s multi-`webServer`
+support: mock CV worker + API + web, each on a dedicated port, against a fresh
+`fs.mkdtempSync` throwaway store per run — the suite never touches real dev data or
+Postgres (`PERSISTENCE_DRIVER` is deliberately left unset, defaulting to JSON).
+
+**Environment note:** this sandbox cannot resolve `cdn.playwright.dev` (Playwright's
+own browser-download CDN) even though general internet access works — DNS for that one
+host fails via Node's `getaddrinfo` while `nslookup` resolves it fine, suggesting a
+sandbox-specific allowlist gap rather than a real outage. Worked around by pointing the
+Chromium project at the already-installed system Chrome (`channel: "chrome"`) instead
+of Playwright's managed browser binary. Transparent for local runs; flagged in-repo
+(`playwright.config.ts`'s comment) since a CI runner will need either working access to
+that CDN or Chrome pre-installed on the image.
+
+Three consecutive clean runs, ~4–9s each including all three servers starting from cold.
+
+### Security review
+
+The `security-review` skill's git auto-detection assumes a remote-tracking
+`origin/HEAD`, which does not exist in this local-only repo (no `origin` remote at
+all), so the review was done manually — scoped to this session's persistence-migration
+diff plus a direct, dedicated audit of the preview and upload paths the plan names
+specifically (§33 P1 item 18).
+
+**Checked and clean:** every unscoped repository `findById()` introduced by the
+migration (a real IDOR risk given several are deliberately unscoped by design, e.g.
+`Detection.findById`, `Export.findById`) — audited every call site; every route using a
+raw user-supplied id correctly verifies `projectId` match before use, and the
+deliberately-unscoped calls are all fed pre-resolved, already-scoped values. No raw SQL
+anywhere in the new repositories (the only `$queryRaw` is a parameterless health-check
+`SELECT 1`). Preview iframe's `sandbox=""` (empty — no scripts, no same-origin, no
+forms) confirmed intact and unchanged. Content-override injection defenses (`<`/`>`
+rejection, href scheme allowlist rejecting `javascript:`/`data:`) and the style-override
+CSS property allowlist confirmed intact and unchanged. Upload path's magic-byte content
+sniffing, size limit, and server-generated (non-user-controlled) storage keys confirmed
+unchanged. No secrets found in a sweep of every file touched this session; `.env` is
+correctly gitignored.
+
+**One finding, fixed:** `e2e/mock-cv-worker.ts` listened on all network interfaces
+instead of loopback-only, unlike the real worker (`services/cv-worker` explicitly binds
+`host="127.0.0.1"` because "the worker must not be reachable from the public internet,
+only through this API"). Low real-world impact (test-only, torn down immediately after
+each run, no state to corrupt) but inconsistent with the project's own stated security
+posture. Fixed: explicit `server.listen(PORT, "127.0.0.1", ...)`. Re-ran the E2E suite
+after the fix to confirm nothing broke.
+
+**Confirmed still true, not a regression:** no authentication anywhere in the API —
+this remains an explicitly deferred P2 item per the plan, not an oversight introduced
+by this work.
+
+### Next action
+
+Freeze a final-demo fixture (plan §28), then final report / demo prep (plan §37).
