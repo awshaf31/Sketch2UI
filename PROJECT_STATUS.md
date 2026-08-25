@@ -1,7 +1,7 @@
 ---
 title: "Sketch2UI — Project Status: Done / In Progress / Not Started"
 based_on: "Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md"
-status_as_of: "2026-08-25"
+status_as_of: "2026-08-26"
 ---
 
 # Sketch2UI — Detailed Project Status
@@ -29,6 +29,7 @@ memory — file paths and route registrations are named so they can be checked d
 | Auth / accounts | **Done** (Phase D1, 2026-08-25) — email/password registration, HTTP-only session cookies, `Project.ownerId`, and authorization enforced on every project-scoped route (see §2.9 and `docs/execution/phase-log.md`'s Phase D1 entry) |
 | Multi-page projects | **Done** (Phase D3, 2026-08-25) — a project now owns a `Page[]`; every project-scoped resource is page-scoped, and export bundles every page into one ZIP (see §2.10) |
 | CI/CD | **Done** (Phase D4, 2026-08-25) — `.github/workflows/ci.yml` runs typecheck, Vitest, Pytest, a production build, and Playwright E2E on every push/PR to `main`, against isolated throwaway storage with no dev database or credentials touched (see §2.11) |
+| Final integration regression (D1–D4 combined) | **Done** (Phase D5, 2026-08-26) — auth, real (non-mocked) detection, multi-page, and cross-user security isolation all verified live against the running stack, not just automated coverage in isolation (see §2.12) |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
 | Everything V3 (layout transformer, OCR, active learning ML) | **Not started** |
 
@@ -264,6 +265,43 @@ pull request against `main`.
 - Not done: no ML training in CI (explicitly out of scope per the plan), no
   automatic deployment, no matrix/parallelization across Node or OS versions.
 
+### 2.12 Final integration regression (Phase D5 — complete)
+
+A cross-cutting regression pass over D1–D4 together, per the deadline execution
+plan's §8/§9 — not new feature work. Ran all three services for real
+(`apps/web`, `apps/api`, `services/cv-worker`) and drove the plan's regression
+matrix against the live stack, rather than trusting automated coverage alone.
+
+- **Authentication**: register → auto-login → Dashboard via real browser
+  interaction; logout revokes the session (subsequent calls `401
+  UNAUTHENTICATED`); a second, unrelated user pointed at the first user's project
+  gets `404 NOT_FOUND` on `GET`/`PATCH`/`DELETE` alike (not `403` — the
+  existence-enumeration-avoidance design from §2.9 holds), with zero data leakage
+  into the second user's own project list.
+- **Detection — the real model, not the E2E suite's mock**: this is the first time
+  in the project's history that `services/cv-worker` has answered a live HTTP
+  request outside its own Pytest suite or the mocked E2E stand-in. Uploaded real
+  images from `ml/dataset/images/test/`, got 9 and 10 real detections respectively
+  (high confidence, `v1.0.0`, ~370ms), on two different pages with zero
+  cross-contamination.
+- **Multi-page**: added a page, renamed it, ran independent upload→detect→generate
+  on each page, set a cross-page `href` (`./page-2.html`) via the Content
+  Inspector, and exported — the ZIP held both HTML files, exactly one shared
+  `styles.css`, correctly `idPrefix`-namespaced asset crops per page
+  (`p1-image-8.png` / `p2-image-*.png`), both pages' source sketches, and the
+  cross-page link intact byte-for-byte. Also confirmed: deleting a non-last page
+  succeeds, deleting the resulting last page is refused.
+- **Not re-verified live** (already covered by the 241-test Vitest suite and
+  `e2e/inspector-overrides.spec.ts`, both re-run green immediately beforehand as
+  part of D4): page boundary adjustment, hand-edited code + version activation,
+  Style/Geometry/Structure inspector groups.
+- Two Browser-pane testing-harness quirks were hit and worked around (not product
+  bugs) — see `docs/execution/phase-log.md`'s Phase D5 entry for details: synthetic
+  coordinate clicks silently not registering (worked around via
+  `element.click()` through the JS console), and a hand-built file-input injection
+  silently truncating its payload (worked around by driving the same authenticated
+  HTTP endpoints directly instead).
+
 ---
 
 ## 3. What's PARTIALLY done / working-but-flagged
@@ -389,5 +427,6 @@ Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in roug
 6. **Broader test coverage** — three Playwright E2E specs exist (golden path,
    Inspector overrides, multi-page), all auth-aware and now run automatically in CI
    (see §2.11); still no React component/unit tests.
-7. **Final integration pass (Phase D5)** — the deadline plan's last phase: a
-   cross-cutting regression sweep of D1–D4 together (see the plan's §8 and §9).
+7. ~~Final integration pass~~ — **done, see §2.12** (Phase D5, 2026-08-26). This
+   was the deadline execution plan's last phase — **D1 through D5 are now all
+   complete.**

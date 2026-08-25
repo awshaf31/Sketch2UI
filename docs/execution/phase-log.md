@@ -3949,3 +3949,113 @@ proof; watch that one.
 ### Next phase
 D5 — Final Integration, per the deadline plan's sequencing (a cross-cutting
 regression pass over D1–D4 together, not new feature work).
+
+---
+
+## Phase D5 — Final Integration (Deadline Execution Plan)
+
+**Date:** 2026-08-26
+**Goal:** A cross-cutting regression pass over D1–D4 together, per
+`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §8/§9 — not new
+feature work. Walk the plan's regression matrix (Authentication, Detection,
+Multi-page, Core, CI) against the actual running stack rather than only trusting
+automated coverage in isolation.
+**Status:** ✅ Complete.
+
+### Approach
+All three services (`apps/web`, `apps/api`, `services/cv-worker`) were started for
+real — the first time in this environment that `services/cv-worker` has ever been
+run outside of its own Pytest suite or the E2E suite's *mocked* stand-in
+(`e2e/mock-cv-worker.ts`). This is the one thing no existing automated test proves:
+that the real model, loaded from real weights, actually answers real HTTP requests
+end to end.
+
+The Browser-pane's `computer` tool's synthetic mouse clicks did not register on
+React event handlers in this environment (coordinate- and ref-based clicks both
+silently no-op'd on a real, enabled, on-screen button — confirmed via direct DOM
+inspection that the element existed, was enabled, and sat exactly where the click
+landed). Dispatching `.click()` on the element via `javascript_tool` worked
+immediately. Root cause not pursued further since a reliable path existed; noted
+here in case it recurs. Separately, injecting a file into a hidden
+`<input type="file">` via a hand-built `DataTransfer`/`File` in `javascript_tool`
+silently truncated the payload (a 1366-byte fixture arrived as 862 bytes,
+producing a real `INVALID_IMAGE` rejection from the CV worker's `PIL.Image.verify()`
+decode-check) — traced to the long base64 string itself being truncated in transit
+through the tool call, not to any app code. Both are testing-harness artifacts, not
+product bugs; documented so a future session doesn't waste time treating them as
+regressions. Once diagnosed, verification switched to direct authenticated `curl`
+calls against `apps/api` (same session-cookie auth flow the browser uses) with real
+files from `ml/dataset/images/test/` — arguably a *more* rigorous check of the HTTP
+contract than clicking through the UI, since it exercises the exact request/response
+shapes without a browser in between.
+
+### What was verified live, against the real stack
+**Authentication** — register → auto-login → Dashboard (via real browser
+interaction, correctly empty/scoped to the new account); logout (`204`, session
+revoked); a protected route after logout (`GET /api/projects` and `GET
+/api/projects/:id` both `401 UNAUTHENTICATED`); a second, unrelated user
+registered and pointed at the first user's project — `GET`, `PATCH`, and `DELETE`
+all returned `404 NOT_FOUND` (not `403`, matching the existence-enumeration-avoidance
+design from Phase D1), and the second user's own project list showed zero leakage.
+
+**Detection (real model, not mocked)** — uploaded a real image from
+`ml/dataset/images/test/` (a wireframe the model was actually trained/evaluated
+against), ran `POST .../detect` against the live `services/cv-worker`: **9
+detections**, high confidence (`footer` 0.989, etc.), completed in ~370ms, `v1.0.0`
+loaded correctly. A second real image on a second page produced **10 independent
+detections** with zero cross-contamination between pages.
+
+**Core pipeline** — generate (real HTML/CSS emitted, `p1-navbar-7`-style ids
+confirming the D3 `idPrefix` option is live, not just tested), export (ZIP
+contains `styles.css` + `index.html` + real PNG crops + `README.txt` + the
+original source sketch, `40124` bytes across 5 files for the single-page case).
+
+**Multi-page** — added a second page via the real `PagesStrip` UI element and via
+the API (`order: 2` assigned correctly), renamed it, uploaded+detected+generated on
+it independently of Page 1, reclassed a Page 1 detection to `link` and set its
+`href` to `./page-2.html` via the content-override route, regenerated, and
+re-exported: the resulting ZIP contained **both** `index.html` and `page-2.html`,
+**exactly one** shared `styles.css`, per-page asset crops correctly namespaced
+(`assets/p1-image-8.png` vs `assets/p2-image-*.png` — the `idPrefix` feature doing
+real work, not just passing a unit test), both pages' own `source-sketch-*` files,
+and `index.html` contained `href="./page-2.html"` byte-for-byte — the exact claim
+Phase D3's handoff flagged as "worth actually verifying" once a real UI/backend
+existed to test it with. Also verified: deleting the non-last page succeeds
+(`204`), and deleting the resulting last page is refused (`400
+VALIDATION_FAILED`, "A project must keep at least one page").
+
+**CI** — not re-verified here; already covered exhaustively in the Phase D4 entry
+immediately above (typecheck/Vitest/Pytest/build/E2E all green, re-run fresh at
+that time).
+
+### What was NOT re-verified live here (already covered by existing automated tests)
+Page boundary adjustment, hand-edited code + version activation, and the
+Style/Geometry/Structure inspector groups were not re-clicked through by hand in
+this pass — they're already exercised by the Vitest repository/route contract
+suite (241 passing tests) and `e2e/inspector-overrides.spec.ts`'s Geometry-override
+and Content-XSS specs, both of which were re-run green as part of Phase D4's
+regression immediately before this phase. This pass's value was specifically the
+things automated coverage *can't* prove on its own: the real (non-mocked) model
+answering real requests, and genuine cross-user data isolation against a live
+multi-user database — both now confirmed.
+
+### Files changed
+None — this phase is verification only, no code changes. (The `.env`/`STORE_FILE`
+path fix and `services/cv-worker` launch config landed in the prior session while
+starting the stack for this pass; see the D3+D4 completion commit.)
+
+### Known limitations
+- Test artifacts from this pass (`d5-regression@test.local`, `curl-cv-check@test.local`,
+  `curl-cross-user@test.local` and their projects) remain in the local dev
+  `apps/api/data/store.json` — harmless (isolated to local dev data, same file the
+  earlier stray `test@gmail.com`/"d" project already lived in) but not cleaned up.
+- The Browser-pane click-registration issue (working around it via
+  `javascript_tool`'s `.click()`) was not root-caused. If a future session hits the
+  same silent-no-op behavior on a different page, this entry is the pointer to the
+  workaround.
+
+### Next phase
+None remaining in the deadline execution plan — D1 through D5 are all complete.
+Remaining work is whatever `PROJECT_STATUS.md` §4/§6 still lists as not-started
+(V2/V3 scope, durable job queue, broader test coverage, deployment automation),
+none of which is part of this deadline plan's scope.
