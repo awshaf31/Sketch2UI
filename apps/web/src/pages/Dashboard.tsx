@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Project } from "@sketch2ui/shared-types";
 import { api } from "../services/api.js";
-import { AppHeader } from "../components/AppHeader.js";
+import { AppShell, PageHeader } from "../components/AppShell.js";
 import { BrandMark } from "../components/BrandMark.js";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
@@ -240,14 +240,14 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="min-h-full bg-bg">
-      <AppHeader />
-
-      <div className="mx-auto max-w-[720px] px-lg pb-3xl pt-3xl">
-        <h1 className="text-2xl font-semibold text-text-primary">Projects</h1>
-        <p className="mt-xs text-md text-text-secondary">
-          Turn a hand-drawn wireframe into HTML/CSS with a live preview.
-        </p>
+    // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 — the persistent rail replaces
+    // AppHeader's top nav. The column widens 720 -> 880px because the rail now takes
+    // the left edge, so the project grid keeps the same usable measure it had before.
+    <AppShell>
+      <PageHeader
+        title="Projects"
+        description="Turn a hand-drawn wireframe into HTML/CSS with a live preview."
+      />
 
         <div className="mt-xl flex flex-wrap items-center gap-sm">
           <div className="relative flex-1 min-w-[200px]">
@@ -417,7 +417,6 @@ export default function Dashboard() {
             )}
           </div>
         </div>
-      </div>
-    </div>
+    </AppShell>
   );
 }

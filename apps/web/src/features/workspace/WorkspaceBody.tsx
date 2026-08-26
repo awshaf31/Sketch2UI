@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { ReactNode } from "react";
 import { Panel } from "../../components/Panel.js";
-import { SectionHeader } from "../../components/SectionHeader.js";
 import { Button } from "../../components/Button.js";
 import { Drawer } from "../../components/Drawer.js";
 import { cn } from "../../components/cn.js";
@@ -28,7 +27,9 @@ import { cn } from "../../components/cn.js";
 // applies here, so this component stays a plain layout shell.
 
 interface WorkspaceBodyProps {
-  layers: ReactNode;
+  /** The Pages/Layers/Assets navigator (docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6).
+   *  Was a bare Layers tree before that change; this slot is otherwise unchanged. */
+  navigator: ReactNode;
   canvas: ReactNode;
   inspector: ReactNode;
   dock: ReactNode;
@@ -36,7 +37,7 @@ interface WorkspaceBodyProps {
   dockCollapsed?: boolean;
 }
 
-export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet, dockCollapsed }: WorkspaceBodyProps) {
+export function WorkspaceBody({ navigator, canvas, inspector, dock, isTablet, dockCollapsed }: WorkspaceBodyProps) {
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
@@ -46,7 +47,7 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet, dockC
         <div className="flex flex-1 flex-col overflow-hidden">
           <div className="flex items-center gap-xs border-b border-border px-md py-xs">
             <Button variant="secondary" size="sm" onClick={() => setLayersOpen(true)}>
-              Layers
+              Pages & Layers
             </Button>
             <Button variant="secondary" size="sm" onClick={() => setInspectorOpen(true)}>
               Inspector
@@ -62,9 +63,10 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet, dockC
           {dock}
         </Panel>
 
-        <Drawer open={layersOpen} onClose={() => setLayersOpen(false)} side="left" title="Layers">
-          <SectionHeader>Layers</SectionHeader>
-          <div className="flex-1 overflow-auto">{layers}</div>
+        {/* The Navigator carries its own tab strip, so the Drawer no longer needs a
+            SectionHeader naming a single panel — all three views are reachable here. */}
+        <Drawer open={layersOpen} onClose={() => setLayersOpen(false)} side="left" title="Navigator">
+          <div className="flex flex-1 flex-col overflow-hidden">{navigator}</div>
         </Drawer>
 
         <Drawer open={inspectorOpen} onClose={() => setInspectorOpen(false)} side="right" title="Inspector">
@@ -77,9 +79,10 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet, dockC
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
-        <Panel bordered="right" className="flex w-60 shrink-0 flex-col overflow-hidden">
-          <SectionHeader>Layers</SectionHeader>
-          <div className="flex-1 overflow-auto">{layers}</div>
+        {/* 260px (was 240px) to seat the Navigator's three-tab strip without the
+            labels crowding — see FINAL_SAAS_DESIGN_DIRECTION.md §6. */}
+        <Panel bordered="right" className="flex w-[260px] shrink-0 flex-col overflow-hidden">
+          {navigator}
         </Panel>
 
         <div className="flex flex-1 flex-col overflow-hidden">{canvas}</div>

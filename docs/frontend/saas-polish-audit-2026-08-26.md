@@ -13,11 +13,23 @@ Registered a throwaway user, drove the full upload → detect flow via direct AP
 `docs/execution/phase-log.md`'s Phase D5 entry, so a real multipart upload was used
 instead), then inspected the resulting workspace visually at both a narrow (~800px)
 and a real desktop (1440px) viewport. Every finding below was reproduced and traced to
-its source file — nothing here is a guess from a screenshot alone. Admin was not
-re-screenshotted live (role-promotion requires a server restart to take effect under
-the JSON store's in-process cache, and it was already dedicated-visual-QA'd in Phase
-S13 with two real bugs found and fixed) — skipped to avoid restarting a dev server a
-concurrent session may depend on, not because it's assumed fine.
+its source file — nothing here is a guess from a screenshot alone.
+
+Two follow-up sessions the same day continued this pass. The first found and fixed a
+real `AppHeader` mobile-overflow bug (see its own section below). The second finally
+checked admin live — role-promotion needs a server restart to take effect under the
+JSON store's in-process cache, so rather than restart the shared dev server another
+session might depend on, a fully isolated api+web pair was started on separate ports
+(4010/5183) against a scratch data directory, with its own registered admin and
+non-admin accounts. Result: every admin page (Overview/Users/Projects/Jobs/Models/
+Training/Audit Logs) checked clean at desktop, tablet (768px), and mobile (390px) —
+Phase S13's header/table overflow-containment fixes still hold, nothing new
+regressed. One thing this isolated check also disproved: an earlier note in this
+same doc claiming the non-admin role-error page rendered off-center. Measured via
+`getBoundingClientRect()` against a live non-admin session, it's exactly centered —
+the original observation was this tool's stale-screenshot issue, not a real bug (see
+that retracted entry under "Minor / not fixing now" for detail). The isolated
+servers were torn down after this check; nothing about them is part of the app.
 
 Two things investigated and **ruled out** as real problems, worth recording so they
 aren't re-litigated:
@@ -106,12 +118,45 @@ that not holding, since it's the very first authenticated-flow screen every user
 
 **Risk:** low — purely additive styling plus one small new shared component.
 
+## P1 — AppHeader overflows past the viewport edge on phone-width screens (follow-up pass)
+
+**File:** `apps/web/src/components/AppHeader.tsx`
+
+Found during a responsive follow-up check (Phase 8/9 of the brief) not covered by the
+first pass. At a 390px-wide viewport, measured via `getBoundingClientRect()` (a
+screenshot alone significantly understated this — see the Method note on this tool's
+occasional stale frames): the header's right-hand group (user email + "Log out")
+rendered with its right edge at x=536 against a 390px-wide header box — the button
+was rendered outside the header's own bounds, off-screen, with the page-level
+`overflow-x` behavior deciding whether it was reachable at all. `justify-between` on
+a `flex` row with no wrap/shrink strategy simply lets overflowing content spill past
+the container rather than adapting to it.
+
+**Why it hurts:** on a phone, a user could not reliably reach "Log out" — the
+single most consequential control in the header — without already knowing to scroll.
+This is the same failure mode `AdminHeader` had at tablet width before its Phase S13
+fix, just on the far more heavily-used user-facing header, and at an even narrower
+breakpoint.
+
+**Fix:** applied the identical, already-proven fix from `AdminHeader` — `overflow-x-
+auto` on the header plus `shrink-0 whitespace-nowrap` on each flex group — rather
+than inventing a new responsive nav pattern. Verified post-fix: the header now owns
+its own horizontal scroll (confirmed via `scrollLeft`/`getBoundingClientRect`, not
+just visually), the page itself has zero horizontal overflow, and "Log out" is fully
+reachable within the viewport after scrolling the header row.
+
+**Risk:** low — reused an existing, tested pattern; typecheck and full E2E (16/16)
+re-run clean after.
+
 ## Minor / not fixing now
 
-- The role-restricted admin error page (`This page is only available to
-  administrators.`) renders as a small, top-left-anchored card rather than centered —
-  cosmetic, hit only when a non-admin manually visits `/admin`. Left alone; not worth
-  the churn this close to the deadline for an edge case with clear, correct messaging.
+- ~~The role-restricted admin error page renders off-center~~ — **retracted.**
+  `ProtectedRoute.tsx` already uses `min-h-full items-center justify-center`; a
+  follow-up check against a live admin session (via an isolated server pair, not the
+  shared dev server) measured the rendered card via `getBoundingClientRect()` and
+  found it exactly centered on both axes. The original observation was this
+  session's Browser-pane stale-screenshot issue (see Method), not a real defect —
+  recorded here so it isn't re-investigated as if it were still open.
 - Dashboard's header "New Project" button looked redundant next to the always-visible
   inline create-project card — traced to `Dashboard.tsx`'s `focusCreateForm`; it's a
   scroll/focus shortcut for when the list of existing projects has pushed the create

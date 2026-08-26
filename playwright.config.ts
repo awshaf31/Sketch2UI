@@ -128,13 +128,19 @@ export default defineConfig({
       reuseExistingServer: false,
       timeout: 20_000,
     },
+    // DEF-013 — this serves the production build, not `vite dev`, because route-level
+    // code splitting only exists in the build: dev ships unbundled ESM, so a lazy
+    // route there is a waterfall of ~40 module requests instead of the single hashed
+    // chunk a user actually downloads. Running the suite against dev would both
+    // mis-measure that navigation and leave the emitted chunk graph — the thing this
+    // defect changed — completely unexercised.
     {
-      command: `npx vite --port ${WEB_PORT} --strictPort`,
+      command: `npx vite build && npx vite preview --port ${WEB_PORT} --strictPort`,
       cwd: path.join(__dirname, "apps/web"),
       port: WEB_PORT,
       env: { VITE_API_URL: `http://localhost:${API_PORT}` },
       reuseExistingServer: false,
-      timeout: 20_000,
+      timeout: 120_000,
     },
   ],
 });

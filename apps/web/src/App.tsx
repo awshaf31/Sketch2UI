@@ -1,23 +1,50 @@
+import { Suspense, lazy, useEffect } from "react";
 import { Route, Routes } from "react-router-dom";
-import Home from "./pages/Home.js";
-import Pricing from "./pages/Pricing.js";
-import Dashboard from "./pages/Dashboard.js";
-import Account from "./pages/Account.js";
-import Login from "./pages/Login.js";
-import Register from "./pages/Register.js";
-import ProjectWorkspace from "./pages/ProjectWorkspace.js";
-import AdminOverview from "./pages/AdminOverview.js";
-import AdminUsers from "./pages/AdminUsers.js";
-import AdminProjects from "./pages/AdminProjects.js";
-import AdminProjectDetail from "./pages/AdminProjectDetail.js";
-import AdminJobs from "./pages/AdminJobs.js";
-import AdminModels from "./pages/AdminModels.js";
-import AdminTraining from "./pages/AdminTraining.js";
-import AdminAuditLogs from "./pages/AdminAuditLogs.js";
 import { ToastProvider } from "./components/ToastStack.js";
 import { DialogProvider } from "./components/DialogHost.js";
 import { ProtectedRoute } from "./components/ProtectedRoute.js";
-import { AuthProvider } from "./context/AuthContext.js";
+import { RouteErrorBoundary, RouteFallback } from "./components/RouteBoundary.js";
+import { AuthProvider, useAuth } from "./context/AuthContext.js";
+
+// DEF-013 — every page is a dynamic import so a visitor downloads only the surface
+// they actually opened. Rollup derives one chunk per page from these calls; see
+// vite.config.ts for why the chunk graph is left to it rather than hand-grouped.
+const loadProjectWorkspace = () => import("./pages/ProjectWorkspace.js");
+
+const Home = lazy(() => import("./pages/Home.js"));
+const Pricing = lazy(() => import("./pages/Pricing.js"));
+const Login = lazy(() => import("./pages/Login.js"));
+const Register = lazy(() => import("./pages/Register.js"));
+const Dashboard = lazy(() => import("./pages/Dashboard.js"));
+const Account = lazy(() => import("./pages/Account.js"));
+const ProjectWorkspace = lazy(loadProjectWorkspace);
+const AdminOverview = lazy(() => import("./pages/AdminOverview.js"));
+const AdminUsers = lazy(() => import("./pages/AdminUsers.js"));
+const AdminProjects = lazy(() => import("./pages/AdminProjects.js"));
+const AdminProjectDetail = lazy(() => import("./pages/AdminProjectDetail.js"));
+const AdminJobs = lazy(() => import("./pages/AdminJobs.js"));
+const AdminModels = lazy(() => import("./pages/AdminModels.js"));
+const AdminTraining = lazy(() => import("./pages/AdminTraining.js"));
+const AdminAuditLogs = lazy(() => import("./pages/AdminAuditLogs.js"));
+
+// Opening a project is the dominant next action for a signed-in user, and the
+// workspace is by far the largest chunk. Warming it as soon as auth resolves keeps
+// that navigation synchronous — React.lazy resolves an already-settled promise
+// without suspending — so the editor never flashes a loading state on the way in.
+// Gating on "authenticated" rather than on the /app path is what keeps the marketing
+// site clean: a logged-out visitor on "/" never requests the editor at all.
+//
+// This blocks nothing: it starts after first paint, concurrent with whatever the user
+// does next.
+function WorkspacePrefetch() {
+  const { status } = useAuth();
+
+  useEffect(() => {
+    if (status === "authenticated") void loadProjectWorkspace();
+  }, [status]);
+
+  return null;
+}
 
 // Phase 2B (docs/frontend/frontend-implementation-roadmap.md) — ToastProvider and
 // DialogProvider are mounted once here so useToast()/useDialog() are callable from
@@ -41,100 +68,105 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <DialogProvider>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/pricing" element={<Pricing />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route
-              path="/app"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/app/projects/:id"
-              element={
-                <ProtectedRoute>
-                  <ProjectWorkspace />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/app/account"
-              element={
-                <ProtectedRoute>
-                  <Account />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminOverview />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/users"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminUsers />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/projects"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminProjects />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/projects/:id"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminProjectDetail />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/jobs"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminJobs />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/models"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminModels />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/training"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminTraining />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/audit-logs"
-              element={
-                <ProtectedRoute requireAdmin>
-                  <AdminAuditLogs />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
+          <WorkspacePrefetch />
+          <RouteErrorBoundary>
+            <Suspense fallback={<RouteFallback />}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/pricing" element={<Pricing />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route
+                  path="/app"
+                  element={
+                    <ProtectedRoute>
+                      <Dashboard />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/projects/:id"
+                  element={
+                    <ProtectedRoute>
+                      <ProjectWorkspace />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/app/account"
+                  element={
+                    <ProtectedRoute>
+                      <Account />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminOverview />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/users"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminUsers />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/projects"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminProjects />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/projects/:id"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminProjectDetail />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/jobs"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminJobs />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/models"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminModels />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/training"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminTraining />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/admin/audit-logs"
+                  element={
+                    <ProtectedRoute requireAdmin>
+                      <AdminAuditLogs />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </RouteErrorBoundary>
         </DialogProvider>
       </ToastProvider>
     </AuthProvider>

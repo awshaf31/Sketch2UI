@@ -54,27 +54,75 @@ export function isCroppable(detection: Detection, asset: ProjectAsset): boolean 
   return rect.width >= MIN_CROP_PX && rect.height >= MIN_CROP_PX;
 }
 
-/** Render one detection's region of the source sketch as PNG bytes. */
-export async function cropDetection(
-  detection: Detection,
-  asset: ProjectAsset
-): Promise<Buffer> {
+export interface DecodedSourceImage {
+  data: Buffer;
+  width: number;
+  height: number;
+  channels: 1 | 2 | 3 | 4;
+}
+
+// DEF-012 (docs/qa/MASTER_DEFECT_REGISTER.md): the export ZIP builder used to call
+// cropDetection() once per detection, which re-opened and re-decoded the same source
+// file from scratch every time — a page with N image/avatar/video/logo detections
+// decoded its one sketch N times. decodeSourceImage()/cropFromDecoded() split that
+// into "decode once" + "extract many," so a caller producing several crops from the
+// same source (exports.routes.ts's appendPageAssets) can reuse one decode. Output is
+// unchanged: extracting a region from an already-decoded raw buffer and PNG-encoding
+// it is pixel-for-pixel identical to extracting straight from the file — same decode,
+// same encoder, just not repeated — verified by crop.service.test.ts's byte-equality
+// assertion against the un-refactored path.
+
+/** Decode a source sketch once so multiple crops can be extracted from memory. */
+export async function decodeSourceImage(
+  asset: Pick<ProjectAsset, "storageKey">
+): Promise<DecodedSourceImage> {
   const sourcePath = path.join(env.uploadsDir, asset.storageKey);
   if (!fs.existsSync(sourcePath)) {
     throw new CropError("Source image is missing from storage.", "NOT_FOUND");
   }
 
+  try {
+    const { data, info } = await sharp(sourcePath).raw().toBuffer({ resolveWithObject: true });
+    return { data, width: info.width, height: info.height, channels: info.channels as 1 | 2 | 3 | 4 };
+  } catch (cause) {
+    throw new CropError(
+      `Could not decode the source image: ${cause instanceof Error ? cause.message : "unknown"}`,
+      "INVALID_IMAGE"
+    );
+  }
+}
+
+/** Extract one detection's region from an already-decoded source image. */
+export async function cropFromDecoded(
+  decoded: DecodedSourceImage,
+  detection: Detection,
+  asset: Pick<ProjectAsset, "width" | "height">
+): Promise<Buffer> {
   const rect = bboxToPixelRect(detection.bbox, asset);
   if (rect.width < 1 || rect.height < 1) {
     throw new CropError("Detection region is degenerate.", "INVALID_IMAGE");
   }
 
   try {
-    return await sharp(sourcePath).extract(rect).png().toBuffer();
+    return await sharp(decoded.data, {
+      raw: { width: decoded.width, height: decoded.height, channels: decoded.channels },
+    })
+      .extract(rect)
+      .png()
+      .toBuffer();
   } catch (cause) {
     throw new CropError(
       `Could not crop the source image: ${cause instanceof Error ? cause.message : "unknown"}`,
       "INVALID_IMAGE"
     );
   }
+}
+
+/** Render one detection's region of the source sketch as PNG bytes. */
+export async function cropDetection(
+  detection: Detection,
+  asset: ProjectAsset
+): Promise<Buffer> {
+  const decoded = await decodeSourceImage(asset);
+  return cropFromDecoded(decoded, detection, asset);
 }

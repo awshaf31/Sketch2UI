@@ -8,7 +8,8 @@ import createArchive from "archiver";
 import { env } from "../../config/env.js";
 import { sendError } from "../../middleware/apiError.js";
 import { asyncHandler } from "../../middleware/asyncHandler.js";
-import { CropError, cropDetection } from "../crops/crop.service.js";
+import type { DecodedSourceImage } from "../crops/crop.service.js";
+import { CropError, cropFromDecoded, decodeSourceImage } from "../crops/crop.service.js";
 import { resolveActiveVersionForPage } from "../codegen/code-versions.routes.js";
 import type { ProjectParams } from "../../types.js";
 import type { CodeVersion, Page } from "@sketch2ui/shared-types";
@@ -122,18 +123,37 @@ NOTE ON IMAGES
 
 /** Append one page's real image crops (or the neutral placeholder) at the paths its
  * HTML references. Shared assets/ folder across pages is collision-safe because
- * codegen's per-page idPrefix makes every referenced path globally unique. */
+ * codegen's per-page idPrefix makes every referenced path globally unique.
+ *
+ * DEF-012 (docs/qa/MASTER_DEFECT_REGISTER.md): this used to do two sequential DB
+ * point-queries plus a full source-image re-decode per referenced path. The
+ * detection/asset lookups now run concurrently, and — since every referenced path on
+ * a page overwhelmingly crops from that page's one source sketch — each distinct
+ * source asset is decoded at most once and reused for every crop taken from it. */
 async function appendPageAssets(archive: ReturnType<typeof createArchive>, codeVersion: CodeVersion): Promise<void> {
   const assetMap = codeVersion.metadata?.assets ?? {};
-  for (const assetPath of referencedAssetPaths(codeVersion.html)) {
-    const detectionId = assetMap[assetPath];
-    const detection = detectionId ? await getRepositories().detections.findById(detectionId) : undefined;
-    const cropAsset = detection ? await getRepositories().assets.findById(detection.sourceAssetId) : undefined;
 
+  const resolved = await Promise.all(
+    referencedAssetPaths(codeVersion.html).map(async (assetPath) => {
+      const detectionId = assetMap[assetPath];
+      const detection = detectionId ? await getRepositories().detections.findById(detectionId) : undefined;
+      const cropAsset = detection ? await getRepositories().assets.findById(detection.sourceAssetId) : undefined;
+      return { assetPath, detection, cropAsset };
+    })
+  );
+
+  const decodedBySourceAssetId = new Map<string, DecodedSourceImage>();
+
+  for (const { assetPath, detection, cropAsset } of resolved) {
     let bytes: Buffer = PLACEHOLDER_PNG;
     if (detection && cropAsset) {
       try {
-        bytes = Buffer.from(await cropDetection(detection, cropAsset));
+        let decoded = decodedBySourceAssetId.get(cropAsset.id);
+        if (!decoded) {
+          decoded = await decodeSourceImage(cropAsset);
+          decodedBySourceAssetId.set(cropAsset.id, decoded);
+        }
+        bytes = Buffer.from(await cropFromDecoded(decoded, detection, cropAsset));
       } catch (cause) {
         // A crop that cannot be produced (missing source, degenerate box) falls back to
         // the neutral placeholder rather than failing the whole export.

@@ -34,8 +34,12 @@ test("a second page has independent content and both pages export together", asy
   await expect(page.getByRole("button", { name: "Page 1", exact: true })).toBeVisible();
   await uploadDetectAndSave(page);
 
-  // Add a second page. The strip switches to it immediately, and the workspace
-  // should show the empty-project upload prompt again (a fresh page has no asset).
+  // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 — deliberate e2e-breaking change,
+  // updated in the same change that introduces it (same discipline as the Save
+  // version rename in project-rename.spec.ts): once an asset exists, page management
+  // lives in the Navigator's "Pages" tab, not a top strip. The Navigator defaults to
+  // "Layers" so the detect/correct loop stays reachable without an extra click.
+  await page.getByRole("tab", { name: "Pages" }).click();
   await page.getByRole("button", { name: /Add page/ }).click();
   await expect(page.getByRole("button", { name: "Page 2", exact: true })).toBeVisible();
 
@@ -44,6 +48,9 @@ test("a second page has independent content and both pages export together", asy
 
   // Switching back to Page 1 must still show Page 1's own state, not Page 2's —
   // proven by the tree/canvas already having a detection without re-running Detect.
+  // The Navigator remounted fresh (WorkspaceBody unmounts between pages while a page
+  // has no asset yet) and defaults back to "Layers", so "Pages" needs reselecting.
+  await page.getByRole("tab", { name: "Pages" }).click();
   await page.getByRole("button", { name: "Page 1", exact: true }).click();
   await expect(page.getByRole("button", { name: /^Detect/ })).toBeVisible();
   await expect(page.locator("svg g rect").first()).toBeVisible();

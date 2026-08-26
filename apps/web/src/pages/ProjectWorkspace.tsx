@@ -11,6 +11,7 @@ import type {
   PageBoundary,
   PagePolygon,
   Project,
+  ProjectAsset,
   ProjectExport,
   StructureOverride,
 } from "@sketch2ui/shared-types";
@@ -32,6 +33,11 @@ import { useDetectionJob } from "../features/detection/useDetectionJob.js";
 import { buildTreeAndCode } from "../utils/tree.js";
 import { WorkspaceToolbar } from "../features/workspace/WorkspaceToolbar.js";
 import { WorkspaceBody } from "../features/workspace/WorkspaceBody.js";
+import { WorkspaceNavigator } from "../features/workspace/WorkspaceNavigator.js";
+import { PagesPanel } from "../features/workspace/PagesPanel.js";
+import { AssetsPanel } from "../features/workspace/AssetsPanel.js";
+// Retained only for the narrow pre-asset window — see the render-site comment above
+// its one remaining usage below.
 import { PagesStrip } from "../features/workspace/PagesStrip.js";
 import {
   ActiveVersionSegment,
@@ -144,6 +150,12 @@ export default function ProjectWorkspace() {
   // slice for whichever detection is selected. Read-only from this component too:
   // records are written server-side as a side effect of the mutation routes below.
   const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
+  // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 (Gap 3) — the Assets tab needs the
+  // full per-page asset list; the Zustand store only ever tracked the single most
+  // recent `asset` driving the canvas (by design — see its own comments). This is a
+  // plain local list fed by the same listAssets()/uploadAsset() calls, kept in sync
+  // alongside `asset` rather than replacing it.
+  const [assetList, setAssetList] = useState<ProjectAsset[]>([]);
 
   const {
     currentPageId,
@@ -296,6 +308,7 @@ export default function ProjectWorkspace() {
   useEffect(() => {
     if (!id || !currentPageId || !projectMatchesRoute) return;
     setAsset(null);
+    setAssetList([]);
     setDetections([]);
     setActiveVersion(null);
     setVersionList([]);
@@ -304,6 +317,7 @@ export default function ProjectWorkspace() {
     Promise.all([api.listAssets(id, currentPageId), api.listDetections(id, currentPageId)])
       .then(([assets, dets]) => {
         setAsset(assets[assets.length - 1] ?? null);
+        setAssetList(assets);
         setDetections(dets);
       })
       .catch((e) => setLoadError((e as Error).message));
@@ -449,6 +463,7 @@ export default function ProjectWorkspace() {
     try {
       const uploaded = await api.uploadAsset(id, currentPageId, file);
       setAsset(uploaded);
+      setAssetList((prev) => [...prev, uploaded]);
     } catch (e) {
       setUploadError((e as Error).message);
     } finally {
@@ -930,7 +945,17 @@ export default function ProjectWorkspace() {
         onSaveVersion={handleSaveVersion}
       />
 
-      {id && (
+      {/* docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 — Pages moved into the
+          Navigator's "Pages" tab (below, once an asset exists and WorkspaceBody is
+          showing). Before any asset is uploaded there is no Navigator to hold it yet
+          (WorkspaceBody's whole 4-region shell mounts only post-upload — see the
+          `!asset` branch below), so page switching stays reachable here as a plain
+          top strip in exactly that one window. This is a narrower change than
+          replacing PagesStrip outright: it keeps a real, working "switch to a page
+          that already has its own asset before this one does" path intact without
+          touching the canvas/inspector/dock pre-asset states, which are out of scope
+          for this pass (§1 — all three are PRESERVE). */}
+      {id && !asset && (
         <PagesStrip
           projectId={id}
           pages={pages}
@@ -984,13 +1009,36 @@ export default function ProjectWorkspace() {
         <WorkspaceBody
           isTablet={isTablet}
           dockCollapsed={dockCollapsed}
-          layers={
-            tree && (
-              <UITreePanel
-                root={tree}
-                selectedDetectionId={selectedId}
-                onSelect={select}
-                modelDetectionIds={modelDetectionIds}
+          navigator={
+            id && (
+              <WorkspaceNavigator
+                pages={
+                  <PagesPanel
+                    projectId={id}
+                    pages={pages}
+                    currentPageId={currentPageId}
+                    onPagesChange={setPages}
+                    onSelectPage={setCurrentPageId}
+                  />
+                }
+                layers={
+                  tree && (
+                    <UITreePanel
+                      root={tree}
+                      selectedDetectionId={selectedId}
+                      onSelect={select}
+                      modelDetectionIds={modelDetectionIds}
+                    />
+                  )
+                }
+                assets={
+                  <AssetsPanel
+                    projectId={id}
+                    pageId={currentPageId}
+                    assets={assetList}
+                    activeAssetId={asset?.id ?? null}
+                  />
+                }
               />
             )
           }

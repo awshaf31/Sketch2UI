@@ -1,4 +1,4 @@
-import { AppHeader } from "../components/AppHeader.js";
+import { AppShell, PageHeader } from "../components/AppShell.js";
 import { Card } from "../components/Card.js";
 import { useAuth } from "../context/AuthContext.js";
 
@@ -18,25 +18,24 @@ export default function Account() {
   const { user } = useAuth();
 
   return (
-    <div className="min-h-full bg-bg">
-      <AppHeader />
-      <div className="mx-auto max-w-[560px] px-lg pb-3xl pt-3xl">
-        <h1 className="text-xl font-semibold text-text-primary">Account</h1>
-        <p className="mt-2xs text-sm text-text-secondary">Your Sketch2UI account details.</p>
+    // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 — AppHeader's top nav is replaced
+    // by the persistent rail here and on the Dashboard. The page's own content below
+    // is unchanged.
+    <AppShell maxWidth="max-w-[560px]">
+      <PageHeader title="Account" description="Your Sketch2UI account details." />
 
-        <Card className="mt-xl flex flex-col gap-lg">
+      <Card className="mt-xl flex flex-col gap-lg">
+        <div className="flex flex-col gap-xs">
+          <span className="text-xs text-text-secondary">Email</span>
+          <span className="text-md text-text-primary">{user?.email}</span>
+        </div>
+        {user?.createdAt && (
           <div className="flex flex-col gap-xs">
-            <span className="text-xs text-text-secondary">Email</span>
-            <span className="text-md text-text-primary">{user?.email}</span>
+            <span className="text-xs text-text-secondary">Member since</span>
+            <span className="text-md text-text-primary">{formatMemberSince(user.createdAt)}</span>
           </div>
-          {user?.createdAt && (
-            <div className="flex flex-col gap-xs">
-              <span className="text-xs text-text-secondary">Member since</span>
-              <span className="text-md text-text-primary">{formatMemberSince(user.createdAt)}</span>
-            </div>
-          )}
-        </Card>
-      </div>
-    </div>
+        )}
+      </Card>
+    </AppShell>
   );
 }

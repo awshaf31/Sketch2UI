@@ -41,8 +41,19 @@ export function AppHeader({ className }: { className?: string }) {
   }
 
   return (
-    <header className={cn("flex items-center justify-between border-b border-border bg-surface px-lg py-md", className)}>
-      <div className="flex items-center gap-xl">
+    // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): on a
+    // phone-width viewport this row's content (brand + nav + email + Log out) doesn't
+    // fit and previously had no overflow strategy at all — the right-hand group
+    // (email, Log out) rendered past the visible edge, off-screen. Same fix as
+    // AdminHeader's Phase S13 tablet-overflow bug: a single horizontally-scrollable
+    // row instead of wrapping/clipping, since a hamburger menu would be new scope.
+    <header
+      className={cn(
+        "flex items-center justify-between gap-lg overflow-x-auto border-b border-border bg-surface px-lg py-md",
+        className
+      )}
+    >
+      <div className="flex shrink-0 items-center gap-xl whitespace-nowrap">
         <Link
           to={status === "authenticated" ? "/app" : "/"}
           className="flex items-center gap-xs text-text-primary transition-colors duration-fast hover:text-primary"
@@ -70,7 +81,7 @@ export function AppHeader({ className }: { className?: string }) {
         )}
       </div>
       {status === "authenticated" && user && (
-        <div className="flex items-center gap-sm">
+        <div className="flex shrink-0 items-center gap-sm whitespace-nowrap">
           <span className="text-sm text-text-secondary">{user.email}</span>
           <Button variant="ghost" size="sm" onClick={handleLogout}>
             Log out

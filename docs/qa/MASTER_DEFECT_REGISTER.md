@@ -14,9 +14,11 @@ each required to cite exact file:line evidence and distinguish "confirmed" from
 Every fix below has a regression test that was confirmed to fail without the fix and
 pass with it (shown by literally reverting the fix and re-running).
 
-**Total defects logged: 14** (9 fixed, 4 deferred with rationale, 1 inconclusive).
+**Total defects logged: 14** (10 fixed, 3 deferred with rationale, 1 inconclusive).
 DEF-010, DEF-008, DEF-009, and DEF-011 were fixed in a follow-up session on
 2026-08-26, after the original audit pass below — see their entries for details.
+DEF-012 was fixed in a second follow-up session the same day, alongside an unrelated
+SaaS visual-polish pass (`docs/frontend/saas-polish-audit-2026-08-26.md`).
 
 ---
 
@@ -359,6 +361,88 @@ DEF-010, DEF-008, DEF-009, and DEF-011 were fixed in a follow-up session on
   `npm run test:e2e` (4/4) all green after the change.
 - **Status:** ✅ Fixed, live-verified.
 
+### DEF-013 — No route/component-level code-splitting anywhere in the app
+- **Category:** PERFORMANCE · **Priority:** P3
+- **Root cause:** `App.tsx` imported all 15 page components statically, so Rollup had a
+  single entry graph and emitted one chunk. `vite.config.ts` had no `build` section and
+  nothing in `apps/web/src` used `React.lazy`, `Suspense`, or a dynamic `import()`.
+  Monaco was never the problem — `@monaco-editor/react` already CDN-loads its core, and
+  that behavior is untouched here.
+- **Fix:** every page is now `React.lazy(() => import(...))` behind one `<Suspense>` and
+  a `RouteErrorBoundary` (`apps/web/src/components/RouteBoundary.tsx`, built on the
+  existing `ErrorState` primitive). The entry chunk statically imports zero route code.
+  - **Chunk grouping was deliberately left to Rollup.** Hand-grouping the pages into
+    five named `manualChunks` (public/auth/app/workspace/admin) was tried and reverted:
+    a manual chunk absorbs its whole dependency subtree, so the first group assigned
+    swallowed React and the shared components, and the entry chunk then had to
+    statically import that group — putting ~190KB back on every route. The only build
+    option kept is `experimentalMinChunkSize: 1_000`, which folds the sub-kilobyte
+    primitive chunks (Card, Badge, Input…) back into their consumers. It is set below
+    the smallest page chunk on purpose: at a larger threshold Rollup merges by size
+    alone and folded `Account` in with the admin pages.
+  - `WorkspacePrefetch` warms the workspace chunk once auth resolves, so opening a
+    project stays synchronous (`React.lazy` never suspends on an already-settled
+    promise) and the editor does not flash a loading state. Gated on `authenticated`
+    rather than on the `/app` path so a logged-out visitor never requests it.
+- **Before → after (raw JS a route must download, including the shared entry):** one
+  361.1KB bundle for every route → public `/` 202.8KB, `/login` 194.0KB, `/app` 203.6KB,
+  `/admin` 191.3KB, workspace 305.5KB. Total emitted 370.2KB across 25 chunks.
+- **Test-infrastructure change:** `playwright.config.ts` now serves the production build
+  (`vite build && vite preview`) instead of `vite dev`. Code splitting only exists in the
+  build — dev ships unbundled ESM, where a lazy route is a waterfall of ~40 module
+  requests rather than one hashed chunk. Against dev, `golden-path.spec.ts` raced that
+  waterfall and flaked (it queries a bare `input[type="file"]`, which matches the
+  Dashboard's upload hero while the outgoing route is still mounted). No assertion was
+  weakened; the suite now exercises the artifact that actually ships, and runs faster.
+- **Verified:** typecheck, Vitest 334/334 + 124/124, Pytest 19/19, build, Playwright
+  16/16 (twice). In-browser against the production preview: direct navigation and
+  refresh work on every route; `/` loads only `Home`/`MarketingFooter`/`BrandMark`;
+  `/login` loads only its own chunks; an unauthenticated hit on `/admin/audit-logs`
+  fetches **zero** admin chunks because `ProtectedRoute` short-circuits before the lazy
+  child renders; and hiding a chunk on disk renders the error boundary's "Couldn't load
+  this page. Reload to try again." with no stack trace, recovering once restored.
+- **Status:** ✅ Fixed, live-verified.
+
+### DEF-012 — N+1 query/decode pattern in the export route
+- **Category:** PERFORMANCE · **Priority:** P2
+- `exports.routes.ts` did one sequential DB round-trip per page for the active
+  version, plus — for every image/avatar/video/logo detection referenced in that
+  page's HTML — two more sequential DB point-queries and a full re-decode of the
+  source sketch from disk (`cropDetection` re-opened and re-decoded the whole image
+  per crop, rather than decoding once per source image). None of this was batched or
+  parallelized. Confirmed to scale linearly-and-serially with page count × image
+  count.
+- **Fixed 2026-08-26** (a second follow-up session, alongside an unrelated SaaS
+  visual-polish pass — see `docs/frontend/saas-polish-audit-2026-08-26.md`).
+  Addressed the two highest-leverage parts, scoped deliberately smaller than the
+  original "batch queries + decode once + `Promise.all` across pages" framing:
+  1. `appendPageAssets()` in `exports.routes.ts` now resolves every referenced
+     detection/source-asset pair concurrently (`Promise.all`) instead of one
+     sequential round trip per path.
+  2. `crop.service.ts` gained `decodeSourceImage()` (decode a source file once) and
+     `cropFromDecoded()` (extract a region from an already-decoded image);
+     `cropDetection()` is now a thin wrapper over both, so its existing callers
+     (`crops.routes.ts`) are unaffected. `appendPageAssets()` caches one decode per
+     distinct source asset and reuses it across every crop taken from it — in the
+     overwhelmingly common case (a page's crops all come from that page's one
+     uploaded sketch), this collapses N re-decodes to 1.
+  - **Deliberately not done:** parallelizing the outer per-page loop or adding a
+    batch (`findByIds`) method to the repository layer. Page counts are small in
+    practice (this app's multi-page feature is not a "hundreds of pages" pattern),
+    and a repository-layer batch method would need implementing and
+    contract-testing against both the JSON and Prisma adapters — real scope, not
+    matched by the payoff here. Left as a smaller, targeted fix rather than the
+    full rewrite the original framing described.
+- **Regression test:** `apps/api/src/modules/crops/crop.service.test.ts` (new file —
+  no test previously existed for `crop.service.ts`). Asserts `cropFromDecoded()`
+  produces byte-identical output to the un-refactored `cropDetection()` for the same
+  detection, that reusing one decoded image across multiple crops still produces
+  correct/distinct results, and that both `NOT_FOUND`/`INVALID_IMAGE` error paths
+  match between the old and new entry points. Full regression (typecheck, Vitest
+  334/334, Pytest 19/19, build, Playwright 16/16 including `golden-path.spec.ts` and
+  `multi-page.spec.ts`, both of which exercise a real export) all green.
+- **Status:** ✅ Fixed and regression-tested.
+
 ---
 
 ## Deferred (real, but out of scope for this pass — see rationale per item)
@@ -392,33 +476,6 @@ verified, not speculative.
 - **Why deferred:** Observability enhancement, not a functional defect — no user-facing
   behavior is wrong, there's just no visibility into how many candidates were
   discarded pre-threshold.
-
-### DEF-012 — N+1 query/decode pattern in the export route
-- **Category:** PERFORMANCE · **Priority:** P2
-- `exports.routes.ts` does one sequential DB round-trip per page for the active
-  version, plus — for every image/avatar/video/logo detection referenced in that
-  page's HTML — two more sequential DB point-queries and a full re-decode of the
-  source sketch from disk (`cropDetection` re-opens and re-decodes the whole image
-  per crop, rather than decoding once per source image). None of this is batched or
-  parallelized. Confirmed to scale linearly-and-serially with page count × image
-  count.
-- **Why deferred:** Real and will get worse as projects grow, but not urgent for
-  today's typical (small) project sizes, and the correct fix (batch queries, decode
-  each source image once, `Promise.all` across independent pages) is a genuine
-  refactor of the export path, not a small patch — worth its own dedicated pass with
-  its own before/after latency measurement.
-
-### DEF-013 — No route/component-level code-splitting anywhere in the app
-- **Category:** PERFORMANCE · **Priority:** P3
-- Confirmed: `vite.config.ts` has no `manualChunks`, no route uses `React.lazy`, and
-  `CodePanel`/Monaco's wrapper is a static top-level import — one 294KB JS bundle
-  ships regardless of which route is visited. Mitigating factor: `@monaco-editor/react`
-  already offloads Monaco's actual (multi-MB) core to a CDN at runtime, so this is
-  "every route pays for every feature module's wrapper code," not "Monaco's core
-  bloats the initial download."
-- **Why deferred:** Real but low-urgency given the mitigating factor above, and
-  introducing lazy-loading/chunking is an architecture decision affecting every route,
-  not an obvious isolated fix.
 
 ---
 
