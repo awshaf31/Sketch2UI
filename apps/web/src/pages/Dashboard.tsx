@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Project } from "@sketch2ui/shared-types";
 import { api } from "../services/api.js";
@@ -13,15 +13,19 @@ import { Input } from "../components/Input.js";
 import { cn } from "../components/cn.js";
 import { useDialog } from "../components/DialogHost.js";
 import { useToast } from "../components/ToastStack.js";
+import UploadDropzone from "../features/upload/UploadDropzone.js";
 
-// docs/frontend/dashboard-design.md — full implementation (Phase 2C). Preserves
-// exactly the three behaviors the current app already has (list/create/delete) — no
-// new functionality. AppHeader gets its first real mount here (deferred in Phase 2B —
-// see docs/frontend/frontend-implementation-roadmap.md's Phase 2B result for why).
-// The page's own H1 is "Projects" rather than a second "Sketch2UI" label directly
-// under AppHeader's wordmark — avoids the literal duplicate brand string while keeping
-// both the persistent brand bar and a page-level heading that names this page's actual
-// content (design-direction.md's "words are design material" principle).
+// docs/frontend/dashboard-design.md — Phase 2C base implementation. Extended per a
+// direct product request (not a new frontend spec doc) to make "start with your
+// sketch" the Dashboard's primary workflow: a project name AND a sketch image can now
+// be supplied together in one hero form, instead of requiring a trip into the (empty)
+// project workspace just to upload. No API contract changed to build this — a project
+// already gets a default page on creation (apps/api/.../projects.routes.ts), and
+// api.uploadAsset(projectId, pageId, file) already exists; this just calls both in
+// sequence before navigating. AppHeader/H1 ("Projects")/create-form selectors/delete
+// dialog copy are all unchanged from the base implementation — see that phase's result
+// entry in docs/execution/phase-log.md (or the roadmap) for why those exact strings
+// matter to e2e/golden-path.spec.ts and friends.
 
 function TrashIcon() {
   return (
@@ -37,18 +41,81 @@ function TrashIcon() {
 
 function SpinnerIcon() {
   return (
-    <svg viewBox="0 0 16 16" width="14" height="14" className="animate-spin motion-reduce:animate-none" aria-hidden="true">
+    <svg viewBox="0 0 16 16" width="16" height="16" className="animate-spin motion-reduce:animate-none" aria-hidden="true">
       <circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
       <path d="M14 8a6 6 0 0 0-6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   );
 }
 
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="M14 14l-3-3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 const GRID_CLASSES = "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-lg";
+
+/** Object-URL lifecycle for the client-side-only sketch preview shown before a
+ * project exists to upload it to — created/revoked as the staged file changes, and
+ * revoked again on unmount. Never sent anywhere; it's just a local thumbnail. */
+function useObjectUrl(file: File | null): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!file) {
+      setUrl(null);
+      return;
+    }
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
+}
+
+function StagedSketchPreview({
+  file,
+  previewUrl,
+  onRemove,
+}: {
+  file: File;
+  previewUrl: string | null;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-md rounded-lg border border-border bg-surface-sunken p-md">
+      {previewUrl ? (
+        <img
+          src={previewUrl}
+          alt=""
+          className="h-16 w-16 flex-shrink-0 rounded-md border border-border object-cover"
+        />
+      ) : (
+        <div className="h-16 w-16 flex-shrink-0 rounded-md border border-border bg-surface" aria-hidden="true" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-text-primary">{file.name}</p>
+        <p className="text-xs text-text-muted">{(file.size / (1024 * 1024)).toFixed(1)}MB</p>
+      </div>
+      <IconButton
+        aria-label="Remove selected sketch"
+        icon={<TrashIcon />}
+        size="sm"
+        onClick={onRemove}
+        className="hover:text-error"
+      />
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [name, setName] = useState("");
+  const [search, setSearch] = useState("");
+  const [stagedFile, setStagedFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -57,6 +124,8 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const { confirm } = useDialog();
   const { showToast } = useToast();
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const stagedPreviewUrl = useObjectUrl(stagedFile);
 
   function load() {
     setLoading(true);
@@ -70,18 +139,47 @@ export default function Dashboard() {
 
   useEffect(load, []);
 
+  const filteredProjects = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return q ? projects.filter((p) => p.name.toLowerCase().includes(q)) : projects;
+  }, [projects, search]);
+
+  function focusCreateForm() {
+    nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    nameInputRef.current?.focus();
+  }
+
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!name.trim() || creating) return;
     setCreating(true);
     setCreateError(null);
+    let project: Project;
     try {
-      const project = await api.createProject({ name: name.trim() });
-      navigate(`/projects/${project.id}`);
+      project = await api.createProject({ name: name.trim() });
     } catch (e) {
       setCreateError((e as Error).message);
       setCreating(false);
+      return;
     }
+    // A new project always has a default "Page 1" (apps/api/.../projects.routes.ts),
+    // so a staged sketch can go straight to it. Best-effort: if this fails, the
+    // project itself already exists and was created successfully, so we still open
+    // it rather than stranding the user on the Dashboard — the workspace has its own
+    // upload dropzone as a fallback path.
+    if (stagedFile) {
+      try {
+        const pages = await api.listPages(project.id);
+        const pageId = pages[0]?.id;
+        if (pageId) await api.uploadAsset(project.id, pageId, stagedFile);
+      } catch (e) {
+        showToast(
+          "error",
+          `Project created, but the sketch upload failed: ${(e as Error).message}. You can upload it from the project.`
+        );
+      }
+    }
+    navigate(`/projects/${project.id}`);
   }
 
   async function handleDelete(id: string, projectName: string) {
@@ -112,92 +210,146 @@ export default function Dashboard() {
     <div className="min-h-full bg-bg">
       <AppHeader />
 
-      <div className="mx-auto max-w-[640px] px-lg pb-3xl pt-3xl">
+      <div className="mx-auto max-w-[720px] px-lg pb-3xl pt-3xl">
         <h1 className="text-2xl font-semibold text-text-primary">Projects</h1>
         <p className="mt-xs text-md text-text-secondary">
           Turn a hand-drawn wireframe into HTML/CSS with a live preview.
         </p>
 
-        <form onSubmit={handleCreate} className="mt-xl flex items-center gap-sm">
-          <Input
-            size="md"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="New project name"
-            disabled={creating}
-            className="flex-1 text-md"
-          />
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            disabled={!name.trim()}
-            loading={creating}
-            loadingLabel="Creating…"
-          >
-            Create project
+        <div className="mt-xl flex flex-wrap items-center gap-sm">
+          <div className="relative flex-1 min-w-[200px]">
+            <span className="pointer-events-none absolute inset-y-0 left-sm flex items-center text-text-muted">
+              <SearchIcon />
+            </span>
+            <Input
+              size="md"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search projects…"
+              aria-label="Search projects"
+              className="pl-[30px] text-md"
+            />
+          </div>
+          <Button type="button" variant="primary" size="lg" onClick={focusCreateForm}>
+            New Project
           </Button>
-        </form>
+        </div>
 
-        {createError && <p className="mt-md text-sm text-error">{createError}</p>}
+        <Card className="mt-xl p-xl">
+          <h2 className="text-lg font-semibold text-text-primary">Create a new Sketch2UI project</h2>
+          <p className="mt-2xs text-sm text-text-secondary">
+            Start with a hand-drawn wireframe. Upload your sketch and turn it into a working UI.
+          </p>
 
-        <div className="mt-xl">
-          {loading ? (
-            <div className={GRID_CLASSES} aria-hidden="true">
-              {[0, 1, 2].map((i) => (
-                <div key={i} className="h-[92px] rounded-lg border border-border bg-surface-sunken" />
-              ))}
+          <div className="mt-lg">
+            {stagedFile ? (
+              <StagedSketchPreview file={stagedFile} previewUrl={stagedPreviewUrl} onRemove={() => setStagedFile(null)} />
+            ) : (
+              <UploadDropzone onFile={setStagedFile} />
+            )}
+          </div>
+
+          <form onSubmit={handleCreate} className="mt-lg">
+            <label htmlFor="dashboard-project-name" className="block text-xs font-medium text-text-secondary">
+              Project name
+            </label>
+            <div className="mt-xs flex items-center gap-sm">
+              <Input
+                id="dashboard-project-name"
+                ref={nameInputRef}
+                size="md"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="New project name"
+                disabled={creating}
+                className="flex-1 text-md"
+              />
+              <Button
+                type="submit"
+                variant="primary"
+                size="lg"
+                disabled={!name.trim()}
+                loading={creating}
+                loadingLabel="Creating…"
+              >
+                Create project
+              </Button>
             </div>
-          ) : listError ? (
-            <ErrorState
-              message={listError}
-              action={
-                <Button variant="secondary" onClick={load}>
-                  Retry
-                </Button>
-              }
-            />
-          ) : projects.length === 0 ? (
-            <EmptyState
-              icon={<BrandMark className="h-10 w-10" />}
-              title="No projects yet"
-              description="Create one above to get started."
-            />
-          ) : (
-            <div className={GRID_CLASSES}>
-              {projects.map((p) => {
-                const isDeleting = deletingId === p.id;
-                return (
-                  <Card
-                    key={p.id}
-                    interactive
-                    className={cn("group relative", isDeleting && "pointer-events-none opacity-50")}
-                  >
-                    <button
-                      onClick={() => navigate(`/projects/${p.id}`)}
-                      disabled={isDeleting}
-                      className="block w-full truncate pr-lg text-left text-md font-medium text-text-primary"
+            {createError && <p className="mt-sm text-sm text-error">{createError}</p>}
+          </form>
+        </Card>
+
+        <div className="mt-2xl">
+          <h2 className="text-lg font-semibold text-text-primary">Recent projects</h2>
+
+          <div className="mt-lg">
+            {loading ? (
+              <div className={GRID_CLASSES} aria-hidden="true">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="h-[92px] rounded-lg border border-border bg-surface-sunken" />
+                ))}
+              </div>
+            ) : listError ? (
+              <ErrorState
+                message={listError}
+                action={
+                  <Button variant="secondary" onClick={load}>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : projects.length === 0 ? (
+              <EmptyState
+                icon={<BrandMark className="h-10 w-10" />}
+                title="No projects yet"
+                description="Create one above to get started."
+              />
+            ) : filteredProjects.length === 0 ? (
+              <EmptyState
+                title="No matching projects"
+                description={`No projects match "${search.trim()}".`}
+                action={
+                  <Button variant="secondary" onClick={() => setSearch("")}>
+                    Clear search
+                  </Button>
+                }
+              />
+            ) : (
+              <div className={GRID_CLASSES}>
+                {filteredProjects.map((p) => {
+                  const isDeleting = deletingId === p.id;
+                  return (
+                    <Card
+                      key={p.id}
+                      interactive
+                      className={cn("group relative", isDeleting && "pointer-events-none opacity-50")}
                     >
-                      {p.name}
-                    </button>
-                    <p className="mt-2xs text-xs text-text-muted">{p.status}</p>
-                    <IconButton
-                      aria-label={`Delete "${p.name}"`}
-                      icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
-                      size="sm"
-                      disabled={isDeleting}
-                      onClick={() => handleDelete(p.id, p.name)}
-                      className={cn(
-                        "absolute right-sm top-sm text-text-muted opacity-0 transition-opacity duration-fast",
-                        "hover:text-error focus-visible:opacity-100 group-hover:opacity-100",
-                        isDeleting && "opacity-100"
-                      )}
-                    />
-                  </Card>
-                );
-              })}
-            </div>
-          )}
+                      <button
+                        onClick={() => navigate(`/projects/${p.id}`)}
+                        disabled={isDeleting}
+                        className="block w-full truncate pr-lg text-left text-md font-medium text-text-primary"
+                      >
+                        {p.name}
+                      </button>
+                      <p className="mt-2xs text-xs text-text-muted">{p.status}</p>
+                      <IconButton
+                        aria-label={`Delete "${p.name}"`}
+                        icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
+                        size="sm"
+                        disabled={isDeleting}
+                        onClick={() => handleDelete(p.id, p.name)}
+                        className={cn(
+                          "absolute right-sm top-sm text-text-muted opacity-0 transition-opacity duration-fast",
+                          "hover:text-error focus-visible:opacity-100 group-hover:opacity-100",
+                          isDeleting && "opacity-100"
+                        )}
+                      />
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

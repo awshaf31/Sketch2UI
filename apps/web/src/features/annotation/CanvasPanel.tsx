@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { BBox, Detection, PagePolygon, ProjectAsset } from "@sketch2ui/shared-types";
 import AnnotationCanvas from "./AnnotationCanvas.js";
 import ClassPicker from "./ClassPicker.js";
@@ -113,10 +113,10 @@ export function CanvasPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset.id]);
 
-  function zoomBy(delta: number) {
+  const zoomBy = useCallback((delta: number) => {
     userAdjustedZoomRef.current = true;
     setZoom((z) => clampZoom(z + delta));
-  }
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -137,11 +137,23 @@ export function CanvasPanel({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  function handleWheel(e: React.WheelEvent) {
-    if (!(e.metaKey || e.ctrlKey)) return;
-    e.preventDefault();
-    zoomBy(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
-  }
+  // A native (non-passive) DOM listener, not React's JSX `onWheel` — React attaches
+  // wheel handlers as passive by default (since React 17), so preventDefault() inside
+  // a synthetic onWheel handler is a silent no-op (surfaces only as a console warning:
+  // "Unable to preventDefault inside passive event listener invocation") and the
+  // browser's own page-zoom on Cmd/Ctrl+wheel would still fire alongside our canvas
+  // zoom. Attaching directly with { passive: false } is required to actually suppress it.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    function handleWheel(e: WheelEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      e.preventDefault();
+      zoomBy(e.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP);
+    }
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [zoomBy]);
 
   return (
     <>
@@ -156,7 +168,6 @@ export function CanvasPanel({
       <div className="relative flex-1 overflow-hidden">
         <div
           ref={scrollRef}
-          onWheel={handleWheel}
           // Centering degrades to a flat BASE_PADDING_PX (not a flexbox center) once
           // the zoomed content no longer fits — flex/grid centering of overflowing
           // content scrolls asymmetrically from the center outward in most browsers,

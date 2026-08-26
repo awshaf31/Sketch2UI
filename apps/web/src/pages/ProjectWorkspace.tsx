@@ -135,6 +135,63 @@ export default function ProjectWorkspace() {
     setActiveClass,
   } = useProjectStore();
 
+  // `currentPageId`/`asset`/`detections`/`selectedId` live in a MODULE-LEVEL Zustand
+  // store (projectStore.ts) — unlike this component's own `useState` fields, they do
+  // NOT reset when the route's `id` changes (a Zustand store is a singleton, not tied
+  // to this component's lifecycle, and React Router reuses the same component
+  // instance across a `/projects/:id` param change rather than remounting it). This
+  // was a real, live-reproduced bug: navigating from project A to project B left
+  // `currentPageId` holding A's page id for the render(s) before the `[id]` effect
+  // further down resolves and corrects it — and every effect keyed on
+  // `[id, currentPageId]` re-runs THAT SAME render (since `id` changed), so its own
+  // `if (!id || !currentPageId) return` guard sees both as truthy and proceeds with
+  // the WRONG pairing (new project id + old project's page id). That produced a 404
+  // storm on every page-scoped route (assets, detections, code-versions, all four
+  // override maps, corrections, approve-training, page-boundary) — confirmed live via
+  // read_network_requests, twice, in two different sessions.
+  //
+  // Resetting the Zustand fields synchronously here does NOT fix this by itself:
+  // `setCurrentPageId` is an external store's setter, not a React `useState` setter,
+  // so calling it mid-render does not get React's "restart this render immediately
+  // with the new value" treatment a local setState call gets — confirmed by testing:
+  // the wrong-pairing requests still fired even with this reset in place. What DOES
+  // reliably take effect within the same render — because `project`/`pages` ARE local
+  // `useState`, declared above — is resetting THOSE synchronously the instant `id`
+  // changes. `projectMatchesRoute` below is derived from that guaranteed-fresh
+  // `project` state, so every downstream automatic effect gates on it instead of
+  // trusting `currentPageId`'s mere truthiness.
+  const [lastRenderedId, setLastRenderedId] = useState(id);
+  if (id !== lastRenderedId) {
+    setLastRenderedId(id);
+    setProject(null);
+    setPages([]);
+    setCurrentPageId(null);
+    setAsset(null);
+    setDetections([]);
+    select(null);
+  }
+
+  // True only once `project` has actually loaded AND matches the current route's
+  // `id`. Every automatic (non-user-triggered) effect below that reads
+  // `currentPageId` also requires this, so a stale-but-truthy `currentPageId` left
+  // over from a previous project can never pair with a new project's `id` — see the
+  // comment above.
+  //
+  // IMPORTANT: `projectMatchesRoute` must be listed in the dependency array of every
+  // effect that guards on it, not just referenced in the guard condition. The `[id]`
+  // effect below sets `project` (local `useState`) and `currentPageId` (the Zustand
+  // store) together, synchronously, in the same `.then()` — but confirmed live via
+  // console logging that they do NOT necessarily commit in the same React render:
+  // Zustand's external-store subscription can notify on a different tick than React's
+  // own batched `setState`. A `[id, currentPageId]`-only dependency array can
+  // therefore reach a render where `currentPageId` already updated but `project`
+  // hadn't yet — the effect's guard correctly blocks that render, but nothing then
+  // re-invokes the effect once `project` catches up moments later, since `project`
+  // isn't one of its dependencies. The result was a real, reproduced bug: a
+  // newly-created project's own asset/detections never loaded — the guard was correct
+  // but permanently starved of a re-run.
+  const projectMatchesRoute = project?.id === id;
+
   // Reload detections from the API. Used after a detect job completes so model boxes
   // flow through the SAME rendering path as manual ones — canvas, tree, code, preview
   // all consume the store, and none of them know or care where a Detection came from.
@@ -152,7 +209,7 @@ export default function ProjectWorkspace() {
   // Refresh the version list and pull the full content of whichever version is now
   // active. Called after any save (generated or edited) and after an explicit activate.
   const refreshVersions = useCallback(async () => {
-    if (!id || !currentPageId) return;
+    if (!id || !currentPageId || !projectMatchesRoute) return;
     const summary = await api.listCodeVersions(id, currentPageId);
     setVersionList(summary.versions);
     if (summary.activeVersionId) {
@@ -165,32 +222,53 @@ export default function ProjectWorkspace() {
     } else {
       setActiveVersion(null);
     }
-  }, [id, currentPageId, activeVersion?.id]);
+  }, [id, currentPageId, activeVersion?.id, projectMatchesRoute]);
 
   // Load the project and its pages once; default to the first page returned. Every
   // page-scoped effect below waits on currentPageId being set from here.
+  //
+  // `ignore` guards against a real, reproduced bug: navigating from project A to
+  // project B before A's fetch resolves left this effect's stale `.then()` (still
+  // holding A's pageList) free to fire AFTER the newer effect for B had already
+  // started — there was nothing to stop it applying A's page id on top of B's
+  // already-current id/project state. The result was exactly the kind of cross-
+  // project 404 storm this produced live: every page-scoped call (assets,
+  // detections, code-versions, all four override maps, corrections, approve-
+  // training, page-boundary) 404ing at once, because `currentPageId` held a page
+  // belonging to a DIFFERENT project than the one `id`/`project` actually named.
+  // The standard fix is this ignore-flag: a fetch whose effect has since been
+  // superseded (id changed, so the cleanup below already ran) must not apply its
+  // result at all, matching the "cancel stale requests" pattern React's own docs
+  // recommend for effects with async work.
   useEffect(() => {
     if (!id) return;
+    let ignore = false;
     setLoading(true);
     setLoadError(null);
     Promise.all([api.getProject(id), api.listPages(id)])
       .then(([proj, pageList]) => {
+        if (ignore) return;
         setProject(proj);
         setPages(pageList);
         setCurrentPageId(pageList[0]?.id ?? null);
       })
       .catch((e) => {
+        if (ignore) return;
         setProject(null);
         setLoadError((e as Error).message);
       })
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      .finally(() => {
+        if (!ignore) setLoading(false);
+      });
+    return () => {
+      ignore = true;
+    };
   }, [id]);
 
   // Reload page-scoped data whenever the current page changes (initial load or a
   // switch via PagesStrip). Mirrors the previous project-mount effect, just re-keyed.
   useEffect(() => {
-    if (!id || !currentPageId) return;
+    if (!id || !currentPageId || !projectMatchesRoute) return;
     setAsset(null);
     setDetections([]);
     setActiveVersion(null);
@@ -205,10 +283,10 @@ export default function ProjectWorkspace() {
       .catch((e) => setLoadError((e as Error).message));
     void refreshVersions().catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, currentPageId]);
+  }, [id, currentPageId, projectMatchesRoute]);
 
   useEffect(() => {
-    if (!id || !currentPageId || !asset) return;
+    if (!id || !currentPageId || !asset || !projectMatchesRoute) return;
     api.getTrainingApproval(id, currentPageId, asset.id).then(setApproval).catch(() => setApproval(null));
     api.listExports(id).then(setExports).catch(() => setExports([]));
     // Load the persisted boundary (§10.6) instead of recomputing a default. A manual
@@ -217,16 +295,16 @@ export default function ProjectWorkspace() {
       .getPageBoundary(id, currentPageId, asset.id)
       .then((r) => { if (r.boundary) setBoundary(r.boundary); })
       .catch(() => {});
-  }, [id, currentPageId, asset]);
+  }, [id, currentPageId, asset, projectMatchesRoute]);
 
   useEffect(() => {
-    if (!id || !currentPageId) return;
+    if (!id || !currentPageId || !projectMatchesRoute) return;
     api.listStyleOverrides(id, currentPageId).then(setStyleOverrides).catch(() => setStyleOverrides({}));
     api.listContentOverrides(id, currentPageId).then(setContentOverrides).catch(() => setContentOverrides({}));
     api.listGeometryOverrides(id, currentPageId).then(setGeometryOverrides).catch(() => setGeometryOverrides({}));
     api.listStructureOverrides(id, currentPageId).then(setStructureOverrides).catch(() => setStructureOverrides({}));
     api.listCorrections(id, currentPageId).then(setCorrections).catch(() => setCorrections([]));
-  }, [id, currentPageId]);
+  }, [id, currentPageId, projectMatchesRoute]);
 
   // Correction history (§4) is refreshed after every mutation that can produce a
   // new record — same "re-fetch after write" pattern the other override maps use.
