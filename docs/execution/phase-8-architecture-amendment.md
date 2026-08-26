@@ -1,7 +1,7 @@
 ---
 title: "Phase 8 — Architecture Amendment"
 status_date: "2026-08-24"
-amends: "Sketch2UI_Claude_Code_Phase_by_Phase_Execution_Plan.md §11 (Phase 8), Appendix E"
+amends: "docs/planning/Sketch2UI_Claude_Code_Phase_by_Phase_Execution_Plan.md §11 (Phase 8), Appendix E"
 status: "ACTIVE — supersedes the plan's §8.1 'critical rule' for this phase only"
 ---
 

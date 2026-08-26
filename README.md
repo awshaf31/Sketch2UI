@@ -1,7 +1,7 @@
 # Sketch2UI
 
 Hand-drawn wireframe → HTML/CSS → live preview. Full plan in
-[`Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md`](./Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md).
+[`Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md`](./docs/planning/Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md).
 
 ## Current state
 

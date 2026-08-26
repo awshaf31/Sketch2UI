@@ -9,7 +9,7 @@ Append one entry per phase. Do not rewrite prior entries — corrections go into
 new entry that supersedes an earlier one.
 
 Every entry uses the report template from §23 of
-`Sketch2UI_Claude_Code_Phase_by_Phase_Execution_Plan.md`.
+`docs/planning/Sketch2UI_Claude_Code_Phase_by_Phase_Execution_Plan.md`.
 
 ---
 
@@ -3563,7 +3563,7 @@ scoped effort.
 **Date:** 2026-08-25
 **Goal:** Convert the single implicit workspace into `authenticated user → owned
 projects → authorized resources`, per
-`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §4. Smallest defensible
+`docs/planning/Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §4. Smallest defensible
 scope: register/login/logout/session, password hashing, project ownership,
 authorization on every project-owned route, protected frontend routes. No OAuth/
 SSO/MFA/password-reset/collaboration/RBAC.
@@ -3731,7 +3731,7 @@ D3 — Minimum Viable Multi-Page, per the deadline plan's sequencing.
 
 **Date:** 2026-08-25
 **Goal:** Convert a project from "one asset, one page" into `Project → Page[]`, per
-`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §6. Every project-owned
+`docs/planning/Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §6. Every project-owned
 resource (assets, detections, boundaries, code versions, the four override groups,
 corrections) becomes page-scoped; export bundles every page into one ZIP. This phase's
 backend half was committed as a mid-phase checkpoint (see `d30ebe9`, "Phases D1-D3
@@ -3855,7 +3855,7 @@ D4 — CI/CD, per the deadline plan's sequencing (see §6 of `PROJECT_STATUS.md`
 
 **Date:** 2026-08-25
 **Goal:** A minimal automated quality gate, per
-`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §7: typecheck, Vitest,
+`docs/planning/Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §7: typecheck, Vitest,
 Pytest, a production build, and Playwright E2E, on every push/PR to `main`. No ML
 training in CI, no automatic deployment.
 **Status:** ✅ Complete.
@@ -3956,7 +3956,7 @@ regression pass over D1–D4 together, not new feature work).
 
 **Date:** 2026-08-26
 **Goal:** A cross-cutting regression pass over D1–D4 together, per
-`Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §8/§9 — not new
+`docs/planning/Sketch2UI_Deadline_4_Features_Claude_Code_Execution_Plan.md` §8/§9 — not new
 feature work. Walk the plan's regression matrix (Authentication, Detection,
 Multi-page, Core, CI) against the actual running stack rather than only trusting
 automated coverage in isolation.

@@ -1,13 +1,13 @@
 ---
 title: "Sketch2UI — Project Status: Done / In Progress / Not Started"
-based_on: "Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md"
+based_on: "docs/planning/Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md"
 status_as_of: "2026-08-26"
 ---
 
 # Sketch2UI — Detailed Project Status
 
 This document maps the actual state of the codebase against the 54-section
-implementation plan (`Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md`).
+implementation plan (`docs/planning/Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md`).
 Every claim below was verified against the current source tree, not assumed from
 memory — file paths and route registrations are named so they can be checked directly.
 
