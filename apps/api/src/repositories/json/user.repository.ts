@@ -32,4 +32,21 @@ export class JsonUserRepository implements UserRepository {
     db.save();
     return detach(user);
   }
+
+  async count(): Promise<number> {
+    return db.state.users.length;
+  }
+
+  async listAll(): Promise<User[]> {
+    return db.state.users.map(detach);
+  }
+
+  async setRole(id: string, role: string): Promise<User | null> {
+    const user = db.state.users.find((u) => u.id === id);
+    if (!user) return null;
+    user.role = role;
+    user.updatedAt = new Date().toISOString();
+    db.save();
+    return detach(user);
+  }
 }

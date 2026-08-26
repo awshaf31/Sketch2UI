@@ -63,5 +63,43 @@ export function runUserRepositoryContract(
         expect(await repo.findById("does-not-exist")).toBeNull();
       });
     });
+
+    describe("count", () => {
+      it("is zero with no users", async () => {
+        expect(await repo.count()).toBe(0);
+      });
+
+      it("reflects every created user", async () => {
+        await repo.create({ email: "a@example.com", passwordHash: "hash" });
+        await repo.create({ email: "b@example.com", passwordHash: "hash" });
+        expect(await repo.count()).toBe(2);
+      });
+    });
+
+    describe("listAll", () => {
+      it("is empty with no users", async () => {
+        expect(await repo.listAll()).toEqual([]);
+      });
+
+      it("returns every created user", async () => {
+        await repo.create({ email: "a@example.com", passwordHash: "hash" });
+        await repo.create({ email: "b@example.com", passwordHash: "hash" });
+        const all = await repo.listAll();
+        expect(all.map((u) => u.email).sort()).toEqual(["a@example.com", "b@example.com"]);
+      });
+    });
+
+    describe("setRole", () => {
+      it("updates the role and returns the updated user", async () => {
+        const user = await repo.create({ email: "a@example.com", passwordHash: "hash" });
+        const updated = await repo.setRole(user.id, "admin");
+        expect(updated?.role).toBe("admin");
+        expect((await repo.findById(user.id))?.role).toBe("admin");
+      });
+
+      it("returns null for a missing id rather than throwing", async () => {
+        expect(await repo.setRole("does-not-exist", "admin")).toBeNull();
+      });
+    });
   });
 }

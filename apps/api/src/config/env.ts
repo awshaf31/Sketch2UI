@@ -15,6 +15,10 @@ export const env = {
   // asset storage already uses — not a separate storage mechanism.
   exportsDir: process.env.EXPORTS_DIR ?? path.join(REPO_ROOT, "data", "exports"),
   storeFile: process.env.STORE_FILE ?? path.join(REPO_ROOT, "apps", "api", "data", "store.json"),
+  // SaaS phase S9 — Admin Models reads model registry metadata straight off disk
+  // (ml/models/<family>/<version>/metrics.json). Models are files, not a Prisma
+  // entity — see admin.routes.ts's header comment.
+  mlModelsDir: process.env.ML_MODELS_DIR ?? path.join(REPO_ROOT, "ml", "models"),
   corsOrigin: process.env.CORS_ORIGIN ?? "http://localhost:5173",
   // services/cv-worker. Loopback by default — plan section 19.6: the worker must not be
   // reachable from the public internet, only through this API.

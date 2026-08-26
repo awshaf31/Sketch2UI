@@ -78,6 +78,14 @@ trainingRouter.post<AssetParams>(
     // repository owns this (see training.repository.ts's doc comments).
     const { replacedPrevious } = await getRepositories().training.upsertApproval(sample);
 
+    await getRepositories().auditLogs.record({
+      event: "training_approved",
+      userId: req.userId!,
+      targetType: "project",
+      targetId: req.params.id,
+      metadata: { assetId: asset.id, boxCount: sample.boxes.length, datasetSplit: sample.datasetSplit },
+    });
+
     res.status(201).json({
       id: sample.id,
       approved: sample.approved,

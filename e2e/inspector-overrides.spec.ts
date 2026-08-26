@@ -16,10 +16,10 @@ const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");
 async function createProjectAndDetect(page: import("@playwright/test").Page, name: string) {
   await registerAndLogin(page, `${name.toLowerCase().replace(/\s+/g, "-")}-${Date.now()}@e2e.local`);
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByPlaceholder("New project name").fill(name);
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.waitForURL(/\/projects\/[^/]+$/);
+  await page.waitForURL(/\/app\/projects\/[^/]+$/);
 
   await page.locator('input[type="file"]').setInputFiles(FIXTURE_SKETCH);
   const detectButton = page.getByRole("button", { name: /^Detect/ });

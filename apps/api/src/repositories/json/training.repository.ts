@@ -34,4 +34,8 @@ export class JsonTrainingRepository implements TrainingRepository {
     db.save();
     return { sample: detach(sample), replacedPrevious };
   }
+
+  async listAll(): Promise<TrainingSample[]> {
+    return db.state.trainingSamples.map(detach);
+  }
 }

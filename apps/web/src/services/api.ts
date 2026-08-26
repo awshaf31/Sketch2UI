@@ -24,6 +24,90 @@ const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
  * compatibility shim that used to accept both was removed — this is a single-consumer
  * project and keeping a branch for a shape nothing produces just hides drift.
  */
+// SaaS phase S6 — Admin Overview. Mirrors GET /api/admin/overview's response shape
+// exactly (apps/api/src/modules/admin/admin.routes.ts).
+export interface AdminOverview {
+  totalUsers: number;
+  totalProjects: number;
+  generatedProjects: number;
+}
+
+// SaaS phase S7 — mirrors GET /api/admin/users's response shape exactly
+// (admin.routes.ts). Deliberately has no `passwordHash` field — the API never sends
+// one.
+export interface AdminUserSummary {
+  id: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  projectCount: number;
+}
+
+// SaaS phase S8 — mirrors GET /api/admin/projects and .../:id's response shapes
+// exactly (admin.routes.ts).
+export interface AdminProjectSummary {
+  id: string;
+  name: string;
+  status: string;
+  ownerEmail: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminJobSummary {
+  id: string;
+  type: string;
+  status: string;
+  stage: string;
+  createdAt: string;
+  updatedAt: string;
+  errorMessage: string | null;
+}
+
+export interface AdminProjectDetail extends AdminProjectSummary {
+  jobs: AdminJobSummary[];
+}
+
+// SaaS phase S9 — mirrors GET /api/admin/jobs, /models, and /training exactly.
+export interface AdminJobListEntry extends AdminJobSummary {
+  projectId: string;
+  projectName: string;
+  ownerEmail: string;
+}
+
+export interface AdminModelSummary {
+  family: string;
+  version: string;
+  architecture: string;
+  status: string;
+  datasetVersion: string;
+  classCount: number;
+  createdAt: string | null;
+  active: boolean;
+  metrics: { precision: number; recall: number; mAP50: number; mAP50_95: number } | null;
+}
+
+export interface AdminTrainingSampleSummary {
+  id: string;
+  projectId: string;
+  projectName: string;
+  datasetSplit: string;
+  boxCount: number;
+  classCount: number;
+  approvedAt: string;
+}
+
+// SaaS phase S10 — mirrors GET /api/admin/audit-logs exactly.
+export interface AdminAuditLogEntry {
+  id: string;
+  event: string;
+  actorEmail: string | null;
+  targetType: string | null;
+  targetId: string | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface ApiErrorDetail {
   code: string;
   message: string;
@@ -95,6 +179,40 @@ export const api = {
     return request("/api/auth/me");
   },
 
+  // Admin (SaaS phase S6+). Server-side role-gated (requireAdmin.ts) — a non-admin
+  // caller gets 403 regardless of what the frontend shows.
+  adminOverview(): Promise<AdminOverview> {
+    return request("/api/admin/overview");
+  },
+  adminListUsers(): Promise<AdminUserSummary[]> {
+    return request("/api/admin/users");
+  },
+  adminListProjects(filters: { q?: string; status?: string } = {}): Promise<AdminProjectSummary[]> {
+    const params = new URLSearchParams();
+    if (filters.q) params.set("q", filters.q);
+    if (filters.status) params.set("status", filters.status);
+    const qs = params.toString();
+    return request(`/api/admin/projects${qs ? `?${qs}` : ""}`);
+  },
+  adminGetProject(id: string): Promise<AdminProjectDetail> {
+    return request(`/api/admin/projects/${id}`);
+  },
+  adminListJobs(filters: { status?: string } = {}): Promise<AdminJobListEntry[]> {
+    const params = new URLSearchParams();
+    if (filters.status) params.set("status", filters.status);
+    const qs = params.toString();
+    return request(`/api/admin/jobs${qs ? `?${qs}` : ""}`);
+  },
+  adminListModels(): Promise<AdminModelSummary[]> {
+    return request("/api/admin/models");
+  },
+  adminListTraining(): Promise<AdminTrainingSampleSummary[]> {
+    return request("/api/admin/training");
+  },
+  adminListAuditLogs(limit = 200): Promise<AdminAuditLogEntry[]> {
+    return request(`/api/admin/audit-logs?limit=${limit}`);
+  },
+
   listProjects(): Promise<Project[]> {
     return request("/api/projects");
   },
@@ -106,6 +224,12 @@ export const api = {
   },
   deleteProject(id: string): Promise<void> {
     return request(`/api/projects/${id}`, { method: "DELETE" });
+  },
+  // SaaS phase S5 — Phase 4 of the brief calls for project rename. projects.routes.ts
+  // already accepts PATCH { name } (Phase D1 onward); this was just never exposed in
+  // the frontend until now.
+  renameProject(id: string, name: string): Promise<Project> {
+    return request(`/api/projects/${id}`, { method: "PATCH", body: JSON.stringify({ name }) });
   },
 
   // Pages (§6 D3). A project always has at least one page; pageId scopes every

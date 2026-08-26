@@ -57,6 +57,18 @@ function SearchIcon() {
   );
 }
 
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path
+        d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7.2 7.2-3 .8.8-3z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const GRID_CLASSES = "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-lg";
 
 /** Object-URL lifecycle for the client-side-only sketch preview shown before a
@@ -121,6 +133,8 @@ export default function Dashboard() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState("");
   const navigate = useNavigate();
   const { confirm } = useDialog();
   const { showToast } = useToast();
@@ -179,7 +193,26 @@ export default function Dashboard() {
         );
       }
     }
-    navigate(`/projects/${project.id}`);
+    navigate(`/app/projects/${project.id}`);
+  }
+
+  // SaaS phase S5 — Phase 4 of the brief ("rename if supported"). Same click-to-edit
+  // pattern as PagesStrip.tsx's page rename, applied to the project card's own title.
+  function startRename(p: Project) {
+    setEditingId(p.id);
+    setEditingValue(p.name);
+  }
+
+  async function commitRename(p: Project) {
+    const nextName = editingValue.trim();
+    setEditingId(null);
+    if (!nextName || nextName === p.name) return;
+    try {
+      const updated = await api.renameProject(p.id, nextName);
+      setProjects((prev) => prev.map((existing) => (existing.id === p.id ? updated : existing)));
+    } catch (e) {
+      showToast("error", (e as Error).message);
+    }
   }
 
   async function handleDelete(id: string, projectName: string) {
@@ -318,32 +351,65 @@ export default function Dashboard() {
               <div className={GRID_CLASSES}>
                 {filteredProjects.map((p) => {
                   const isDeleting = deletingId === p.id;
+                  const isEditing = editingId === p.id;
                   return (
                     <Card
                       key={p.id}
                       interactive
                       className={cn("group relative", isDeleting && "pointer-events-none opacity-50")}
                     >
-                      <button
-                        onClick={() => navigate(`/projects/${p.id}`)}
-                        disabled={isDeleting}
-                        className="block w-full truncate pr-lg text-left text-md font-medium text-text-primary"
-                      >
-                        {p.name}
-                      </button>
+                      {isEditing ? (
+                        <Input
+                          autoFocus
+                          size="sm"
+                          aria-label={`Rename "${p.name}"`}
+                          value={editingValue}
+                          onChange={(e) => setEditingValue(e.target.value)}
+                          onBlur={() => void commitRename(p)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") void commitRename(p);
+                            if (e.key === "Escape") setEditingId(null);
+                          }}
+                          className="mr-2xl"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => navigate(`/app/projects/${p.id}`)}
+                          disabled={isDeleting}
+                          className="block w-full truncate pr-3xl text-left text-md font-medium text-text-primary"
+                        >
+                          {p.name}
+                        </button>
+                      )}
                       <p className="mt-2xs text-xs text-text-muted">{p.status}</p>
-                      <IconButton
-                        aria-label={`Delete "${p.name}"`}
-                        icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
-                        size="sm"
-                        disabled={isDeleting}
-                        onClick={() => handleDelete(p.id, p.name)}
+                      <div
                         className={cn(
-                          "absolute right-sm top-sm text-text-muted opacity-0 transition-opacity duration-fast",
-                          "hover:text-error focus-visible:opacity-100 group-hover:opacity-100",
-                          isDeleting && "opacity-100"
+                          "absolute right-sm top-sm flex items-center gap-2xs opacity-0 transition-opacity duration-fast",
+                          "focus-within:opacity-100 group-hover:opacity-100",
+                          (isDeleting || isEditing) && "opacity-100"
                         )}
-                      />
+                      >
+                        {!isEditing && (
+                          <IconButton
+                            aria-label={`Rename "${p.name}"`}
+                            icon={<PencilIcon />}
+                            size="sm"
+                            disabled={isDeleting}
+                            onClick={() => startRename(p)}
+                            className="text-text-muted"
+                          />
+                        )}
+                        {!isEditing && (
+                          <IconButton
+                            aria-label={`Delete "${p.name}"`}
+                            icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
+                            size="sm"
+                            disabled={isDeleting}
+                            onClick={() => handleDelete(p.id, p.name)}
+                            className="text-text-muted hover:text-error"
+                          />
+                        )}
+                      </div>
                     </Card>
                   );
                 })}

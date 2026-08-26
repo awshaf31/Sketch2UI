@@ -31,7 +31,8 @@ projectsRouter.post(
       return sendError(res, 400, "VALIDATION_FAILED", "A project name is required.");
     }
 
-    const project = await getRepositories().projects.create({
+    const repos = getRepositories();
+    const project = await repos.projects.create({
       name,
       description: typeof description === "string" ? description : undefined,
       ownerId: req.userId!,
@@ -39,7 +40,14 @@ projectsRouter.post(
     // Phase D3: every project always has at least one page — a brand-new project gets
     // "Page 1" immediately, the same invariant the JSON-store backfill maintains for
     // pre-D3 projects.
-    await getRepositories().pages.create({ projectId: project.id, name: "Page 1" });
+    await repos.pages.create({ projectId: project.id, name: "Page 1" });
+    await repos.auditLogs.record({
+      event: "project_created",
+      userId: req.userId!,
+      targetType: "project",
+      targetId: project.id,
+      metadata: { projectName: project.name },
+    });
     res.status(201).json(project);
   })
 );
@@ -90,9 +98,15 @@ projectsRouter.delete<{ id: string }>(
   "/:id",
   requireProjectOwnership,
   asyncHandler(async (req, res) => {
+    const repos = getRepositories();
+    // Fetched before deletion purely so the audit entry can name the project — the
+    // repository's own delete() result carries only the file-owning rows it cascaded,
+    // not the project's own name.
+    const project = await repos.projects.findById(req.params.id);
+
     // The repository cascades the database side and hands back the rows that own files,
     // because after the cascade those rows are gone and the paths with them.
-    const removed = await getRepositories().projects.delete(req.params.id);
+    const removed = await repos.projects.delete(req.params.id);
     if (!removed) return sendError(res, 404, "NOT_FOUND", "Project not found.");
 
     // File cleanup stays here: it is filesystem work, not persistence, and the
@@ -106,6 +120,14 @@ projectsRouter.delete<{ id: string }>(
     fs.rmSync(path.join(env.exportsDir, "projects", req.params.id), {
       recursive: true,
       force: true,
+    });
+
+    await repos.auditLogs.record({
+      event: "project_deleted",
+      userId: req.userId!,
+      targetType: "project",
+      targetId: req.params.id,
+      metadata: { projectName: project?.name ?? "(unknown)" },
     });
 
     res.status(204).send();

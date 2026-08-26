@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { v4 as uuid } from "uuid";
 import type {
+  AuditLog,
   CodeVersion,
   CorrectionRecord,
   Detection,
@@ -38,6 +39,8 @@ interface StoreShape {
   /** Phase D1 authentication. */
   users: User[];
   sessions: Session[];
+  /** SaaS phase S10 — append-oriented; see AuditLogRepository. */
+  auditLogs: AuditLog[];
 }
 
 function emptyStore(): StoreShape {
@@ -54,6 +57,7 @@ function emptyStore(): StoreShape {
     correctionRecords: [],
     users: [],
     sessions: [],
+    auditLogs: [],
   };
 }
 

@@ -37,6 +37,16 @@ export class PrismaJobRepository implements JobRepository {
     return row ? toRecord(row) : null;
   }
 
+  async listByProject(projectId: string): Promise<Job[]> {
+    const rows = await this.prisma.job.findMany({ where: { projectId } });
+    return rows.map(toRecord);
+  }
+
+  async listAll(): Promise<Job[]> {
+    const rows = await this.prisma.job.findMany();
+    return rows.map(toRecord);
+  }
+
   async create(input: CreateJobInput): Promise<Job> {
     const row = await this.prisma.job.create({
       data: {

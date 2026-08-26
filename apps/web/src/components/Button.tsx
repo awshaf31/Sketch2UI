@@ -21,18 +21,21 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   loadingLabel?: ReactNode;
 }
 
-const SIZE_CLASSES: Record<ButtonSize, string> = {
+export const BUTTON_SIZE_CLASSES: Record<ButtonSize, string> = {
   sm: "h-7 px-sm text-xs gap-2xs",
   md: "h-8 px-md text-sm gap-xs",
   lg: "h-10 px-lg text-md gap-xs",
 };
 
-const VARIANT_CLASSES: Record<Exclude<ButtonVariant, "tinted">, string> = {
+export const BUTTON_VARIANT_CLASSES: Record<Exclude<ButtonVariant, "tinted">, string> = {
   primary: "bg-primary text-text-inverse hover:bg-primary-hover active:bg-primary-active",
   secondary: "bg-surface text-text-primary border border-border hover:border-border-strong",
   destructive: "bg-transparent text-text-muted hover:text-error",
   ghost: "bg-transparent text-text-secondary hover:bg-surface-sunken",
 };
+
+const SIZE_CLASSES = BUTTON_SIZE_CLASSES;
+const VARIANT_CLASSES = BUTTON_VARIANT_CLASSES;
 
 const TINT_CLASSES: Record<ButtonTint, string> = {
   brand: "border border-primary/30 bg-primary-subtle text-primary-active hover:bg-primary-subtle/70",

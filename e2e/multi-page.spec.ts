@@ -25,10 +25,10 @@ async function uploadDetectAndSave(page: import("@playwright/test").Page) {
 test("a second page has independent content and both pages export together", async ({ page }) => {
   await registerAndLogin(page, `multi-page-${Date.now()}@e2e.local`);
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByPlaceholder("New project name").fill("E2E Multi Page");
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.waitForURL(/\/projects\/[^/]+$/);
+  await page.waitForURL(/\/app\/projects\/[^/]+$/);
 
   // Page 1: upload, detect, generate — same flow as golden-path.spec.ts.
   await expect(page.getByRole("button", { name: "Page 1", exact: true })).toBeVisible();

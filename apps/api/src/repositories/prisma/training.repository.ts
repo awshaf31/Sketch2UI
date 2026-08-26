@@ -65,4 +65,9 @@ export class PrismaTrainingRepository implements TrainingRepository {
       return { sample: toRecord(row), replacedPrevious: existing !== null };
     });
   }
+
+  async listAll(): Promise<TrainingSample[]> {
+    const rows = await this.prisma.trainingSample.findMany();
+    return rows.map(toRecord);
+  }
 }

@@ -131,6 +131,19 @@ export function runTrainingRepositoryContract(
       });
     });
 
+    describe("listAll", () => {
+      it("is empty with no approved samples", async () => {
+        expect(await training.listAll()).toEqual([]);
+      });
+
+      it("returns every approved sample", async () => {
+        await training.upsertApproval(sample());
+        const all = await training.listAll();
+        expect(all).toHaveLength(1);
+        expect(all[0].imageAssetId).toBe(assetId);
+      });
+    });
+
     describe("cascade", () => {
       it("deleting the project removes its training samples", async () => {
         await training.upsertApproval(sample());

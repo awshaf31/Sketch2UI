@@ -32,6 +32,10 @@ memory — file paths and route registrations are named so they can be checked d
 | Final integration regression (D1–D4 combined) | **Done** (Phase D5, 2026-08-26) — auth, real (non-mocked) detection, multi-page, and cross-user security isolation all verified live against the running stack, not just automated coverage in isolation (see §2.12) |
 | React/Tailwind export, design tokens, themes | **Not started** (V2 scope) |
 | Everything V3 (layout transformer, OCR, active learning ML) | **Not started** |
+| Public marketing site | **Done** (Phase S3, 2026-08-26) — `/` and `/pricing`, auth-status-aware CTAs, no fabricated stats (see §7) |
+| User app shell (nav, Account) | **Done** (Phase S4, 2026-08-26) — persistent Projects/Account nav, `/app/account` (see §7) |
+| Admin dashboard (Overview/Users/Projects/Jobs/Models/Training/Audit Logs) | **Done** (Phases S6–S10, 2026-08-26) — server-side role-gated (`requireAdmin`), read-only throughout (see §7) |
+| Audit logging | **Done** (Phase S10, 2026-08-26) — append-only `AuditLog` table, 6 real event types wired into existing actions (see §7) |
 
 The project is a working single-user prototype that implements the plan's MVP and a
 meaningful slice of V1, now running entirely on PostgreSQL. The computer-vision model
@@ -424,9 +428,115 @@ Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in roug
 5. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
    mitigated (startup orphan-reaping is now an atomic Postgres update) but still not a
    durable queue; `docker-compose.yml` already provisions Redis, unused.
-6. **Broader test coverage** — three Playwright E2E specs exist (golden path,
-   Inspector overrides, multi-page), all auth-aware and now run automatically in CI
-   (see §2.11); still no React component/unit tests.
+6. **Broader test coverage** — updated 2026-08-26: the SaaS transformation (§7)
+   added 6 new Playwright specs (marketing, account, project-rename, admin, plus
+   the 3 pre-existing ones), all running in CI. Still no React component/unit
+   tests (RTL or similar) — E2E and HTTP-integration remain the only coverage
+   above the repository-contract layer.
 7. ~~Final integration pass~~ — **done, see §2.12** (Phase D5, 2026-08-26). This
    was the deadline execution plan's last phase — **D1 through D5 are now all
    complete.**
+8. See §7's own "Known limitations / what's next" for what the SaaS
+   transformation itself left open (the `PERSISTENCE_DRIVER` discrepancy, admin
+   mobile nav, deliberately-unbuilt admin actions).
+
+---
+
+## 7. SaaS transformation — public site, user app shell, admin dashboard, audit logs (2026-08-26)
+
+A separate instruction set, executed the same day as the items above, turning
+Sketch2UI from an authenticated single-workspace tool into three connected
+surfaces: a public marketing site, the existing user app (given real navigation
+chrome), and a new, fully separate admin dashboard. Full phase-by-phase detail —
+what shipped, why, exact files, and verification per phase — is in
+`docs/execution/phase-log.md`'s consolidated "SaaS transformation (Phases D0,
+S1–S14)" entry; this section is the same summary discipline every other item in
+this document follows: current state, not a running log.
+
+**Explicitly preserved, per the brief's own non-negotiables and verified before
+any code was written:** PostgreSQL, Prisma, and the repository abstraction were
+never replaced; the detection pipeline (`packages/codegen`, `services/cv-worker`)
+and code generation were never touched; every phase began by checking whether the
+thing it was about to build already existed (most of D1–D5 above already had, per
+the D0 audit — auth, ownership, CI were reused as-is, not rebuilt).
+
+### What's done
+
+- **Public marketing site** — `/` (hero, pipeline demo, how-it-works, features,
+  taxonomy-driven "supported components" list, technology/trust section) and
+  `/pricing` (three tiers, explicitly labeled "Not live" — no billing exists, per
+  the brief's own instruction not to fake one). No fabricated statistics anywhere.
+  CTAs are auth-status-aware: signed out → `/register`, signed in → `/app`, never
+  both. `apps/web/src/pages/Home.tsx`, `Pricing.tsx`,
+  `components/{MarketingHeader,MarketingFooter,LinkButton}.tsx`.
+- **User app shell** — the authenticated app moved from `/` and `/projects/:id`
+  to `/app` and `/app/projects/:id` (freeing `/` for the homepage above).
+  `AppHeader` gained persistent nav (Projects/Account) and a new `/app/account`
+  page (email, member-since date — no password-change field, since the auth
+  backend has no endpoint for one). Project **rename** was added (Dashboard card
+  + Workspace toolbar) — the last gap found against the brief's project-management
+  checklist; everything else (create/upload/open/delete/search/status/pages/
+  generate/preview/export) was already built.
+- **Admin dashboard** — a completely separate protected surface (`/admin/*`,
+  `AdminHeader`, not `AppHeader`), gated server-side by a real `requireAdmin`
+  middleware (403, checked on every `/api/admin` route) — never by hiding a link
+  in the frontend. Read-only throughout, per the brief's own repeated "prefer
+  read-only oversight first" instruction:
+  - **Overview** (`/admin`) — real database aggregates only (Total Users, Total
+    Projects, Generated Projects). No fabricated "Active Users" (no
+    login-tracking field exists) or "Active Model" (models are files, not a
+    database row).
+  - **Users** (`/admin/users`) — email, role, created date, project count. No
+    Status column (this app has no deactivation concept) and no in-UI role
+    changes — granting the admin role stays a deliberate, out-of-band operation
+    (`apps/api/scripts/promote-admin.ts`), never a self-service button.
+  - **Projects** (`/admin/projects`, `/admin/projects/:id`) — searchable,
+    filterable, cross-user by design (an admin route is never gated by
+    `requireProjectOwnership`, which asks the wrong question); the detail page
+    shows a project's own job history.
+  - **Jobs** (`/admin/jobs`), **Models** (`/admin/models`, reading the real
+    on-disk registry under `ml/models/` — the same source `services/cv-worker`
+    loads from), **Training Data** (`/admin/training`, every row already
+    approved — there is no pending/rejected state in this schema).
+  - **Audit Logs** (`/admin/audit-logs`) — see below.
+- **Audit logging** — a new, append-only `AuditLog` model (migration
+  `20260826010000_add_audit_logs`) wired into 6 real existing actions
+  (register/login/logout, project create/delete, admin project-detail views,
+  training approval, admin-role grants). `MODEL_ACTIVATED` from the brief's own
+  example event list was deliberately not implemented — no code path in this app
+  ever activates a model, so logging it would mean fabricating an event.
+- **Security test coverage** — a dedicated audit-then-fill pass
+  (`security-authorization.test.ts`, 14 tests) closed the one real gap found:
+  detections/code-versions/exports had ownership logic but no dedicated
+  HTTP-integration proof of it, unlike projects/pages/jobs/assets which already
+  did.
+- **E2E coverage** — all three of the brief's named journeys (public, user,
+  admin) are now automated (`e2e/marketing.spec.ts`, existing user-flow specs,
+  new `e2e/admin.spec.ts` — the latter using a synchronously-seeded admin
+  account in `playwright.config.ts`, since role changes are never route-driven).
+
+### What's explicitly not built (by design, not oversight)
+
+- Admin user deactivation, in-UI role changes, model promote/delete, and
+  training-sample reject — every one of these was named only as a "potential" or
+  "if required" action in the brief, and none of the underlying capability exists
+  to wire a button to. Revisit only on an explicit ask, not proactively.
+- A mobile-optimized admin nav (it scrolls cleanly instead of breaking — Phase
+  S13 — but there's no collapsed/hamburger treatment). The brief's own bar for
+  admin is "desktop-first, responsive enough for basic management," not full
+  mobile support.
+- `/about`, `/contact`, and standalone `/features`/`/how-it-works` routes — no
+  real company/support content exists to put on the first two, and the latter two
+  are in-page anchor sections on `/` instead of separate routes.
+
+### Known limitation carried forward from the D0 audit
+
+`PROJECT_STATUS.md` §2.7 (above) says `PERSISTENCE_DRIVER=postgres` is set in
+`.env`; the actual `.env` on disk currently has `PERSISTENCE_DRIVER=json`. This
+was flagged during this transformation's own D0 audit and never resolved. Every
+phase in §7, including the new `AuditLog` table, was built and contract-tested
+against both adapters per this project's existing convention, but only
+live-verified against the JSON adapter this session — not against a running
+Postgres instance the way the original Phase 8 migration was. **Confirm which
+driver is actually intended before deploying**, and if postgres, run
+`prisma migrate deploy` for the new audit-log migration first.

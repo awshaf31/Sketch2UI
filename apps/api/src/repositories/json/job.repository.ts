@@ -21,6 +21,14 @@ export class JsonJobRepository implements JobRepository {
     return found ? detach(found) : null;
   }
 
+  async listByProject(projectId: string): Promise<Job[]> {
+    return db.state.jobs.filter((j) => j.projectId === projectId).map(detach);
+  }
+
+  async listAll(): Promise<Job[]> {
+    return db.state.jobs.map(detach);
+  }
+
   async create(input: CreateJobInput): Promise<Job> {
     const now = new Date().toISOString();
     const job: Job = {

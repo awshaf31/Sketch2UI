@@ -83,7 +83,7 @@ export function WorkspaceUnavailable({
         )}
 
         <Link
-          to="/"
+          to="/app"
           className="mt-lg inline-block text-sm text-text-muted transition-colors duration-fast hover:text-text-secondary"
         >
           ← Back to projects

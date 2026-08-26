@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import { E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, hashPasswordSync } from "./e2e/admin-seed";
 
 // Golden-path E2E suite — plan §24. Runs the whole stack (mock CV worker, API, web)
 // against THROWAWAY storage, entirely isolated from real dev data:
@@ -25,6 +26,45 @@ const dataDir = path.join(tempDir, "data");
 fs.mkdirSync(path.join(dataDir, "uploads"), { recursive: true });
 fs.mkdirSync(path.join(dataDir, "exports"), { recursive: true });
 
+// SaaS phase S12 — a seeded admin account for e2e/admin.spec.ts's full admin
+// journey. Role changes are deliberately never self-service or route-driven
+// (apps/api/scripts/promote-admin.ts is the only real path — see admin.routes.ts's
+// header comment), so the isolated e2e store needs its one admin account written to
+// disk before the API server ever starts, rather than promoted afterward: the JSON
+// store loads once at process startup (apps/api/src/db/jsonStore.ts) and the
+// `webServer` below runs for the whole suite, so a promotion after boot would write
+// to a file the already-running process never re-reads. Credentials/hashing live in
+// ./e2e/admin-seed.ts (not here) so admin.spec.ts can import just the credentials
+// without re-triggering this file's own mkdtempSync/writeFileSync side effects.
+const seedNow = new Date().toISOString();
+fs.writeFileSync(
+  path.join(dataDir, "store.json"),
+  JSON.stringify({
+    projects: [],
+    pages: [],
+    assets: [],
+    detections: [],
+    codeVersions: [],
+    jobs: [],
+    trainingSamples: [],
+    exports: [],
+    pageBoundaries: [],
+    correctionRecords: [],
+    users: [
+      {
+        id: "e2e-seed-admin",
+        email: E2E_ADMIN_EMAIL,
+        passwordHash: hashPasswordSync(E2E_ADMIN_PASSWORD),
+        role: "admin",
+        createdAt: seedNow,
+        updatedAt: seedNow,
+      },
+    ],
+    sessions: [],
+    auditLogs: [],
+  })
+);
+
 const apiEnv = {
   PORT: String(API_PORT),
   CORS_ORIGIN: `http://localhost:${WEB_PORT}`,
@@ -35,6 +75,18 @@ const apiEnv = {
   CV_WORKER_URL: `http://127.0.0.1:${MOCK_CV_WORKER_PORT}`,
   // PERSISTENCE_DRIVER deliberately absent — defaults to "json", so this suite never
   // touches Postgres (dev or test) regardless of what the real .env says.
+  //
+  // SaaS phase S5 — this spawned API process previously ran with no NODE_ENV set (so
+  // apps/api/src/config/env.ts defaulted it to "development"), meaning the real
+  // DEF-009 auth rate limiter (10 req/15min per IP — rateLimiter.ts) was silently
+  // active against this suite's single shared dev-server instance the whole time.
+  // That was latent (harmless) while the suite made few registrations; adding more
+  // registerAndLogin-based specs (account.spec.ts, project-rename.spec.ts) pushed the
+  // per-run total over 10 and started intermittently 429-ing a registration, hanging
+  // that test's waitForURL. rateLimiter.ts already documents the intended bypass —
+  // "NODE_ENV is set to 'test' automatically by Vitest" — Playwright's own spawned
+  // process just never got the same treatment. This is the fix, not a retry/skip.
+  NODE_ENV: "test",
 };
 
 export default defineConfig({

@@ -118,6 +118,20 @@ enum CorrectionType {
   ignored
 }
 
+/// SaaS phase S10 (brief Phase 14). MODEL_ACTIVATED from the brief's example list is
+/// deliberately absent — see packages/shared-types/src/audit-log.ts's header comment
+/// for why (no route or script in this app ever activates a model).
+enum AuditEvent {
+  user_registered
+  user_login
+  user_logout
+  project_created
+  project_deleted
+  project_accessed_by_admin
+  training_approved
+  admin_role_changed
+}
+
 // ---------------------------------------------------------------------------
 // Core entities
 // ---------------------------------------------------------------------------
@@ -126,13 +140,16 @@ model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
-  /// Reserved for future RBAC — no route reads this yet in Phase D1.
+  /// SaaS phase S6 — requireAdmin.ts gates every /api/admin route on this. Granted
+  /// only via apps/api/scripts/promote-admin.ts (a controlled, out-of-band operation
+  /// — never a self-service or admin-UI action).
   role         String   @default("user")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  projects Project[]
-  sessions Session[]
+  projects  Project[]
+  sessions  Session[]
+  auditLogs AuditLog[]
 
   @@map("users")
 }
@@ -623,4 +640,34 @@ model StructureOverride {
   @@index([pageId])
   @@index([parentDetectionId])
   @@map("structure_overrides")
+}
+
+/// SaaS phase S10 — Audit Logs (brief Phase 14). Append-oriented by construction: see
+/// AuditLogRepository (apps/api/src/repositories/types.ts) — it exposes only
+/// `record()` and `listRecent()`, no update or delete.
+model AuditLog {
+  id     String     @id @default(uuid())
+  event  AuditEvent
+  /// Nullable + SetNull: an audit trail must outlive the actor, not cascade away if
+  /// the account is ever deleted (no deletion feature exists today, but the schema
+  /// doesn't assume it never will).
+  userId String?
+  user   User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  /// A loose, polymorphic pointer at whatever the event is about (e.g. "project" /
+  /// a project id) — plain strings rather than a real relation, since a
+  /// PROJECT_DELETED row's own targetId points at a project that, by definition, no
+  /// longer exists by the time anyone reads the log.
+  targetType String?
+  targetId   String?
+
+  /// Small, non-sensitive context only (see each call site) — never a password,
+  /// session token, or password hash.
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }

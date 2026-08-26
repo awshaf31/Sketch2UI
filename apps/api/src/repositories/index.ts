@@ -18,6 +18,7 @@
 import { env } from "../config/env.js";
 import type {
   AssetRepository,
+  AuditLogRepository,
   BoundaryRepository,
   CodeVersionRepository,
   ContentOverrideRepository,
@@ -50,6 +51,7 @@ import { JsonExportRepository } from "./json/export.repository.js";
 import { JsonJobRepository } from "./json/job.repository.js";
 import { JsonUserRepository } from "./json/user.repository.js";
 import { JsonSessionRepository } from "./json/session.repository.js";
+import { JsonAuditLogRepository } from "./json/audit-log.repository.js";
 import { PrismaProjectRepository } from "./prisma/project.repository.js";
 import { PrismaPageRepository } from "./prisma/page.repository.js";
 import { PrismaAssetRepository } from "./prisma/asset.repository.js";
@@ -66,6 +68,7 @@ import { PrismaExportRepository } from "./prisma/export.repository.js";
 import { PrismaJobRepository } from "./prisma/job.repository.js";
 import { PrismaUserRepository } from "./prisma/user.repository.js";
 import { PrismaSessionRepository } from "./prisma/session.repository.js";
+import { PrismaAuditLogRepository } from "./prisma/audit-log.repository.js";
 
 export * from "./types.js";
 
@@ -87,6 +90,7 @@ export interface MigratedRepositories {
   jobs: JobRepository;
   users: UserRepository;
   sessions: SessionRepository;
+  auditLogs: AuditLogRepository;
 }
 
 let cached: MigratedRepositories | undefined;
@@ -110,6 +114,7 @@ function build(): MigratedRepositories {
       jobs: new PrismaJobRepository(),
       users: new PrismaUserRepository(),
       sessions: new PrismaSessionRepository(),
+      auditLogs: new PrismaAuditLogRepository(),
     };
   }
   return {
@@ -129,6 +134,7 @@ function build(): MigratedRepositories {
     jobs: new JsonJobRepository(),
     users: new JsonUserRepository(),
     sessions: new JsonSessionRepository(),
+    auditLogs: new JsonAuditLogRepository(),
   };
 }
 

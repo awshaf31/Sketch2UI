@@ -19,6 +19,8 @@
  */
 
 import type {
+  AuditEvent,
+  AuditLog,
   CodeVersion,
   ContentOverride,
   CorrectionRecord,
@@ -350,6 +352,13 @@ export interface CreateJobInput {
 
 export interface JobRepository {
   findById(id: string): Promise<Job | null>;
+  /** SaaS phase S8 — Admin Projects' per-project job list (brief Phase 10: "inspect
+   * associated jobs"). No ordering guarantee, matching every other list()'s
+   * convention in this file. */
+  listByProject(projectId: string): Promise<Job[]>;
+  /** SaaS phase S9 — Admin Job Monitoring's global, cross-project list (brief Phase
+   * 11). No ordering guarantee. */
+  listAll(): Promise<Job[]>;
   create(input: CreateJobInput): Promise<Job>;
   update(id: string, patch: Partial<Omit<Job, "id" | "createdAt">>): Promise<Job | null>;
   /**
@@ -369,6 +378,10 @@ export interface TrainingRepository {
   findByAsset(assetId: string): Promise<TrainingSample | null>;
   /** Re-approving SUPERSEDES the previous snapshot rather than stacking duplicates. */
   upsertApproval(sample: TrainingSample): Promise<{ sample: TrainingSample; replacedPrevious: boolean }>;
+  /** SaaS phase S9 — Admin Training Data (brief Phase 13). Every row here is already
+   * approved (see training-sample.ts: existence IS the approval; there is no
+   * pending/rejected state to filter by). No ordering guarantee. */
+  listAll(): Promise<TrainingSample[]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +432,18 @@ export interface UserRepository {
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   create(input: CreateUserInput): Promise<User>;
+  /** SaaS phase S6 — Admin Overview's one real, cheap, database-backed metric. */
+  count(): Promise<number>;
+  /** SaaS phase S7 — Admin Users list. No ordering guarantee, matching
+   * ProjectRepository.list()'s own convention. */
+  listAll(): Promise<User[]>;
+  /** The one supported role mutation (apps/api/scripts/promote-admin.ts) — a
+   * deliberate, controlled operation, never exposed on an admin route (Phase 9: "role
+   * changes... if required" — not required yet). Exists as a repository method
+   * (rather than the script/tests reaching into db.state directly) because
+   * check:db-state's zero-direct-access invariant applies across all of
+   * apps/api/src, including test files. */
+  setRole(id: string, role: string): Promise<User | null>;
 }
 
 export interface CreateSessionInput {
@@ -431,6 +456,32 @@ export interface SessionRepository {
   create(input: CreateSessionInput): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<Session | null>;
   deleteByTokenHash(tokenHash: string): Promise<void>;
+}
+
+// ---------------------------------------------------------------------------
+// Audit logs — SaaS phase S10 (brief Phase 14)
+// ---------------------------------------------------------------------------
+
+export interface RecordAuditLogInput {
+  event: AuditEvent;
+  userId?: string;
+  targetType?: string;
+  targetId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Deliberately append-oriented: only `record` and `listRecent` exist. There is no
+ * update or delete — a real audit trail is never edited after the fact, and the
+ * absence of those methods makes that a compile-time guarantee for every caller,
+ * not just a documented convention.
+ */
+export interface AuditLogRepository {
+  record(input: RecordAuditLogInput): Promise<AuditLog>;
+  /** Newest first. `limit` bounds an otherwise-unbounded, ever-growing table — every
+   * other list() in this app is small-scale by nature; this is the one domain where
+   * that assumption doesn't hold. */
+  listRecent(limit: number): Promise<AuditLog[]>;
 }
 
 // ---------------------------------------------------------------------------

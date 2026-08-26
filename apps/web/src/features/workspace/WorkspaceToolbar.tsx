@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Badge } from "../../components/Badge.js";
 import { Button } from "../../components/Button.js";
+import { IconButton } from "../../components/IconButton.js";
+import { Input } from "../../components/Input.js";
 import { Tooltip } from "../../components/Tooltip.js";
 
 // docs/frontend/workspace-design.md — "Top toolbar". Extracted from
@@ -13,9 +16,27 @@ import { Tooltip } from "../../components/Tooltip.js";
 // DELIBERATE, tracked e2e-breaking change — see
 // docs/frontend/design-to-code-mapping.md's selector table; e2e/golden-path.spec.ts
 // is updated in the same change that introduces this component.
+//
+// SaaS phase S5 — Phase 4 of the brief ("rename if supported" — the API already did,
+// per projects.routes.ts's PATCH handler). Click-to-edit on the project name, same
+// interaction pattern PagesStrip.tsx already established for page rename, so the app
+// doesn't grow a second rename convention.
+
+function PencilIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path
+        d="M11.3 2.3a1 1 0 0 1 1.4 0l1 1a1 1 0 0 1 0 1.4l-7.2 7.2-3 .8.8-3z"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 interface WorkspaceToolbarProps {
   projectName: string;
+  onRenameProject: (name: string) => void | Promise<void>;
   hasAsset: boolean;
   detecting: boolean;
   onDetect: () => void;
@@ -32,6 +53,7 @@ interface WorkspaceToolbarProps {
 
 export function WorkspaceToolbar({
   projectName,
+  onRenameProject,
   hasAsset,
   detecting,
   onDetect,
@@ -43,16 +65,56 @@ export function WorkspaceToolbar({
   saving,
   onSaveVersion,
 }: WorkspaceToolbarProps) {
+  const [editing, setEditing] = useState(false);
+  const [editingValue, setEditingValue] = useState(projectName);
+
+  function startRename() {
+    setEditingValue(projectName);
+    setEditing(true);
+  }
+
+  async function commitRename() {
+    const name = editingValue.trim();
+    setEditing(false);
+    if (!name || name === projectName) return;
+    await onRenameProject(name);
+  }
+
   return (
     <header className="flex items-center justify-between border-b border-border bg-surface px-lg py-sm">
       <div className="flex items-center gap-md">
         <Link
-          to="/"
+          to="/app"
           className="text-sm text-text-muted transition-colors duration-fast hover:text-text-secondary"
         >
           ← Projects
         </Link>
-        <h1 className="text-sm font-semibold text-text-primary">{projectName}</h1>
+        {editing ? (
+          <Input
+            autoFocus
+            size="sm"
+            aria-label="Project name"
+            value={editingValue}
+            onChange={(e) => setEditingValue(e.target.value)}
+            onBlur={() => void commitRename()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void commitRename();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="h-7 w-56"
+          />
+        ) : (
+          <div className="group flex items-center gap-2xs">
+            <h1 className="text-sm font-semibold text-text-primary">{projectName}</h1>
+            <IconButton
+              aria-label={`Rename "${projectName}"`}
+              icon={<PencilIcon />}
+              size="sm"
+              onClick={startRename}
+              className="opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+            />
+          </div>
+        )}
       </div>
 
       {hasAsset && (

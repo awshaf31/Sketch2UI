@@ -69,6 +69,7 @@ authRouter.post(
     const user = await repos.users.create({ email: normalizedEmail, passwordHash });
     const token = await issueSession(user.id);
     setSessionCookie(res, token);
+    await repos.auditLogs.record({ event: "user_registered", userId: user.id });
     res.status(201).json(toPublicUser(user));
   })
 );
@@ -94,6 +95,7 @@ authRouter.post(
 
     const token = await issueSession(user.id);
     setSessionCookie(res, token);
+    await repos.auditLogs.record({ event: "user_login", userId: user.id });
     res.status(200).json(toPublicUser(user));
   })
 );
@@ -104,7 +106,16 @@ authRouter.post(
   asyncHandler(async (req, res) => {
     const token = readSessionCookie(req);
     if (token) {
-      await getRepositories().sessions.deleteByTokenHash(hashToken(token));
+      const repos = getRepositories();
+      const tokenHash = hashToken(token);
+      // Looked up BEFORE deletion — the session (and its userId) won't exist to read
+      // afterward, and the audit event is specifically "this user logged out," not
+      // "some session was deleted."
+      const session = await repos.sessions.findByTokenHash(tokenHash);
+      await repos.sessions.deleteByTokenHash(tokenHash);
+      if (session) {
+        await repos.auditLogs.record({ event: "user_logout", userId: session.userId });
+      }
     }
     clearSessionCookie(res);
     res.status(204).send();

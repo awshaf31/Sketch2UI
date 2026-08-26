@@ -35,4 +35,25 @@ export class PrismaUserRepository implements UserRepository {
     });
     return toRecord(row);
   }
+
+  async count(): Promise<number> {
+    return this.prisma.user.count();
+  }
+
+  async listAll(): Promise<User[]> {
+    const rows = await this.prisma.user.findMany();
+    return rows.map(toRecord);
+  }
+
+  async setRole(id: string, role: string): Promise<User | null> {
+    try {
+      const row = await this.prisma.user.update({ where: { id }, data: { role } });
+      return toRecord(row);
+    } catch {
+      // Prisma throws on an update to a missing row — findById/create/etc. in this
+      // same file already prefer "return null" over a thrown error for a missing
+      // record, so this matches that convention rather than introducing a new one.
+      return null;
+    }
+  }
 }

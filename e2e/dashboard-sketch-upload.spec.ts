@@ -18,7 +18,7 @@ const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");
 test("a sketch staged on the Dashboard lands on the new project's default page", async ({ page }) => {
   await registerAndLogin(page, `dashboard-upload-${Date.now()}@e2e.local`);
 
-  await page.goto("/");
+  await page.goto("/app");
 
   // Stage the sketch before the project exists — the Dashboard's hero dropzone, not
   // the workspace's.
@@ -27,7 +27,7 @@ test("a sketch staged on the Dashboard lands on the new project's default page",
 
   await page.getByPlaceholder("New project name").fill("E2E Dashboard Upload");
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.waitForURL(/\/projects\/[^/]+$/);
+  await page.waitForURL(/\/app\/projects\/[^/]+$/);
 
   // The workspace should open with the sketch already attached to "Page 1" — the
   // Detect button (which only ever renders once an asset exists) should be visible
@@ -39,10 +39,10 @@ test("a sketch staged on the Dashboard lands on the new project's default page",
 test("creating a project with no sketch staged still shows the upload dropzone", async ({ page }) => {
   await registerAndLogin(page, `dashboard-no-upload-${Date.now()}@e2e.local`);
 
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByPlaceholder("New project name").fill("E2E Dashboard No Upload");
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.waitForURL(/\/projects\/[^/]+$/);
+  await page.waitForURL(/\/app\/projects\/[^/]+$/);
 
   // The workspace's own upload input is present (though visually hidden behind the
   // styled "Choose file" label, same as the Dashboard's — see UploadDropzone.tsx) and

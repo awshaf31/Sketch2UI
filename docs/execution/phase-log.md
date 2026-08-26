@@ -4059,3 +4059,292 @@ None remaining in the deadline execution plan — D1 through D5 are all complete
 Remaining work is whatever `PROJECT_STATUS.md` §4/§6 still lists as not-started
 (V2/V3 scope, durable job queue, broader test coverage, deployment automation),
 none of which is part of this deadline plan's scope.
+
+---
+
+## SaaS transformation (Phases D0, S1–S14)
+
+**Date:** 2026-08-26 (one session, following D1–D5 above).
+**Source brief:** a separate SaaS-transformation instruction set ("turn Sketch2UI
+into a public marketing site + user app + admin dashboard"), executed one phase at
+a time with a stop-and-report after each. Its own phase numbering (D0–D14) collided
+with this log's existing D1–D5 entries above, so every phase in this section is
+prefixed `S` instead (`S1` = the brief's own `D1`, etc.) — D0 kept its name since
+nothing above used it. Each subsection below is what a code comment means when it
+says "see phase-log.md's Phase SN entry" — kept together as one dated entry rather
+than fifteen separate top-level ones, since they're one continuous session with one
+shared verification trail, not independent efforts spread over time.
+
+**Non-negotiables honored throughout** (per the brief's own repeated instructions,
+cross-checked against this project's existing architecture before any code was
+written): PostgreSQL/Prisma/the repository layer were never replaced, the detection
+pipeline and codegen were never touched, and no phase implemented anything without
+first checking whether it already existed.
+
+### Phase D0 — SaaS architecture audit
+Read-only inspection, no code changed. Produced a 14-point report (routes, auth
+architecture, Prisma models, repository structure, admin capability [none existed],
+API authorization pattern, migration risks) directly in conversation rather than a
+new doc file. Found: auth/ownership/multi-page were already complete (D1/D3 above);
+zero admin functionality anywhere; the phase-numbering collision noted above; and a
+real discrepancy — `PROJECT_STATUS.md` §2.7 claims `PERSISTENCE_DRIVER=postgres`,
+but the actual `.env` on disk has `PERSISTENCE_DRIVER=json`. That discrepancy was
+never resolved this session (see "Known limitations" at the end of this entry) —
+every phase below ran against the JSON adapter as a result.
+
+### Phase S1 — Database ownership/integrity audit
+D0 found the ownership pattern (`requireProjectOwnership`/`requirePageInProject`,
+404-not-403) already correct everywhere but only incidentally tested. Added
+`apps/api/src/modules/__tests__/cross-user-security.test.ts` (7 tests: project
+PATCH/DELETE cross-user → 404, unauthenticated → 401, page cross-user → 404, job
+cross-user → 404) as dedicated, explicit proof rather than relying on other
+modules' tests to demonstrate it as a side effect. All 7 passed on first run — this
+phase found no bug, only closed a test-coverage gap. Skipped E2E (test-only change,
+no request-path behavior moved).
+
+### Phase S2 — Authentication integration
+No-op. D0 already confirmed auth (register/login/logout/session/ownership) was
+fully built in Phase D1 above; nothing to add.
+
+### Phase S3 — Public marketing website
+Greenfield. User chose (via AskUserQuestion) to move the authenticated app from `/`
+and `/projects/:id` to `/app` and `/app/projects/:id`, freeing `/` for a real
+homepage — the brief's own target structure. New: `apps/web/src/pages/Home.tsx`
+(hero, product-demo pipeline strip, how-it-works, core features, why-Sketch2UI,
+multi-page workflow, supported-components taxonomy pulled from the real
+`packages/shared-types/src/taxonomy.ts`, technology/trust section),
+`Pricing.tsx` (three tiers, explicitly labeled "Not live" — no billing exists),
+`MarketingHeader.tsx`/`MarketingFooter.tsx` (auth-status-aware CTAs), `LinkButton.tsx`
+(a `<Link>` styled like `Button`, needed because CTAs must be real anchors, not
+click-handlers — required exporting `Button`'s class recipe as
+`BUTTON_SIZE_CLASSES`/`BUTTON_VARIANT_CLASSES`). Updated every internal route
+reference for the `/app` move (`App.tsx`, `AppHeader.tsx`, `WorkspaceToolbar.tsx`,
+`WorkspaceUnavailable.tsx`, `Login.tsx`, `Register.tsx`, `Dashboard.tsx`) and all 5
+existing e2e files' hard-coded paths. Added `e2e/marketing.spec.ts` (4 tests).
+Deliberately scoped to `/` and `/pricing` only — no standalone `/features` or
+`/how-it-works` routes (in-page anchors instead), no `/about`/`/contact` (no real
+company/support content to put there). Found and fixed two real bugs during manual
+browser review before calling it done: the footer's "Log in" link ignored auth
+status, and the 5-item pipeline strip had an awkward 2-2-1 layout at tablet widths.
+Verification: typecheck/build clean; full Playwright suite (10/10, the 6 pre-existing
+specs plus 4 new) green, proving the `/app` move broke nothing.
+
+### Phase S4 — User application shell
+Added persistent nav to `AppHeader.tsx` (Projects/Account, active-state highlighted)
+and a new minimal `Account.tsx` page (email, member-since date — no password-change
+field, since the auth backend has no such endpoint to wire it to). Adapted rather
+than copied literally: "Dashboard" and "Projects" collapsed into one nav link (same
+screen, no separate route), "Templates" skipped (not implemented), the "profile
+menu" is flat inline controls, not a dropdown (no such component existed in this
+app yet, and building one for a two-item menu was judged more risk than value).
+New `e2e/account.spec.ts` (2 tests). Full suite 12/12 green.
+
+### Phase S5 — Dashboard/project management
+Audited Phase 4 of the brief's checklist against what already existed — everything
+was already built except **rename**, which the API supported
+(`PATCH /api/projects/:id`) but no UI ever exposed. Added `api.renameProject()`,
+click-to-edit rename on both the Dashboard project card and the Workspace toolbar
+title (mirroring `PagesStrip.tsx`'s existing page-rename interaction rather than
+inventing a new pattern). New `e2e/project-rename.spec.ts` (2 tests). Found and
+fixed a real, pre-existing bug along the way: Playwright's spawned API server never
+got `NODE_ENV=test`, so the real DEF-009 rate limiter was silently active against
+the whole e2e suite the entire time — harmless until this phase's new
+registration-heavy specs pushed the per-run total over the limit and started
+intermittently 429-ing a registration mid-suite. Fixed in `playwright.config.ts`
+by setting `NODE_ENV: "test"` on the spawned process, matching the bypass
+`rateLimiter.ts` already documented as the intended behavior for automated tests.
+Full suite 14/14 green, run twice to confirm the flake was gone.
+
+### Phase S6 — Admin shell
+Greenfield — D0 found zero admin functionality anywhere. Backend:
+`requireAdmin.ts` middleware (403 `FORBIDDEN`, not the ownership-style 404 — this
+is a route-level role check, not a per-resource ownership check, so there's
+nothing to hide behind an existence-enumeration excuse), `modules/admin/admin.routes.ts`
+mounted `requireAuth → requireAdmin → adminRouter` in `server.ts`, one new
+repository method (`UserRepository.count()`, JSON+Prisma+contract test),
+`GET /api/admin/overview` (Total Users, Total Projects, Generated Projects — real
+aggregates only; deliberately excluded "Active Users" [no login-tracking field
+exists], Assets/Jobs/Training counts [belong to later phases that own those
+domains], "Active Model" [not a database entity]). `apps/api/scripts/promote-admin.ts`
+— the sole, deliberate, out-of-band way to grant the admin role (mirrors
+`backfill-legacy-owner.ts`'s shape). Frontend: `ProtectedRoute`'s new `requireAdmin`
+prop (UX only — the real gate is server-side), `AdminHeader.tsx` (separate
+layout/nav from `AppHeader`, per the brief's "admin ≠ user dashboard"),
+`AdminOverview.tsx`, `/admin` route. New `admin.routes.test.ts` (3 HTTP-integration
+tests: unauthenticated → 401, regular user → 403, admin → real counts). Manually
+promoted a real dev user to admin and confirmed both directions live in the
+browser. Full suite green (Vitest 273 + Playwright 14/14).
+
+### Phase S7 — Admin Users
+Read-only user list (Email, Role, Created, Project count) — deliberately no Status
+column (no deactivation concept exists in this app; a column reading "Active" on
+every row forever would be decoration) and no role-change control (stays the
+out-of-band script). Added `UserRepository.listAll()`/`setRole()` and
+`GET /api/admin/users`. A real process bug surfaced here: the first draft of the
+test file reached into `db.state` directly to simulate promoting a user to admin,
+which tripped `check:db-state` — that guard's zero-direct-access rule turned out to
+apply to every file under `apps/api/src`, test files included, not just route
+handlers. Fixed by adding `UserRepository.setRole()` as a proper repository method
+instead (used by both the test and, after simplifying it, `promote-admin.ts`
+itself, replacing its previous hand-rolled JSON/Postgres branching). New
+`AdminUsers.tsx`, "Users" added to `AdminHeader`. Verified live: real 9-account
+table with correct admin/user badges.
+
+### Phase S8 — Admin Projects
+Read-only, searchable (`?q=` on name/owner-email), filterable (`?status=`) project
+list across every user, plus a detail page for the one thing a list can't show —
+"inspect associated jobs" — showing that project's own job history. Deliberately
+NOT gated by `requireProjectOwnership` (the wrong question for an admin, who by
+definition needs to see projects they don't own) — `requireAdmin` alone is the
+gate. Added `JobRepository.listByProject()`. New `AdminProjects.tsx`,
+`AdminProjectDetail.tsx`, "Projects" added to nav with prefix-match active-state
+(stays highlighted on `/admin/projects/:id`). 6 new HTTP-integration tests.
+Live-verified: cross-user project visibility, a real project's real job history,
+status filter, owner-email search all confirmed working against real data.
+
+### Phase S9 — Admin Jobs/Models/Training
+The largest single phase — three domains at once, matching the brief's own D9
+grouping. `JobRepository.listAll()`, `TrainingRepository.listAll()` (JSON+Prisma+
+contract tests each). `modules/admin/models.service.ts` reads the model registry
+straight off disk (`ml/models/<family>/<version>/metrics.json`) — the same source
+`services/cv-worker` itself loads from; "active" is determined by the exact same
+`MODEL_VERSION` env var the CV worker checks (default `v1.0.0`), not a separate
+admin concept that could drift from what's actually running. `GET /api/admin/jobs`
+(`?status=`), `/models`, `/training` — 8 new HTTP-integration tests. Frontend:
+`AdminJobs.tsx`, `AdminModels.tsx`, `AdminTraining.tsx`. Deliberate omissions,
+explained rather than faked: no "Started"/"Completed" job timestamps (schema only
+has createdAt/updatedAt — labeled "Last updated" instead of inventing a completion
+moment), no model delete/promote controls (the brief explicitly rules this out —
+promotion stays a `MODEL_VERSION` deployment change), no training-sample reject
+action (no such API exists, and the brief says not to redesign the pipeline).
+Live-verified against real data: an actual failed-job error message from earlier
+debugging, the real trained model's real precision/recall/mAP metrics, a real
+approved training sample with 19 boxes across 9 classes.
+
+### Phase S10 — Audit Logs
+The first schema change of the whole transformation — every phase before this was
+additive at the application layer only. New `AuditLog` Prisma model + `AuditEvent`
+enum (migration `20260826010000_add_audit_logs`, generated via
+`prisma migrate diff` against schema datamodels directly — no live database
+needed, same approach `add_auth`/`add_pages` used above). `AuditLogRepository` is
+deliberately append-only: only `record()`/`listRecent()` exist, no update or
+delete, making "audit logs should be append-oriented" a compile-time guarantee.
+Wired into 6 real call sites, each an existing action, not one built just to have
+something to log: `auth.routes.ts` (USER_REGISTERED/LOGIN/LOGOUT — logout resolves
+the session's owner *before* deleting it), `projects.routes.ts`
+(PROJECT_CREATED/DELETED), `admin.routes.ts` (PROJECT_ACCESSED_BY_ADMIN, on every
+admin project-detail view), `training.routes.ts` (TRAINING_APPROVED),
+`promote-admin.ts` (ADMIN_ROLE_CHANGED). Deliberately did NOT implement
+MODEL_ACTIVATED from the brief's own example list — no route or script in this app
+ever activates a model, so logging it would mean fabricating an event that never
+fires. `GET /api/admin/audit-logs?limit=` (default 200, capped 1000 — the one
+admin list that's genuinely unbounded), `AdminAuditLogs.tsx`. Live-verified: created
+a real project, watched `PROJECT_CREATED` then `PROJECT_ACCESSED_BY_ADMIN` appear
+with correct actor/target/metadata/timestamp within seconds.
+
+### Phase S11 — Authorization/security tests
+An audit-then-fill pass, not a from-scratch build — most of the brief's Phase 22
+checklist was already covered incrementally across S1 and S6–S10. Grepped every
+route test file to find the real gaps: **detections**, **code versions**, and
+**exports** had zero HTTP-integration cross-user tests, despite Phase 15's
+question list naming exactly those ("can a user modify another user's detection /
+access another user's code version / download another user's export?"). New
+`apps/api/src/modules/__tests__/security-authorization.test.ts` (14 tests: the
+three gaps above, plus a complete unauthenticated-401 sweep across all 7 admin
+routes). All 14 passed first try — this phase proved already-correct code, it
+didn't fix a bug.
+
+### Phase S12 — Full E2E
+The brief names three E2E journeys; PUBLIC (`marketing.spec.ts`) and USER
+(`golden-path.spec.ts` etc.) were already automated. ADMIN had only manual
+verification. Since role changes are deliberately never route-driven, a known
+admin account is now seeded synchronously in `playwright.config.ts` itself —
+written to the isolated store *before* the spawned API server boots (the JSON
+store loads once at startup; promoting a user after boot would write to a file the
+running process never re-reads). Credentials/hashing live in a separate
+`e2e/admin-seed.ts` so the test file importing them doesn't re-trigger the
+config's own setup side effects. New `e2e/admin.spec.ts` (2 tests): the full
+Overview → Users → Projects → project detail → Jobs → Models → Training Data →
+Audit Logs walk with real cross-account data, plus a non-admin-refused check. Two
+real bugs found while writing it: the test tried to log out from inside
+ProjectWorkspace (no logout button there — only `AppHeader`-mounted pages have
+one), and the audit-log assertions initially assumed an empty log, when it's
+actually global and persistent across the whole Playwright run (fixed by filtering
+on this test's own unique identifiers, not exact counts). Two complete clean full-
+suite runs (14/14, then 16/16); later reruns hit Chrome launch timeouts traced via
+`ps aux` to the *user's own* 37-process Chrome session (zero Playwright-owned
+processes involved) — not a code issue, so no further action taken.
+
+### Phase S13 — Visual QA
+A dedicated pass hunting for real defects, not re-confirming what earlier phases
+already checked. Static grep for stray hex colors/non-token spacing across every
+new file — clean. Two real bugs found and fixed: `AdminHeader` broke at tablet
+width (768px) — seven nav items plus brand/badge/exit/email/logout had no overflow
+strategy, so flex-shrink squeezed link text until it wrapped mid-phrase; fixed with
+`whitespace-nowrap` + `overflow-x-auto` (a scrollable single row, not a hamburger
+menu, matching the brief's "desktop-first, responsive enough for basic management"
+bar). More seriously: every admin table (6 pages) used `overflow-hidden` on its
+`Card` wrapper for rounded-corner clipping, which also clipped the table's own
+horizontal overflow — on narrow viewports this made entire columns (Status,
+Created, Error, ...) not just visually cramped but completely unreachable, no
+scroll possible. Fixed by wrapping each `<table>` in its own inner
+`overflow-x-auto` div. Verified the fix by actually scrolling to and reading data
+that was previously inaccessible, not just checking it looked better. Full suite
+green (Vitest 124+330, Playwright 16/16).
+
+### Phase S14 — Feature freeze
+This entry, plus a `PROJECT_STATUS.md` update (§7) and a fix to
+`docs/frontend/information-architecture.md`'s route table, which had gone stale
+back at Phase D0 (predating Phase D1's auth routes, let alone this transformation)
+and was never corrected until now. Final regression baseline: `npm run typecheck`,
+`npm run check:db-state`, and the full Vitest suite all clean immediately before
+this entry was written.
+
+### Files changed (cumulative, D0–S14)
+See each phase's own paragraph above for the specific list — repeating all of them
+here would just duplicate what's already written a few lines up. In aggregate:
+~40 new frontend files (marketing site, admin shell + 7 admin pages, Account),
+~15 new/modified backend files (admin routes, models service, 3 new repository
+domains' worth of methods across `users`/`jobs`/`training`/a new `auditLogs`),
+one new Prisma migration, ~10 new test files (Vitest + Playwright), zero changes
+to the detection pipeline, codegen, or the repository abstraction's existing
+contracts.
+
+### Verification (cumulative)
+Every phase above ran its own typecheck + build + relevant test subset before
+being called done; this entry's own final pass (immediately before writing it) was
+`npm run typecheck` (clean), `npm run check:db-state` (clean, 0 remaining), full
+Vitest (`packages/shared-types` 124 + `apps/api` 330 passing, 17 skipped Prisma
+arms — no `DATABASE_URL` locally, expected), and Playwright (two independent clean
+full-suite runs during S12/S13, 16/16 both times).
+
+### Known limitations
+- **The `PERSISTENCE_DRIVER` discrepancy from Phase D0 was never resolved.**
+  `PROJECT_STATUS.md` §2.7 says postgres; the actual `.env` on disk says `json`.
+  Every phase in this transformation — including the new `AuditLog` table and its
+  migration — was built and verified against the JSON adapter (with Prisma
+  contract-test parity, per the existing convention, but not live-verified against
+  a running Postgres instance the way Phase 8 originally was). Confirm which
+  driver is actually intended before deploying, and if postgres, run
+  `prisma migrate deploy` for `20260826010000_add_audit_logs` first.
+- **`AdminHeader` has no mobile-optimized nav** — Phase S13 made it scroll
+  cleanly instead of breaking, which meets the brief's "responsive enough for
+  basic management" bar, but there's no collapsed/hamburger treatment. Not
+  attempted deliberately (see that phase's note) — would be new scope, not a fix.
+- **No admin capability beyond what D6–D10 (S6–S10) built**: no user
+  deactivation, no in-UI role changes, no model promote/delete, no training-sample
+  reject — every one of these was deliberately scoped out because the brief itself
+  says not to build them without a clear "if required," and none of the underlying
+  APIs exist to wire a button to. Revisit only on an explicit ask.
+- Test artifacts from this session's manual browser verification
+  (`admin-s7-test@example.com`, `nonadmin-s6-test@example.com`, a handful of
+  "Audit Log Live Test"/"Renamed via S5"-named projects, etc.) remain in the local
+  dev `apps/api/data/store.json` — same harmless, not-cleaned-up pattern the D5
+  entry above already noted for its own test accounts.
+
+### Next phase
+None remaining in this SaaS-transformation brief — D0 and S1 through S14 are all
+complete. Remaining open items are the ones already listed in
+`PROJECT_STATUS.md` §6 (more labeled training data, a durable job queue, broader
+component-level test coverage) plus the two new ones this section's "Known
+limitations" names above (the persistence-driver discrepancy, admin mobile nav).

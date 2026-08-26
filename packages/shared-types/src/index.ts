@@ -17,3 +17,4 @@ export * from "./structure-override.js";
 export * from "./correction-record.js";
 export * from "./user.js";
 export * from "./session.js";
+export * from "./audit-log.js";

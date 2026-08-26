@@ -15,10 +15,10 @@ test("sketch to export golden path", async ({ page }) => {
   await registerAndLogin(page, `golden-path-${Date.now()}@e2e.local`);
 
   // 1. Create project
-  await page.goto("/");
+  await page.goto("/app");
   await page.getByPlaceholder("New project name").fill("E2E Golden Path");
   await page.getByRole("button", { name: "Create project" }).click();
-  await page.waitForURL(/\/projects\/[^/]+$/);
+  await page.waitForURL(/\/app\/projects\/[^/]+$/);
 
   // 2. Upload the deterministic sketch fixture
   await page.locator('input[type="file"]').setInputFiles(FIXTURE_SKETCH);

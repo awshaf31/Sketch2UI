@@ -885,6 +885,11 @@ export default function ProjectWorkspace() {
     <div className="flex h-screen flex-col bg-bg">
       <WorkspaceToolbar
         projectName={project.name}
+        onRenameProject={async (name) => {
+          if (!id || name === project.name) return;
+          const updated = await api.renameProject(id, name);
+          setProject(updated);
+        }}
         hasAsset={!!asset}
         detecting={detectJob.running}
         onDetect={() => {

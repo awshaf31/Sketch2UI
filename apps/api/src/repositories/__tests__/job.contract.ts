@@ -189,6 +189,41 @@ export function runJobRepositoryContract(
       });
     });
 
+    describe("listByProject", () => {
+      it("returns every job created for the project", async () => {
+        const a = await jobs.create({ projectId, type: "detect" });
+        const b = await jobs.create({ projectId, type: "codegen" });
+        const listed = await jobs.listByProject(projectId);
+        expect(listed.map((j) => j.id).sort()).toEqual([a.id, b.id].sort());
+      });
+
+      it("does not include another project's jobs", async () => {
+        const otherProjectId = (await projects.create({ name: "Other", ownerId: "test-owner" })).id;
+        await jobs.create({ projectId: otherProjectId, type: "detect" });
+        await jobs.create({ projectId, type: "detect" });
+        const listed = await jobs.listByProject(projectId);
+        expect(listed).toHaveLength(1);
+      });
+
+      it("is empty for a project with no jobs", async () => {
+        expect(await jobs.listByProject(projectId)).toEqual([]);
+      });
+    });
+
+    describe("listAll", () => {
+      it("returns jobs across every project", async () => {
+        const otherProjectId = (await projects.create({ name: "Other", ownerId: "test-owner" })).id;
+        const a = await jobs.create({ projectId, type: "detect" });
+        const b = await jobs.create({ projectId: otherProjectId, type: "codegen" });
+        const all = await jobs.listAll();
+        expect(all.map((j) => j.id).sort()).toEqual([a.id, b.id].sort());
+      });
+
+      it("is empty with no jobs", async () => {
+        expect(await jobs.listAll()).toEqual([]);
+      });
+    });
+
     describe("cascade", () => {
       it("deleting the project removes its jobs", async () => {
         const job = await jobs.create({ projectId, type: "detect" });

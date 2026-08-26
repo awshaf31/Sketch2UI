@@ -3,7 +3,9 @@ import cors from "cors";
 import { env } from "./config/env.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { requireAuth } from "./middleware/requireAuth.js";
+import { requireAdmin } from "./middleware/requireAdmin.js";
 import { authRouter } from "./modules/auth/auth.routes.js";
+import { adminRouter } from "./modules/admin/admin.routes.js";
 import { projectsRouter } from "./modules/projects/projects.routes.js";
 import { pagesRouter } from "./modules/pages/pages.routes.js";
 import { assetsRouter } from "./modules/assets/assets.routes.js";
@@ -36,6 +38,11 @@ app.get("/health", (_req, res) => {
 // applies requireAuth itself (auth.routes.ts), since it lives before the global gate.
 app.use("/api/auth", authRouter);
 app.use(requireAuth);
+
+// Admin — SaaS phase S6. requireAdmin is a second, additional gate on top of the
+// requireAuth every route below already has; a non-admin authenticated user gets 403,
+// not the 404-for-ownership pattern the routes below use (see requireAdmin.ts).
+app.use("/api/admin", requireAdmin, adminRouter);
 
 // Page-owned resources — Phase D3. Nested under /pages/:pageId; each router is
 // gated by requireProjectOwnership then requirePageInProject (see each router file).

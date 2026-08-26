@@ -27,7 +27,7 @@ export default function Login() {
     setError(null);
     try {
       await login(email, password);
-      navigate("/");
+      navigate("/app");
     } catch (e) {
       setError((e as Error).message);
       setSubmitting(false);
