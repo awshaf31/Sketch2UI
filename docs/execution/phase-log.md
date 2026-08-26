@@ -4088,9 +4088,13 @@ API authorization pattern, migration risks) directly in conversation rather than
 new doc file. Found: auth/ownership/multi-page were already complete (D1/D3 above);
 zero admin functionality anywhere; the phase-numbering collision noted above; and a
 real discrepancy — `PROJECT_STATUS.md` §2.7 claims `PERSISTENCE_DRIVER=postgres`,
-but the actual `.env` on disk has `PERSISTENCE_DRIVER=json`. That discrepancy was
-never resolved this session (see "Known limitations" at the end of this entry) —
-every phase below ran against the JSON adapter as a result.
+but the actual `.env` on disk has `PERSISTENCE_DRIVER=json`. That discrepancy went
+unresolved for the rest of this session (every phase below ran against the JSON
+adapter as a result) but was resolved in a later follow-up session on 2026-08-26:
+no Postgres instance is actually reachable in this environment, so JSON was
+confirmed as the intentional runtime driver and `PROJECT_STATUS.md` §2.7/§7 were
+corrected to stop claiming a live Postgres cutover — see that document's
+"Persistence driver — RESOLVED 2026-08-26" note.
 
 ### Phase S1 — Database ownership/integrity audit
 D0 found the ownership pattern (`requireProjectOwnership`/`requirePageInProject`,
@@ -4319,14 +4323,17 @@ arms — no `DATABASE_URL` locally, expected), and Playwright (two independent c
 full-suite runs during S12/S13, 16/16 both times).
 
 ### Known limitations
-- **The `PERSISTENCE_DRIVER` discrepancy from Phase D0 was never resolved.**
-  `PROJECT_STATUS.md` §2.7 says postgres; the actual `.env` on disk says `json`.
-  Every phase in this transformation — including the new `AuditLog` table and its
-  migration — was built and verified against the JSON adapter (with Prisma
-  contract-test parity, per the existing convention, but not live-verified against
-  a running Postgres instance the way Phase 8 originally was). Confirm which
-  driver is actually intended before deploying, and if postgres, run
-  `prisma migrate deploy` for `20260826010000_add_audit_logs` first.
+- ~~The `PERSISTENCE_DRIVER` discrepancy from Phase D0~~ — **resolved in a
+  follow-up session, 2026-08-26.** No Postgres instance is actually reachable in
+  this environment (no `docker` binary; the unrelated Postgres server on 5432 has
+  no `sketch2ui` role/database), so JSON was confirmed as the intentional runtime
+  driver rather than force a switch this close to the deadline. Every phase in
+  this transformation — including the new `AuditLog` table and its migration —
+  remains built and contract-tested against both adapters per the existing
+  convention; only JSON is live. `PROJECT_STATUS.md` §2.7/§7 were corrected to
+  match. If Postgres is provisioned later, run `npm run db:migrate -w apps/api`
+  (covers `20260826010000_add_audit_logs` and every prior migration) before
+  flipping the env var.
 - **`AdminHeader` has no mobile-optimized nav** — Phase S13 made it scroll
   cleanly instead of breaking, which meets the brief's "responsive enough for
   basic management" bar, but there's no collapsed/hamburger treatment. Not
@@ -4346,5 +4353,39 @@ full-suite runs during S12/S13, 16/16 both times).
 None remaining in this SaaS-transformation brief — D0 and S1 through S14 are all
 complete. Remaining open items are the ones already listed in
 `PROJECT_STATUS.md` §6 (more labeled training data, a durable job queue, broader
-component-level test coverage) plus the two new ones this section's "Known
-limitations" names above (the persistence-driver discrepancy, admin mobile nav).
+component-level test coverage) plus admin mobile nav — the only other item this
+section's "Known limitations" still names (the persistence-driver discrepancy was
+resolved in a later session, per the note above).
+
+---
+
+## Follow-up session — persistence driver discrepancy resolved (2026-08-26)
+
+Not a new phase in the SaaS-transformation brief — a targeted follow-up after the
+user was asked (given the brief itself was already fully executed) what to work on
+next, and chose to resolve the `PERSISTENCE_DRIVER` discrepancy flagged by D0 and
+carried as a known limitation through S14.
+
+**Investigation:** `.env`/`apps/api/.env` both had `PERSISTENCE_DRIVER=json`
+against `PROJECT_STATUS.md` §2.7's claim of a live Postgres cutover. Checked
+whether Postgres was actually reachable: `docker` is not installed on this
+machine, so `docker-compose.yml`'s `postgres`/`redis` services have never run
+here; a Postgres server *is* listening on `localhost:5432`, but it has no
+`sketch2ui` role or database (auth fails for both the `sketch2ui` user and the
+current OS user) — an unrelated local install, not this project's. Conclusion:
+the "verified live against Postgres" claim in §2.7 was accurate for whatever
+session/environment produced it, but does not describe this repository's current,
+tracked state.
+
+**Decision:** keep `PERSISTENCE_DRIVER=json` as the intentional runtime driver —
+presented to the user as a choice between this (zero risk, matches what already
+works) and standing up a real Postgres instance now (real work, some risk this
+close to the deadline); the user chose to keep JSON.
+
+**Changes:** no code changed — this was a documentation correction, not a
+persistence-layer change. Updated `PROJECT_STATUS.md` (TL;DR table, §2.7, §3.2,
+§3.3, §4.5, §5, §6, and the former §7 "known limitation" note, now "RESOLVED
+2026-08-26") and this file's own S14 "Known limitations" entry to stop claiming a
+live Postgres cutover that isn't actually in effect, while preserving the accurate
+parts: the repository layer and Postgres/Prisma adapter are genuinely built and
+contract-tested for every domain, just not connected to a live database here.

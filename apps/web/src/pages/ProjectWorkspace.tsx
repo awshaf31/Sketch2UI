@@ -42,6 +42,7 @@ import {
 } from "../features/workspace/StatusBar.js";
 import { useToast } from "../components/ToastStack.js";
 import { cn } from "../components/cn.js";
+import { IconButton } from "../components/IconButton.js";
 import { useMediaQuery } from "../components/useMediaQuery.js";
 import { WorkspaceUnavailable } from "./WorkspaceUnavailable.js";
 
@@ -58,6 +59,27 @@ import { WorkspaceUnavailable } from "./WorkspaceUnavailable.js";
 // every unrelated re-render (e.g. every 1s detect-job poll tick).
 const EMPTY_STYLE_OVERRIDE: Record<string, string> = {};
 
+// Points down when the dock is expanded (its usual state — clicking collapses it),
+// up when collapsed. Same construction as UITreePanel's ChevronIcon.
+function DockChevronIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 10 10"
+      width="10"
+      height="10"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.5}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      className={cn("transition-transform duration-fast", collapsed && "rotate-180")}
+    >
+      <path d="M2.5 3.5L5 6.5L7.5 3.5" />
+    </svg>
+  );
+}
+
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
@@ -73,6 +95,10 @@ export default function ProjectWorkspace() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"preview" | "code">("preview");
+  // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): the dock
+  // was a fixed 40%/32% of the viewport with no way to reclaim that space for the
+  // canvas during Detect/Correct, where Preview/Code isn't needed yet.
+  const [dockCollapsed, setDockCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
   // Section 10: the page boundary for the current asset, plus UI toggles.
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
@@ -957,6 +983,7 @@ export default function ProjectWorkspace() {
       ) : (
         <WorkspaceBody
           isTablet={isTablet}
+          dockCollapsed={dockCollapsed}
           layers={
             tree && (
               <UITreePanel
@@ -1030,7 +1057,7 @@ export default function ProjectWorkspace() {
                   code-preview-design.md's dock-header placement). The compact
                   ActiveVersionSegment above stays a read-only summary; this row is the
                   full clickable list, same handleActivateVersion call as before. */}
-              {versionList.length > 0 && (
+              {!dockCollapsed && versionList.length > 0 && (
                 <div className="flex flex-wrap items-center gap-xs border-b border-border bg-surface-sunken px-md py-2xs">
                   <span className="text-2xs font-medium uppercase tracking-wide text-text-muted">
                     Versions:
@@ -1063,7 +1090,7 @@ export default function ProjectWorkspace() {
                   ))}
                 </div>
               )}
-              <div className="flex border-b border-border bg-surface-sunken">
+              <div className="flex items-center border-b border-border bg-surface-sunken">
                 {(["preview", "code"] as const).map((t) => (
                   <button
                     key={t}
@@ -1078,8 +1105,15 @@ export default function ProjectWorkspace() {
                     {t}
                   </button>
                 ))}
+                <IconButton
+                  aria-label={dockCollapsed ? "Expand preview/code panel" : "Collapse preview/code panel"}
+                  size="sm"
+                  className="ml-auto mr-xs"
+                  onClick={() => setDockCollapsed((c) => !c)}
+                  icon={<DockChevronIcon collapsed={dockCollapsed} />}
+                />
               </div>
-              <div className="flex-1 overflow-hidden">
+              <div className={cn("flex-1 overflow-hidden", dockCollapsed && "hidden")}>
                 {rightTab === "preview" ? (
                   <PreviewPane
                     html={html}

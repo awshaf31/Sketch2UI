@@ -22,8 +22,8 @@ memory — file paths and route registrations are named so they can be checked d
 | Code editor (hand-edit HTML/CSS, versioned) | **Done** |
 | Correction history / audit log | **Done** — every class/bbox/parent/order change is recorded (§4 execution plan Phase 4) |
 | YOLO detector | **Working but explicitly a smoke test** (156 images, 16/41 classes) |
-| Persistence | **PostgreSQL via Prisma — fully migrated and live** (Phase 8; JSON store retired as of 2026-08-25). Every domain (projects, assets, detections, boundaries, code versions, the four override groups, training/corrections, exports, jobs) is behind a repository layer with JSON+Prisma adapters proven equivalent by a shared contract-test suite (see `docs/execution/phase-8-architecture-amendment.md` and `docs/execution/phase-log.md`). |
-| Background jobs | **In-process execution, Postgres-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
+| Persistence | **JSON file store is the live runtime driver** (`PERSISTENCE_DRIVER=json`, decided 2026-08-26 — see §2.7). Every domain (projects, assets, detections, boundaries, code versions, the four override groups, training/corrections, exports, jobs) is behind a repository layer with JSON+Prisma adapters proven equivalent by a shared contract-test suite; the Postgres/Prisma adapter is fully built and contract-tested but not currently connected to a running database in this environment (see `docs/execution/phase-8-architecture-amendment.md` and `docs/execution/phase-log.md`). |
+| Background jobs | **In-process execution, JSON-file-backed persistence** — durable across restarts and orphan-reaped on startup; execution substrate is still in-process, not Redis/BullMQ (a deliberate, documented deferral — see phase-log.md's Jobs entry) |
 | E2E test coverage | **Three Playwright suites** — `e2e/golden-path.spec.ts` (create → upload → detect (mocked) → correct → generate → preview → export), `e2e/inspector-overrides.spec.ts` (Geometry override + Content XSS rejection), and `e2e/multi-page.spec.ts` (a second page with independent state, cross-page link, multi-page export bundle), all against isolated throwaway storage |
 | Frontend design system | **Done** (Phase 2, 2026-08-25) — token system, primitive component library, rebuilt workspace shell, restyled canvas/tree/Inspector/code panel/preview, responsive (desktop/tablet/mobile) + keyboard/ARIA coverage. See `docs/frontend/README.md` (spec) and `docs/execution/phase-log.md` Phases 10–20 (implementation record). Zero behavior changes — same detection/override/codegen/persistence this table describes throughout, just restyled and reorganized. |
 | Auth / accounts | **Done** (Phase D1, 2026-08-25) — email/password registration, HTTP-only session cookies, `Project.ownerId`, and authorization enforced on every project-scoped route (see §2.9 and `docs/execution/phase-log.md`'s Phase D1 entry) |
@@ -38,7 +38,9 @@ memory — file paths and route registrations are named so they can be checked d
 | Audit logging | **Done** (Phase S10, 2026-08-26) — append-only `AuditLog` table, 6 real event types wired into existing actions (see §7) |
 
 The project is a working single-user prototype that implements the plan's MVP and a
-meaningful slice of V1, now running entirely on PostgreSQL. The computer-vision model
+meaningful slice of V1, currently running on the JSON file store (the Postgres
+adapter is built and tested but not connected in this environment — see §2.7). The
+computer-vision model
 is the one piece that is explicitly **not** production-grade yet, and the codebase says
 so itself (`ml/models/ui-detector/v1.0.0/metrics.json` calls it a `"smoke_test"`).
 
@@ -111,8 +113,9 @@ All 12 steps are implemented and wired together:
 
 - **Repository layer**: `apps/api/src/repositories/` defines one contract interface per domain (`types.ts`), with `json/` and `prisma/` adapters for each. `apps/api/src/repositories/index.ts` is the single factory (`getRepositories()`) every route imports from — no module reaches into `db.state` or `@prisma/client` directly. Enforced by a static guard (`npm run check:db-state`), which currently reports **zero** direct-store-access occurrences across all 20 application modules, locked in as the permanent regression floor.
 - **Domains migrated**: projects, assets, detections (owns the model→manual flip, `originalClassName` capture, `clearModelDetections` idempotency), page boundaries (owns the sticky-correction rule), code versions (immutable, transactional version numbering), the four inspector override groups, training samples, correction history, exports, and jobs.
-- **PostgreSQL cutover**: `PERSISTENCE_DRIVER=postgres` is set in `.env`; the JSON store (`apps/api/data/store.json`) is no longer read or written at runtime. Verified live: full 15-step regression checklist run against the real dev Postgres database, including real CV-worker inference, with before/after row counts confirming every write landed in Postgres and the JSON file's mtime proving it was untouched throughout.
-- **Contract tests**: every repository has a shared contract (`apps/api/src/repositories/__tests__/*.contract.ts`) executed identically against the JSON adapter and against a real Postgres test database (`sketch2ui_test`, isolated from dev by `vitest.setup.ts`'s guards).
+- **PostgreSQL adapter**: built for every domain and proven equivalent to the JSON adapter by a shared contract-test suite. An earlier session live-verified it against a real dev Postgres database (full 15-step regression checklist, real CV-worker inference, before/after row counts) — but that Postgres instance is not part of this repo's tracked state and is not reachable in the current environment (no `docker` binary present here, and the Postgres server that happens to be listening on 5432 locally has no `sketch2ui` role/database).
+- **Runtime driver — decided 2026-08-26**: `PERSISTENCE_DRIVER=json` in `.env` is the actual, intentional runtime configuration, not a stale default. The JSON store (`apps/api/data/store.json`) is what the API reads and writes. Switching to `postgres` requires provisioning a real Postgres instance with the `sketch2ui`/`sketch2ui_test` databases (via `docker-compose.yml` or a native install), running `npm run db:migrate -w apps/api`, then flipping the env var and re-verifying live — see §7's former "known limitation" note, now resolved this way.
+- **Contract tests**: every repository has a shared contract (`apps/api/src/repositories/__tests__/*.contract.ts`) executed identically against the JSON adapter and, when `DATABASE_URL` is available, against a real Postgres test database (`sketch2ui_test`, isolated from dev by `vitest.setup.ts`'s guards) — those Postgres arms are skipped, not failed, when no database is reachable (currently 17 skipped, matching phase-log.md).
 - See `docs/execution/phase-log.md` for the full per-domain migration log and `docs/execution/phase-8-architecture-amendment.md` for why a repository layer was needed at all (the JSON store's `db.state` was a synchronous mutable object graph, not the swappable abstraction the original plan assumed).
 
 ### 2.8 Frontend design system redesign (Phase 2 — complete)
@@ -328,15 +331,18 @@ registry's own `metrics.json` says:
 
 ### 3.2 Persistence layer — RESOLVED, see §2.7
 
-As of Phase 8 (2026-08-25) this moved from "partial" to done: the JSON store is
-retired at runtime, every domain is behind a repository layer backed by PostgreSQL via
-Prisma, and `docker-compose.yml`'s Postgres container is now what the API actually
-talks to. `docker-compose.yml`'s Redis container is still unused — see §3.3.
+As of Phase 8 (2026-08-25) the repository layer itself moved from "partial" to done:
+every domain is behind a repository interface with equivalent JSON and PostgreSQL
+(Prisma) adapters, proven interchangeable by a shared contract-test suite. The
+runtime driver actually in effect is JSON (`PERSISTENCE_DRIVER=json`, decided
+2026-08-26 — see §2.7) since no Postgres instance is provisioned in this
+environment; `docker-compose.yml`'s Postgres and Redis containers are both
+currently unused — see §3.3.
 
 ### 3.3 Background jobs
 
-- Detection jobs run **in-process** (`apps/api/src/modules/detections/detect.job.ts`), not through a queue. Comment in the file: *"Runs IN-PROCESS rather than through Redis/BullMQ."* This is unchanged by the Phase 8 persistence migration — only *where job records are stored* moved to Postgres; *how* jobs execute did not.
-- A server restart mid-job orphans it — the server has a startup routine (`failOrphanedJobs()` in `server.ts`) that explicitly fails any job left in "processing" state from a previous run, rather than leaving a client polling forever. This is a reasonable mitigation but not the same as a durable queue. It is now backed by a single atomic `UPDATE ... WHERE status IN (...)` on Postgres rather than a JSON-array scan-and-rewrite.
+- Detection jobs run **in-process** (`apps/api/src/modules/detections/detect.job.ts`), not through a queue. Comment in the file: *"Runs IN-PROCESS rather than through Redis/BullMQ."* This is unchanged by the Phase 8 repository-layer work — only *where job records are stored* is behind an adapter; *how* jobs execute did not change.
+- A server restart mid-job orphans it — the server has a startup routine (`failOrphanedJobs()` in `server.ts`) that explicitly fails any job left in "processing" state from a previous run, rather than leaving a client polling forever. This is a reasonable mitigation but not the same as a durable queue. It goes through `getRepositories().jobs.failOrphaned()`, so it's a JSON-array update under the JSON adapter currently in effect (or a single atomic SQL `UPDATE ... WHERE status IN (...)` if the Postgres adapter is ever connected).
 - Progress reporting is **polling only** (`apps/web/src/features/detection/useDetectionJob.ts`) — the plan's §7.5 WebSocket/SSE option was never built (comment in the code says as much).
 
 ---
@@ -381,7 +387,7 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 
 ### 4.5 Deployment / ops (plan §44–§45)
 - No cloud deployment configured — `docker-compose.yml` is local-only.
-- No backup/recovery strategy for uploaded images or exported ZIPs (Postgres itself now has real transactional guarantees and could be backed up with standard `pg_dump`, but no scheduled backup job exists).
+- No backup/recovery strategy for uploaded images or exported ZIPs (`apps/api/data/store.json`, the live JSON store, has no scheduled backup either; the Postgres adapter would gain `pg_dump`-based transactional backups if it were ever connected, but no scheduled backup job exists for either driver).
 - ~~No CI/CD pipeline~~ — **done, see §2.11** (Phase D4, 2026-08-25). Still no
   deployment automation — CI is test/build gating only, plan §30's broader "cloud
   provisioning" scope stays out of scope.
@@ -391,7 +397,7 @@ Everything below has **zero implementation** — no partial scaffolding, no stub
 
 ## 5. Inspector completeness (plan §17.3)
 
-All **five** groups are built and, as of Phase 8, all persisted through PostgreSQL:
+All **five** groups are built and, as of Phase 8, all persisted through the repository layer (JSON adapter live, Postgres adapter available — see §2.7):
 
 | Group | Status |
 |---|---|
@@ -426,7 +432,7 @@ Postgres/Prisma swap) are now **done** — see §2.7 and §5. Remaining, in roug
 3. ~~CI/CD~~ — **done, see §2.11** (Phase D4, 2026-08-25).
 4. ~~Multi-page projects~~ — **done, see §2.10** (Phase D3, 2026-08-25).
 5. **Durable job queue (Redis/BullMQ)** — in-process execution is documented and
-   mitigated (startup orphan-reaping is now an atomic Postgres update) but still not a
+   mitigated (startup orphan-reaping via `jobs.failOrphaned()`) but still not a
    durable queue; `docker-compose.yml` already provisions Redis, unused.
 6. **Broader test coverage** — updated 2026-08-26: the SaaS transformation (§7)
    added 6 new Playwright specs (marketing, account, project-rename, admin, plus
@@ -529,14 +535,19 @@ the D0 audit — auth, ownership, CI were reused as-is, not rebuilt).
   real company/support content exists to put on the first two, and the latter two
   are in-page anchor sections on `/` instead of separate routes.
 
-### Known limitation carried forward from the D0 audit
+### Persistence driver — RESOLVED 2026-08-26
 
-`PROJECT_STATUS.md` §2.7 (above) says `PERSISTENCE_DRIVER=postgres` is set in
-`.env`; the actual `.env` on disk currently has `PERSISTENCE_DRIVER=json`. This
-was flagged during this transformation's own D0 audit and never resolved. Every
-phase in §7, including the new `AuditLog` table, was built and contract-tested
-against both adapters per this project's existing convention, but only
-live-verified against the JSON adapter this session — not against a running
-Postgres instance the way the original Phase 8 migration was. **Confirm which
-driver is actually intended before deploying**, and if postgres, run
-`prisma migrate deploy` for the new audit-log migration first.
+This transformation's own D0 audit flagged a discrepancy: `PROJECT_STATUS.md` §2.7
+claimed `PERSISTENCE_DRIVER=postgres` while the actual `.env` had `json`. Investigated
+and resolved: no Postgres instance is reachable in this environment (`docker` isn't
+installed, and the unrelated Postgres server listening on 5432 has no `sketch2ui`
+role/database) — the earlier "live-verified against Postgres" claim in §2.7 came from
+a different session/environment, not this repo's tracked state. Decision: **JSON stays
+the intentional runtime driver** rather than force a switch to a database that isn't
+actually available, this close to the deadline. Every phase in §7, including the new
+`AuditLog` table, remains built and contract-tested against both adapters per this
+project's existing convention — only the JSON adapter is live. If Postgres is wanted
+later: provision `sketch2ui`/`sketch2ui_test` (via `docker-compose.yml` or a native
+install), run `npm run db:migrate -w apps/api` (applies all migrations including the
+audit-log one), then flip `PERSISTENCE_DRIVER=postgres` and re-verify live end-to-end
+before trusting it in that environment.

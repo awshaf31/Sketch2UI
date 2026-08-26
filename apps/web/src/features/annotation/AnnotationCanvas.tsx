@@ -138,6 +138,12 @@ export default function AnnotationCanvas({
 }: AnnotationCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
+  // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): a
+  // real 21-detection sketch made every box's always-on "class 0.NN" label
+  // unreadable clutter, especially in dense grids. Confidence now only shows for
+  // the selected or hovered detection — every box still gets a lightweight class
+  // label at rest, so scanning still works, just without the constant number noise.
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const getImagePoint = useCallback(
     (e: React.MouseEvent | MouseEvent) => {
@@ -334,8 +340,19 @@ export default function AnnotationCanvas({
           const fillClass = muted ? "fill-text-muted" : FILL_CLASS[tone];
           const fillOpacity = muted ? 0.05 : FILL_OPACITY[tone];
           const textClass = muted ? "fill-text-muted" : TEXT_FILL_CLASS[tone];
+          const hovered = detection.id === hoveredId;
+          // Confidence is detail, not identity — only worth showing once a detection
+          // has the user's attention. At rest, every box still gets its class name so
+          // scanning many detections at once still works, just without the clutter of
+          // 20+ decimal scores fighting for space in a dense sketch.
+          const showConfidence = fromModel && (selected || hovered);
           return (
-            <g key={detection.id} opacity={rejected && !selected ? 0.35 : 1}>
+            <g
+              key={detection.id}
+              opacity={rejected && !selected ? 0.35 : 1}
+              onMouseEnter={() => setHoveredId(detection.id)}
+              onMouseLeave={() => setHoveredId((current) => (current === detection.id ? null : current))}
+            >
               <rect
                 x={box.x}
                 y={box.y}
@@ -349,6 +366,8 @@ export default function AnnotationCanvas({
                 role="button"
                 aria-pressed={selected}
                 aria-label={`${detection.className}${fromModel ? `, model-detected, ${Math.round(detection.confidence * 100)}% confidence` : ", manual"}${rejected ? ", outside page" : ""}`}
+                onFocus={() => setHoveredId(detection.id)}
+                onBlur={() => setHoveredId((current) => (current === detection.id ? null : current))}
                 onMouseDown={(e) => {
                   e.stopPropagation();
                   onSelect(detection.id);
@@ -369,11 +388,15 @@ export default function AnnotationCanvas({
               <text
                 x={box.x + 4}
                 y={box.y + 14}
-                className={cn("pointer-events-none stroke-surface font-mono text-2xs", textClass)}
+                className={cn(
+                  "pointer-events-none stroke-surface font-mono text-2xs",
+                  textClass,
+                  !selected && !hovered && "opacity-70"
+                )}
                 style={{ paintOrder: "stroke", strokeWidth: 3, strokeLinejoin: "round" }}
               >
                 {detection.className}
-                {fromModel ? ` ${detection.confidence.toFixed(2)}` : ""}
+                {showConfidence ? ` ${detection.confidence.toFixed(2)}` : ""}
                 {rejected ? " · outside page" : ""}
               </text>
               {selected &&

@@ -4,6 +4,7 @@ import { Panel } from "../../components/Panel.js";
 import { SectionHeader } from "../../components/SectionHeader.js";
 import { Button } from "../../components/Button.js";
 import { Drawer } from "../../components/Drawer.js";
+import { cn } from "../../components/cn.js";
 
 // docs/frontend/workspace-design.md — the 4-region shell: Layers (left, 240px) /
 // Canvas (center, fluid) / Inspector (right, 320px), with a bottom dock spanning the
@@ -19,11 +20,12 @@ import { Drawer } from "../../components/Drawer.js";
 // the canvas takes the full width. The `layers`/`canvas`/`inspector`/`dock` content
 // itself is identical in both layouts — only how it's framed changes.
 //
-// The dock's height is a fixed 32% for now, not yet resizable/collapsible —
-// code-preview-design.md's resize/collapse behavior is explicitly a later-phase
-// capability, not part of this shell. (Lowered from an original 40% during the
-// workspace visual-polish pass — the canvas region needed more of the available
-// vertical space than a fixed 40% dock left it.)
+// The dock's height was a fixed 32%/40% with no way to reclaim that space for the
+// canvas — code-preview-design.md flagged resize/collapse as a later-phase capability.
+// Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): added a
+// collapse toggle (state + the button itself live in ProjectWorkspace, next to the
+// dock's own Preview/Code tabs) — `dockCollapsed` just picks which height class
+// applies here, so this component stays a plain layout shell.
 
 interface WorkspaceBodyProps {
   layers: ReactNode;
@@ -31,9 +33,10 @@ interface WorkspaceBodyProps {
   inspector: ReactNode;
   dock: ReactNode;
   isTablet?: boolean;
+  dockCollapsed?: boolean;
 }
 
-export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet }: WorkspaceBodyProps) {
+export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet, dockCollapsed }: WorkspaceBodyProps) {
   const [layersOpen, setLayersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
@@ -52,7 +55,10 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet }: Wor
           <div className="flex flex-1 flex-col overflow-hidden">{canvas}</div>
         </div>
 
-        <Panel bordered="top" className="h-[32%] shrink-0 overflow-hidden">
+        <Panel
+          bordered="top"
+          className={cn("shrink-0 overflow-hidden", dockCollapsed ? "h-9" : "h-[32%]")}
+        >
           {dock}
         </Panel>
 
@@ -83,7 +89,10 @@ export function WorkspaceBody({ layers, canvas, inspector, dock, isTablet }: Wor
         </Panel>
       </div>
 
-      <Panel bordered="top" className="h-[40%] shrink-0 overflow-hidden">
+      <Panel
+        bordered="top"
+        className={cn("shrink-0 overflow-hidden", dockCollapsed ? "h-9" : "h-[40%]")}
+      >
         {dock}
       </Panel>
     </div>
