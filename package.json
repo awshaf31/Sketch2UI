@@ -1,7 +1,13 @@
 {
   "name": "sketch2ui",
-  "private": true,
   "version": "0.1.0",
+  "private": true,
+  "description": "Turn a hand-drawn wireframe into working HTML/CSS — annotation canvas, YOLO detection, layout reconstruction and live preview.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ahsafahmath/sketch2ui.git"
+  },
   "workspaces": [
     "frontend",
     "backend",

@@ -4,7 +4,10 @@ Turn a hand-drawn wireframe into working HTML/CSS. Upload a sketch, annotate the
 (or let the trained detector find them), and Sketch2UI reconstructs the layout into a UI
 tree, generates HTML/CSS, and renders a live preview you can export as a self-contained ZIP.
 
-![CI](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml/badge.svg)](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+![Node](https://img.shields.io/badge/node-20%2B-brightgreen)
+![Python](https://img.shields.io/badge/python-3.11%2B-blue)
 
 ---
 
@@ -88,7 +91,8 @@ sketch2ui/
 ├── e2e/                      Playwright end-to-end specs
 ├── tests/fixtures/           golden demo fixture
 ├── data/                     runtime storage — uploads/, exports/
-└── docker-compose.yml        Postgres + Redis for local development
+├── docker-compose.yml        Postgres + Redis for local development
+└── .github/workflows/ci.yml  typecheck, guard, tests, build, E2E
 ```
 
 `frontend`, `backend`, `packages/*` and `scripts` are npm workspaces; `cv-service` is a
@@ -199,6 +203,8 @@ you never need to remember which package owns what.
 
 Most accept `-- --dry-run`; `dataset:export` also takes `-- --clean`.
 
+---
+
 ## Configuration
 
 All settings live in `.env` — see [`.env.example`](./.env.example) for the annotated list.
@@ -237,7 +243,6 @@ deliberately manual rather than run on boot, so they never silently mutate real 
 ```bash
 npm run db:backfill-legacy-owner -w backend   # assign ownerless projects
 npm run db:backfill-pages -w backend          # give page-less projects a "Page 1"
-npm run admin:promote -- <email>              # grant the admin role
 ```
 
 Then set `PERSISTENCE_DRIVER=postgres` in `.env`. The schema and migrations live in
@@ -248,16 +253,12 @@ Then set `PERSISTENCE_DRIVER=postgres` in `.env`. The schema and migrations live
 
 ## Testing
 
-```bash
-npm run typecheck        # TypeScript across every workspace
-npm run check:db-state   # architecture guard (see below)
-npm run test             # unit + integration (Vitest)
-npm run test:py          # CV service (Pytest)
-npm run test:e2e         # end-to-end (Playwright)
-```
+The five verification commands are listed under [Commands](#verify). CI runs all of them
+on every push and pull request.
 
-`check:db-state` enforces the repository-layer boundary: no application module may reach
-past it into the JSON store directly. CI runs all five on every push and pull request.
+`check:db-state` is an architecture guard rather than a test: it enforces the
+repository-layer boundary, failing the build if any application module reaches past it
+into the store directly.
 
 The boundary-overlap algorithm is implemented twice — once in TypeScript, once in Python —
 because it has to run in both. Both suites run it against the *same* golden fixture,
@@ -274,24 +275,8 @@ so they can never truncate development data.
 The annotation canvas *is* the labelling tool — drawing a box and picking a class produces
 exactly the records the exporter consumes.
 
-```bash
-npm run dataset:export               # -> ml/dataset/{images,labels}/{train,val,test}
-npm run dataset:export -- --clean    # drop stale manual labels first
-npm run dataset:export -- --dry-run  # report only
-npm run dataset:import               # merge the two external CC BY datasets
-npm run dataset:build-v1             # rebuild the v1 training subset
-```
-
-Run the exporter before the importer — it regenerates `classes.txt` from the taxonomy, and
-the importer refuses to run against a stale one.
-
-Feedback loop and evaluation:
-
-```bash
-npm run dataset:report          # read-only label/dataset checks
-npm run model:active-learning   # which sketches most need attention next
-npm run model:eval              # writes ml/evaluation/baseline-<version>.json
-```
+Run `dataset:export` before `dataset:import` — the exporter regenerates `classes.txt`
+from the taxonomy, and the importer refuses to run against a stale one.
 
 **Approve for training** in the workspace snapshots an asset's current boxes as ground
 truth; the next `dataset:export` merges them under a `corr_` prefix.
@@ -318,5 +303,9 @@ source sketch; symbolic classes (icons, form controls) are rendered as markup in
 
 ## License
 
-Not currently licensed for redistribution. The bundled external datasets are CC BY 4.0 and
-carry their own attribution requirements — see `ml/dataset/README.md`.
+[MIT](./LICENSE) © ahsafahmath.
+
+One carve-out: the two **external datasets** merged in by `npm run dataset:import` are
+CC BY 4.0 and carry their own attribution requirements, which travel with any
+redistribution independently of this repository's licence. See the attribution section of
+[`ml/dataset/README.md`](./ml/dataset/README.md).
