@@ -4,14 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "export:dataset": "tsx src/export-yolo-dataset.ts",
-    "import:external": "tsx src/import-external-datasets.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "build:v1": "tsx src/build-v1-subset.ts",
-    "report:active-learning": "tsx src/active-learning-report.ts",
-    "report:dataset-quality": "tsx src/dataset-quality-report.ts",
-    "eval": "tsx src/evaluate.ts",
-    "check:db-state": "tsx src/check-db-state-usage.ts"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@sketch2ui/shared-types": "*",

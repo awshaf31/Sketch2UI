@@ -10,9 +10,9 @@
  * cv-service (that integration is step 9).
  *
  * Usage:
- *   npm run export:dataset            # write the dataset
- *   npm run export:dataset -- --clean # wipe existing split dirs first
- *   npm run export:dataset -- --dry-run
+ *   npm run dataset:export            # write the dataset
+ *   npm run dataset:export -- --clean # wipe existing split dirs first
+ *   npm run dataset:export -- --dry-run
  */
 
 import fs from "node:fs";
@@ -232,7 +232,7 @@ function cleanSplitDirs(): void {
 
   console.log(`Cleaned ${removed} manual export file(s)`);
   if (spared > 0) {
-    console.log(`  kept ${spared} externally-imported file(s) — re-run import:external to refresh them`);
+    console.log(`  kept ${spared} externally-imported file(s) — re-run dataset:import to refresh them`);
   }
 }
 
@@ -500,7 +500,7 @@ function report(stats: ExportStats): void {
       console.log(`  ${split.padEnd(6)} ${String(n).padStart(4)}  (${pct}%)`);
     }
     console.log(`Labels: ${merged.labels}`);
-    console.log("\nRun `npm run import:external` for the full merged per-class report.");
+    console.log("\nRun `npm run dataset:import` for the full merged per-class report.");
   }
 
   const emptySplits = SPLITS.filter((s) => merged.images[s] === 0);

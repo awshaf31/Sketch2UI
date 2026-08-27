@@ -12,7 +12,7 @@ ml/training/.venv/bin/pip install -r ml/training/requirements.txt
 ## Train
 
 ```bash
-npm run build:v1                                   # regenerate the subset first
+npm run dataset:build-v1                                   # regenerate the subset first
 ml/training/.venv/bin/python ml/training/train_v1.py --device cpu
 ```
 

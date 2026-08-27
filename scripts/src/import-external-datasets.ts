@@ -12,11 +12,11 @@
  * filesystem, never backend's request path or cv-service.
  *
  * Usage:
- *   npm run import:external              # download (if needed), remap, write
- *   npm run import:external -- --dry-run # report only, write nothing
- *   npm run import:external -- --redownload
+ *   npm run dataset:import              # download (if needed), remap, write
+ *   npm run dataset:import -- --dry-run # report only, write nothing
+ *   npm run dataset:import -- --redownload
  *
- * Run `npm run export:dataset` FIRST — it regenerates classes.txt from the taxonomy and
+ * Run `npm run dataset:export` FIRST — it regenerates classes.txt from the taxonomy and
  * rewrites the manual labels. This script reads that classes.txt as its target vocabulary.
  */
 
@@ -144,7 +144,7 @@ function bump(map: Map<string, number>, key: string, by = 1): void {
 function ensureClassesFile(): void {
   if (fs.existsSync(CLASSES_FILE)) return;
   console.error(`\nMissing ${CLASSES_FILE}.`);
-  console.error("Run `npm run export:dataset` first — it generates classes.txt from the");
+  console.error("Run `npm run dataset:export` first — it generates classes.txt from the");
   console.error("taxonomy and rewrites the manual labels to match.\n");
   process.exit(1);
 }
@@ -155,7 +155,7 @@ function verifyClassesFileCurrent(): void {
   const actual = fs.readFileSync(CLASSES_FILE, "utf-8");
   if (actual === CLASS_LIST.join("\n") + "\n") return;
   console.error("\nclasses.txt does not match ALL_CLASSES in taxonomy.ts.");
-  console.error("Run `npm run export:dataset -- --clean` first so every label file uses");
+  console.error("Run `npm run dataset:export -- --clean` first so every label file uses");
   console.error("the current numbering, then re-run this import.\n");
   process.exit(1);
 }

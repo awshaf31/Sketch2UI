@@ -75,9 +75,9 @@ def pick_device(explicit: str | None) -> str:
 def preflight() -> list[str]:
     """section 9.8 step 2: validate labels before training."""
     if not V1_DATA_YAML.exists():
-        sys.exit(f"Missing {V1_DATA_YAML}. Run `npm run build:v1` first.")
+        sys.exit(f"Missing {V1_DATA_YAML}. Run `npm run dataset:build-v1` first.")
     if not V1_CLASSES.exists():
-        sys.exit(f"Missing {V1_CLASSES}. Run `npm run build:v1` first.")
+        sys.exit(f"Missing {V1_CLASSES}. Run `npm run dataset:build-v1` first.")
 
     classes = V1_CLASSES.read_text().strip().split("\n")
     problems = []
@@ -377,7 +377,7 @@ then retrain.
 ## Next steps
 
 1. Collect more sketches, especially for the weak classes above and the 25 excluded ones.
-2. Re-run `npm run export:dataset && npm run import:external && npm run build:v1`.
+2. Re-run `npm run dataset:export && npm run dataset:import && npm run dataset:build-v1`.
 3. Retrain as a new version — never overwrite this one.
 4. Only wire a model into `cv-service` (§51 step 9) once its metrics justify it.
 """

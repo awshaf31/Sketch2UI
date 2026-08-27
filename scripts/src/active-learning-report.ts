@@ -10,8 +10,8 @@
  *   - unusual drawing styles      <- NOT scored; see the note at the bottom
  *
  * Usage:
- *   npm run report:active-learning
- *   npm run report:active-learning -- --json
+ *   npm run model:active-learning
+ *   npm run model:active-learning -- --json
  */
 
 import fs from "node:fs";

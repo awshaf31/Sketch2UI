@@ -62,6 +62,20 @@ const INFRASTRUCTURE = [
 ];
 
 /**
+ * Test files are out of scope. This guard is about application modules reaching past
+ * the repository layer at runtime; a test asserting on `db.state` to confirm something
+ * actually persisted is scaffolding, not a production code path.
+ *
+ * Without this exclusion the guard was silently failing on
+ * modules/auth/auth.routes.test.ts, which has asserted through `db.state` since the
+ * Google sign-in work. Nothing noticed because nothing ran the guard — it is now a
+ * CI step, so its scope has to be right.
+ */
+function isTestFile(rel: string): boolean {
+  return rel.endsWith(".test.ts") || rel.includes("__tests__/");
+}
+
+/**
  * Occurrences remaining in UNMIGRATED application modules. Ratchet downward only.
  *
  * Zero as of Phase 8's final domain (Jobs): every application module now goes
@@ -111,6 +125,7 @@ function main(): void {
     if (stateHits === 0 && saveHits === 0) continue;
 
     if (INFRASTRUCTURE.some((p) => rel.startsWith(p))) continue;
+    if (isTestFile(rel)) continue;
 
     if (MIGRATED_MODULES.includes(rel)) {
       failures.push(

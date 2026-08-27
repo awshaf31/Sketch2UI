@@ -32,14 +32,14 @@ The dataset is built from two independent sources, in this order:
 
 ```bash
 # 1. our own manual annotations (unprefixed filenames)
-npm run export:dataset              # from the repo root
-npm run export:dataset -- --clean   # drop stale manual labels first (after re-annotating)
-npm run export:dataset -- --dry-run # report only, write nothing
+npm run dataset:export              # from the repo root
+npm run dataset:export -- --clean   # drop stale manual labels first (after re-annotating)
+npm run dataset:export -- --dry-run # report only, write nothing
 
 # 2. the external CC BY datasets (hdwe_ / wf_ prefixed filenames)
-npm run import:external
-npm run import:external -- --dry-run
-npm run import:external -- --redownload
+npm run dataset:import
+npm run dataset:import -- --dry-run
+npm run dataset:import -- --redownload
 ```
 
 Run the exporter **first**: it regenerates `classes.txt` from the taxonomy, and the
@@ -47,7 +47,7 @@ importer refuses to run against a stale one.
 
 `--clean` on the exporter removes only *unprefixed* (manually-annotated) files. Files
 carrying an external source prefix are spared, because the exporter cannot regenerate
-them — re-run `import:external` to refresh those.
+them — re-run `dataset:import` to refresh those.
 
 The exporter reads `backend/data/store.json` and `data/uploads/`, takes every
 `Detection` with `status === "active"` and `source === "manual"`, converts it to YOLO
@@ -60,7 +60,7 @@ separate labelling tool.
 
 ## External data sources and attribution
 
-Two externally-sourced datasets are merged in by `npm run import:external`. **Both are
+Two externally-sourced datasets are merged in by `npm run dataset:import`. **Both are
 licensed CC BY 4.0, which requires attribution on redistribution** — keep this section
 intact in anything derived from this dataset, and carry it into the model card when a
 detector is trained on it.
@@ -122,7 +122,7 @@ many visually-similar classes on too little data just produces confusion, so a m
 version may train on a **subset**:
 
 ```bash
-npm run build:v1        # -> ml/dataset/v1/ + v1-classes.txt + v1-training-scope.md
+npm run dataset:build-v1        # -> ml/dataset/v1/ + v1-classes.txt + v1-training-scope.md
 ```
 
 `ml/dataset` stays the **full 41-class source of truth**. `ml/dataset/v1/` is a derived

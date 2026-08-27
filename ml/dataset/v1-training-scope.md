@@ -134,7 +134,7 @@ Total: **156 images**.
 ## Getting the excluded classes back
 
 Collect and annotate more sketches containing them, re-run
-`npm run export:dataset && npm run import:external`, then re-run
-`npm run build:v1`. Classes cross the eligibility line automatically as soon as the
+`npm run dataset:export && npm run dataset:import`, then re-run
+`npm run dataset:build-v1`. Classes cross the eligibility line automatically as soon as the
 split puts them in val and test. A class needs roughly 79+ instances before
 the ~78/12/11 split reliably does that.

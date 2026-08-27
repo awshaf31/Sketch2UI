@@ -27,6 +27,11 @@ jobs:
       - name: Type-check
         run: npm run typecheck
 
+      - name: Architecture guard
+        run: npm run check:db-state
+        # Phase 8's zero-direct-persistence-access invariant. Previously a manual
+        # command, so it went unrun and unnoticed while it was failing.
+
       - name: Run TypeScript tests
         run: npm run test
 

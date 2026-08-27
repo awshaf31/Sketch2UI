@@ -144,7 +144,7 @@ then retrain.
 1. Collect more sketches, especially for the weak classes above and the 25 excluded ones.
    For `select` specifically, the useful examples are ones that force the chevron to
    matter: selects drawn next to visually identical inputs and textareas.
-2. Re-run `npm run export:dataset && npm run import:external && npm run build:v1`.
+2. Re-run `npm run dataset:export && npm run dataset:import && npm run dataset:build-v1`.
 3. Retrain as a new version — never overwrite this one.
 4. Only wire a model into `cv-service` (§51 step 9) once its metrics justify it.
 

@@ -17,8 +17,8 @@
  *     cannot catch since re-uploads get a fresh asset UUID / filename
  *
  * Usage:
- *   npm run report:dataset-quality
- *   npm run report:dataset-quality -- --json
+ *   npm run dataset:report
+ *   npm run dataset:report -- --json
  */
 
 import fs from "node:fs";

@@ -148,6 +148,57 @@ and the UI tree / HTML / CSS / preview panels update live.
 
 ---
 
+## Commands
+
+Every command runs from the repository root. Workspace-level scripts are delegated, so
+you never need to remember which package owns what.
+
+### Develop
+
+| Command | Does |
+|---|---|
+| `npm run dev:backend` | API with watch-reload on `:4000` |
+| `npm run dev:frontend` | Vite dev server on `:5173` |
+
+### Build & run
+
+| Command | Does |
+|---|---|
+| `npm run build` | Production build of all workspaces, in dependency order |
+| `npm start` | Run the built backend |
+
+### Verify
+
+| Command | Does |
+|---|---|
+| `npm run typecheck` | TypeScript across every workspace |
+| `npm run check:db-state` | Architecture guard — no module bypasses the repository layer |
+| `npm test` | Unit + integration (Vitest) |
+| `npm run test:py` | CV service (Pytest) |
+| `npm run test:e2e` | End-to-end (Playwright) |
+
+### Database
+
+| Command | Does |
+|---|---|
+| `npm run db:generate` | Generate the Prisma client |
+| `npm run db:migrate` | Apply migrations |
+| `npm run db:import-json` | One-way import of the JSON store into Postgres |
+| `npm run admin:promote -- <email>` | Grant the admin role |
+
+### Dataset & model
+
+| Command | Does |
+|---|---|
+| `npm run dataset:export` | Annotations → YOLO dataset |
+| `npm run dataset:import` | Merge the external CC BY datasets |
+| `npm run dataset:build-v1` | Rebuild the v1 training subset |
+| `npm run dataset:report` | Read-only label/dataset quality checks |
+| `npm run model:eval` | Score a model into `ml/evaluation/` |
+| `npm run model:active-learning` | Rank which sketches to annotate next |
+
+Most accept `-- --dry-run`; `dataset:export` also takes `-- --clean`.
+
 ## Configuration
 
 All settings live in `.env` — see [`.env.example`](./.env.example) for the annotated list.
@@ -175,9 +226,18 @@ with no infrastructure at all. To use Postgres:
 
 ```bash
 docker compose up -d postgres redis
-npm run db:generate -w backend      # generate the Prisma client
-npm run db:migrate  -w backend      # apply migrations
-npm run db:migrate-json -w backend  # optional: import existing JSON data
+npm run db:generate      # generate the Prisma client
+npm run db:migrate       # apply migrations
+npm run db:import-json   # optional: import existing JSON data
+```
+
+Two one-off backfills exist for data predating the auth and multi-page work. They are
+deliberately manual rather than run on boot, so they never silently mutate real data:
+
+```bash
+npm run db:backfill-legacy-owner -w backend   # assign ownerless projects
+npm run db:backfill-pages -w backend          # give page-less projects a "Page 1"
+npm run admin:promote -- <email>              # grant the admin role
 ```
 
 Then set `PERSISTENCE_DRIVER=postgres` in `.env`. The schema and migrations live in
@@ -189,11 +249,15 @@ Then set `PERSISTENCE_DRIVER=postgres` in `.env`. The schema and migrations live
 ## Testing
 
 ```bash
-npm run typecheck   # TypeScript across all workspaces
-npm run test        # unit + integration (Vitest)
-npm run test:py     # CV service (Pytest)
-npm run test:e2e    # end-to-end (Playwright)
+npm run typecheck        # TypeScript across every workspace
+npm run check:db-state   # architecture guard (see below)
+npm run test             # unit + integration (Vitest)
+npm run test:py          # CV service (Pytest)
+npm run test:e2e         # end-to-end (Playwright)
 ```
+
+`check:db-state` enforces the repository-layer boundary: no application module may reach
+past it into the JSON store directly. CI runs all five on every push and pull request.
 
 The boundary-overlap algorithm is implemented twice — once in TypeScript, once in Python —
 because it has to run in both. Both suites run it against the *same* golden fixture,
@@ -211,11 +275,11 @@ The annotation canvas *is* the labelling tool — drawing a box and picking a cl
 exactly the records the exporter consumes.
 
 ```bash
-npm run export:dataset              # -> ml/dataset/{images,labels}/{train,val,test}
-npm run export:dataset -- --clean   # drop stale manual labels first
-npm run export:dataset -- --dry-run # report only
-npm run import:external             # merge the two external CC BY datasets
-npm run build:v1                    # rebuild the v1 training subset
+npm run dataset:export               # -> ml/dataset/{images,labels}/{train,val,test}
+npm run dataset:export -- --clean    # drop stale manual labels first
+npm run dataset:export -- --dry-run  # report only
+npm run dataset:import               # merge the two external CC BY datasets
+npm run dataset:build-v1             # rebuild the v1 training subset
 ```
 
 Run the exporter before the importer — it regenerates `classes.txt` from the taxonomy, and
@@ -224,13 +288,13 @@ the importer refuses to run against a stale one.
 Feedback loop and evaluation:
 
 ```bash
-npm run report:active-learning   # which sketches most need attention next
-npm run report:dataset-quality   # read-only label/dataset checks
-npm run eval                     # writes ml/evaluation/baseline-<version>.json
+npm run dataset:report          # read-only label/dataset checks
+npm run model:active-learning   # which sketches most need attention next
+npm run model:eval              # writes ml/evaluation/baseline-<version>.json
 ```
 
 **Approve for training** in the workspace snapshots an asset's current boxes as ground
-truth; the next `export:dataset` merges them under a `corr_` prefix.
+truth; the next `dataset:export` merges them under a `corr_` prefix.
 
 > ⚠️ **The detector is experimental.** `ui-detector/v1.0.0` was trained on 156 images and
 > its per-class AP@0.5 ranges from 0.36 to 0.995 — `select`, `radio_button` and `carousel`

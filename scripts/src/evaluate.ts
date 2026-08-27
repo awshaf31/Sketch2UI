@@ -15,8 +15,8 @@
  *   §21.6 human evaluation   — requires actual human evaluators.
  *
  * Usage:
- *   npm run eval                       # requires the cv-worker running on :8000
- *   npm run eval -- --out ml/evaluation/baseline-v1.0.0.json
+ *   npm run model:eval                       # requires the cv-worker running on :8000
+ *   npm run model:eval -- --out ml/evaluation/baseline-v1.0.0.json
  */
 
 import fs from "node:fs";

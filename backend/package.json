@@ -11,15 +11,15 @@
     "test": "vitest run",
     "db:generate": "prisma generate --schema database/schema.prisma",
     "db:migrate": "prisma migrate deploy --schema database/schema.prisma",
-    "db:migrate-json": "tsx src/db/migrate-json-to-postgres.ts",
+    "db:import-json": "tsx src/db/migrate-json-to-postgres.ts",
     "db:backfill-legacy-owner": "tsx scripts/backfill-legacy-owner.ts",
-    "db:backfill-pages": "tsx scripts/backfill-pages.ts"
+    "db:backfill-pages": "tsx scripts/backfill-pages.ts",
+    "admin:promote": "tsx scripts/promote-admin.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@sketch2ui/codegen": "*",
     "@sketch2ui/shared-types": "*",
-    "@types/archiver": "^6.0.4",
     "archiver": "^7.0.1",
     "cors": "^2.8.5",
     "express": "^4.19.2",
@@ -32,6 +32,7 @@
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.4",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/multer": "^1.4.11",

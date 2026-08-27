@@ -20,8 +20,8 @@
  * Appendix E's "validate -> transform -> transaction" ordering.
  *
  * Usage:
- *   npm run db:migrate-json -w backend -- --dry-run
- *   npm run db:migrate-json -w backend
+ *   npm run db:import-json -w backend -- --dry-run
+ *   npm run db:import-json -w backend
  */
 
 import fs from "node:fs";
@@ -43,7 +43,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
  * "Environment variable not found: DATABASE_URL", despite both nominally using the
  * same configuration. Loading it here removes that asymmetry.
  *
- * Existing environment wins, so `DATABASE_URL=... npm run db:migrate-json` still
+ * Existing environment wins, so `DATABASE_URL=... npm run db:import-json` still
  * overrides the file.
  */
 function loadRootEnv(): void {

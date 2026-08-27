@@ -11,8 +11,8 @@
  * Nothing here mutates ml/dataset/{classes.txt,data.yaml,images,labels} or taxonomy.ts.
  *
  * Usage:
- *   npm run build:v1
- *   npm run build:v1 -- --dry-run
+ *   npm run dataset:build-v1
+ *   npm run dataset:build-v1 -- --dry-run
  */
 
 import fs from "node:fs";
@@ -83,12 +83,12 @@ function main(): void {
   console.log(DRY_RUN ? "Building v1 training subset (dry run)\n" : "Building v1 training subset\n");
 
   if (!fs.existsSync(CLASSES_FILE)) {
-    console.error(`Missing ${CLASSES_FILE}. Run \`npm run export:dataset\` first.`);
+    console.error(`Missing ${CLASSES_FILE}. Run \`npm run dataset:export\` first.`);
     process.exit(1);
   }
   const onDisk = fs.readFileSync(CLASSES_FILE, "utf-8");
   if (onDisk !== CLASS_LIST.join("\n") + "\n") {
-    console.error("classes.txt does not match taxonomy.ts — run `npm run export:dataset` first.");
+    console.error("classes.txt does not match taxonomy.ts — run `npm run dataset:export` first.");
     process.exit(1);
   }
 
@@ -341,8 +341,8 @@ Total: **${totalKept} images**.
 ## Getting the excluded classes back
 
 Collect and annotate more sketches containing them, re-run
-\`npm run export:dataset && npm run import:external\`, then re-run
-\`npm run build:v1\`. Classes cross the eligibility line automatically as soon as the
+\`npm run dataset:export && npm run dataset:import\`, then re-run
+\`npm run dataset:build-v1\`. Classes cross the eligibility line automatically as soon as the
 split puts them in val and test. A class needs roughly ${minEligible}+ instances before
 the ~78/12/11 split reliably does that.
 `;
