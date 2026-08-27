@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
-import { Badge } from "../components/Badge.js";
 import { Card } from "../components/Card.js";
+import { Eyebrow } from "../components/Eyebrow.js";
 import { LinkButton } from "../components/LinkButton.js";
 import { MarketingHeader } from "../components/MarketingHeader.js";
 import { MarketingFooter } from "../components/MarketingFooter.js";
@@ -14,14 +14,19 @@ import { useAuth } from "../context/AuthContext.js";
 // ("10K+ users" etc.), consistent with the constraint against decoration that doesn't
 // encode information.
 //
-// 2026-08-27 restyle — adopted the new violet/indigo brand palette (see
-// tailwind.config.js) and the layout language from a supplied reference mockup, with
-// two deliberate departures from that reference: (1) no fake "YourSite" browser-chrome
-// mockup or stock photo in the hero — HeroSchematic below shows an honest sketch → the
-// app's own real generated-markup shape instead; (2) no "no credit card required /
-// cancel anytime" trust row — Sketch2UI has no billing at all (Pricing.tsx says so
-// explicitly), so those claims would be false here even though they read fine on a
-// generic SaaS template.
+// 2026-08-27 redesign — moved off the generic violet-gradient-hero SaaS template toward a
+// visual language borrowed from the product's own detection canvas: the hero's annotation
+// graphic reuses the app's *real* semantic colors (detection-model violet, selection
+// orange, page-boundary red — see tailwind.config.js's own comment that these "encode real
+// CV/annotation semantics, not brand decoration") instead of an invented mockup, and the
+// corner-bracket motif already established by BrandMark (echoing the canvas's resize
+// handles) is repeated at two more deliberate moments (hero frame, closing CTA) rather than
+// introduced fresh. Section layouts are varied on purpose — a numbered vertical list for
+// the one genuinely sequential thing (the 5-step pipeline), tagged spec rows for the two
+// reference/catalog sections (features, technology) — instead of the same icon-in-a-box
+// card repeated in every section. Buttons/Cards keep the app-wide violet brand tokens
+// unchanged (LinkButton/Card component files untouched) so the CTA you click here matches
+// the app you land in.
 //
 // Section ids (#features, #how-it-works) are the anchor targets MarketingHeader/
 // MarketingFooter link to, including from Pricing ("/#features"). The effect below
@@ -40,7 +45,9 @@ function useHashScroll() {
 function SectionHeading({ eyebrow, title, lede }: { eyebrow: string; title: string; lede?: string }) {
   return (
     <div className="mx-auto max-w-[640px] text-center">
-      <Badge tone="brand">{eyebrow}</Badge>
+      <div className="flex justify-center">
+        <Eyebrow>{eyebrow}</Eyebrow>
+      </div>
       <h2 className="mt-md text-xl font-semibold text-text-primary sm:text-2xl">{title}</h2>
       {lede && <p className="mt-sm text-md text-text-secondary">{lede}</p>}
     </div>
@@ -172,10 +179,12 @@ function RefreshIcon() {
   );
 }
 
-function SparkleIcon() {
+function DatabaseIcon() {
   return (
-    <svg viewBox="0 0 20 20" width="11" height="11" fill="currentColor" aria-hidden="true">
-      <path d="M10 2.5 11.4 8 17 9.5 11.4 11 10 16.5 8.6 11 3 9.5 8.6 8 10 2.5Z" />
+    <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+      <ellipse cx="10" cy="5" rx="6.2" ry="2.3" />
+      <path d="M3.8 5v10c0 1.27 2.78 2.3 6.2 2.3s6.2-1.03 6.2-2.3V5" strokeLinecap="round" />
+      <path d="M3.8 10c0 1.27 2.78 2.3 6.2 2.3s6.2-1.03 6.2-2.3" strokeLinecap="round" />
     </svg>
   );
 }
@@ -213,6 +222,27 @@ function ArrowRightIcon({ className }: { className?: string }) {
   );
 }
 
+// A hand-drawn correction stroke under the headline's key promise — the same "the model
+// proposes, a person marks it up" idea the rest of the page states in words, applied to
+// the one phrase that matters most. Replaces a gradient bg-clip-text treatment (the other
+// extremely common AI-SaaS tell) with something that means something here specifically.
+function CorrectionMark({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 220 16"
+      preserveAspectRatio="none"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="3.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M3 9.5 Q 40 2 78 9 T 152 8 T 217 9.5" />
+    </svg>
+  );
+}
+
 const PIPELINE_STEPS = [
   { icon: UploadIcon, title: "Upload your sketch", body: "Photograph or scan a hand-drawn wireframe and upload it to a project." },
   { icon: ScanIcon, title: "Detect components", body: "A trained detector finds buttons, cards, navigation, and text inside the page boundary." },
@@ -222,14 +252,14 @@ const PIPELINE_STEPS = [
 ] as const;
 
 const CORE_FEATURES = [
-  { icon: ScanIcon, title: "Component detection", body: "A trained detector proposes structural, content, and interactive elements straight from your sketch photo." },
-  { icon: LayersIcon, title: "Page boundary detection", body: "The page's edges in the photo are found automatically, or adjust the boundary by hand." },
-  { icon: CorrectIcon, title: "Manual correction", body: "Every detection can be reclassified, resized, reparented, or removed on the canvas." },
-  { icon: SlidersIcon, title: "Style, Content, Geometry & Structure Inspector", body: "Four focused panels for fine-tuning spacing, text, position, and hierarchy on any element." },
-  { icon: HistoryIcon, title: "Versioned code editor", body: "Hand-edit the generated HTML and CSS; every save creates a new immutable version you can revert to." },
-  { icon: PreviewIcon, title: "Live sandboxed preview", body: "See the generated page render in a sandboxed frame before you export it." },
-  { icon: PagesIcon, title: "Multi-page projects", body: "Add pages to a project, each with its own sketch and generated code, linked together and exported as one bundle." },
-  { icon: ExportIcon, title: "Self-contained export", body: "A ZIP with your HTML, CSS, real image crops, and the original sketch — ready to open in a browser." },
+  { tag: "Detection", icon: ScanIcon, title: "Component detection", body: "A trained detector proposes structural, content, and interactive elements straight from your sketch photo." },
+  { tag: "Detection", icon: LayersIcon, title: "Page boundary detection", body: "The page's edges in the photo are found automatically, or adjust the boundary by hand." },
+  { tag: "Correction", icon: CorrectIcon, title: "Manual correction", body: "Every detection can be reclassified, resized, reparented, or removed on the canvas." },
+  { tag: "Inspector", icon: SlidersIcon, title: "Style, Content, Geometry & Structure Inspector", body: "Four focused panels for fine-tuning spacing, text, position, and hierarchy on any element." },
+  { tag: "Code", icon: HistoryIcon, title: "Versioned code editor", body: "Hand-edit the generated HTML and CSS; every save creates a new immutable version you can revert to." },
+  { tag: "Preview", icon: PreviewIcon, title: "Live sandboxed preview", body: "See the generated page render in a sandboxed frame before you export it." },
+  { tag: "Project", icon: PagesIcon, title: "Multi-page projects", body: "Add pages to a project, each with its own sketch and generated code, linked together and exported as one bundle." },
+  { tag: "Export", icon: ExportIcon, title: "Self-contained export", body: "A ZIP with your HTML, CSS, real image crops, and the original sketch — ready to open in a browser." },
 ] as const;
 
 const WHY_POINTS = [
@@ -257,10 +287,10 @@ const COMPONENT_GROUPS = [
 ] as const;
 
 const TRUST_POINTS = [
-  { title: "Durable persistence", body: "Every project, correction, and code version is stored in PostgreSQL — not just held in browser memory." },
-  { title: "Sandboxed preview", body: "The live preview renders in an iframe with no script execution (sandbox=\"\"), so a generated page can never run code against your session." },
-  { title: "Immutable code versions", body: "Saving never overwrites history — you can always activate an older version of a page's code." },
-  { title: "Your projects, your account", body: "Every project belongs to the account that created it. Nothing is visible across accounts." },
+  { icon: DatabaseIcon, title: "Durable persistence", body: "Every project, correction, and code version is stored in PostgreSQL — not just held in browser memory." },
+  { icon: PreviewIcon, title: "Sandboxed preview", body: "The live preview renders in an iframe with no script execution (sandbox=\"\"), so a generated page can never run code against your session." },
+  { icon: HistoryIcon, title: "Immutable code versions", body: "Saving never overwrites history — you can always activate an older version of a page's code." },
+  { icon: ShieldIcon, title: "Your projects, your account", body: "Every project belongs to the account that created it. Nothing is visible across accounts." },
 ] as const;
 
 function HeroCTA() {
@@ -279,7 +309,8 @@ function HeroCTA() {
 // Variant is "secondary" (white pill) here, not "primary" — this button sits on the
 // bottom section's own primary-to-accent gradient background, where a same-color
 // button would disappear. HeroCTA above stays "primary" because it sits on the plain
-// hero background.
+// hero background. Copy differs deliberately from HeroCTA's "Start Building" so the two
+// don't read as an identical phrase repeated twice on one page.
 function BottomCTA() {
   const { status } = useAuth();
   return status === "authenticated" ? (
@@ -288,63 +319,73 @@ function BottomCTA() {
     </LinkButton>
   ) : (
     <LinkButton to="/register" variant="secondary" size="lg">
-      Start Building — it's free
+      Create your first project — it's free
     </LinkButton>
   );
 }
 
-// Honest stand-in for the reference mockup's browser-chrome + stock-photo hero
-// graphic. Rather than fabricate a fake finished website, this shows the two things
-// that are literally true of the product: a rough hand-drawn sketch going in, and the
-// app's own real generated-markup shape (an HTML tag, a class attribute) coming out —
-// same "schematic of the real pipeline, not a screenshot" rule the section below
-// already follows. Decorative only (aria-hidden), and hidden below `lg` so it never
-// competes with the headline on small screens.
-function HeroSchematic() {
+// The signature element: an honest snapshot of the detection canvas's own annotation
+// language, not an invented product screenshot. A rough hand-drawn wireframe (plain
+// stroke lines, no fill) is overlaid with the exact three states the workspace itself
+// uses — a dashed violet box for a model's proposed detection, a solid orange box with
+// corner handles for a human correction, a dashed red outline for the detected page
+// boundary — using the app's real `detection-model` / `selection` / `page-boundary`
+// tokens, not new colors invented for marketing. Decorative (aria-hidden) and hidden
+// below `lg` so it never competes with the headline on small screens.
+function AnnotationHero() {
   return (
-    <div className="relative mx-auto hidden h-[300px] w-full max-w-[420px] lg:block" aria-hidden="true">
-      <div className="absolute left-0 top-2 w-[210px] -rotate-3 rounded-xl border border-border bg-surface p-md shadow-elevated">
-        <div className="flex items-center gap-2xs">
-          <span className="h-2 w-2 rounded-pill bg-border-strong" />
-          <span className="h-2 w-2 rounded-pill bg-border-strong" />
-          <span className="h-2 w-2 rounded-pill bg-border-strong" />
-        </div>
-        <div className="mt-sm h-20 rounded-md border border-dashed border-border-strong" />
-        <div className="mt-sm space-y-xs">
-          <div className="h-2 w-full rounded-pill bg-surface-sunken" />
-          <div className="h-2 w-4/5 rounded-pill bg-surface-sunken" />
+    <div className="relative mx-auto hidden w-full max-w-[420px] lg:block" aria-hidden="true">
+      <div className="relative -rotate-1 rounded-lg border border-border bg-surface shadow-elevated">
+        <span className="absolute -left-2 -top-2 h-4 w-4 border-l-2 border-t-2 border-primary" />
+        <span className="absolute -right-2 -top-2 h-4 w-4 border-r-2 border-t-2 border-primary" />
+        <span className="absolute -bottom-2 -left-2 h-4 w-4 border-b-2 border-l-2 border-primary" />
+        <span className="absolute -bottom-2 -right-2 h-4 w-4 border-b-2 border-r-2 border-primary" />
+
+        <div className="relative h-[300px] w-full overflow-hidden rounded-lg">
+          <svg
+            className="absolute inset-0 h-full w-full text-text-muted"
+            viewBox="0 0 380 300"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M30 42 H351" />
+            <circle cx="42" cy="42" r="6" />
+            <circle cx="60" cy="42" r="6" />
+            <path d="M29 68 Q26 66 30 65 H298 Q303 66 302 70 V148 Q303 152 298 151 H31 Q27 152 28 148 Z" />
+            <path d="M29 176 Q26 174 30 174 H132 Q136 174 135 178 V206 Q136 210 132 210 H30 Q26 210 28 206 Z" />
+            <path d="M156 179 H268" />
+            <path d="M156 195 H224" />
+          </svg>
+
+          <div className="absolute left-[26px] top-[64px] h-[88px] w-[276px] rounded-[3px] border-2 border-dashed border-detection-model" />
+          {/* Text stays a dark neutral (not text-detection-model) — that violet is only
+              4.23:1 against white, short of WCAG AA's 4.5:1 for normal text. The colored
+              border already carries the "which state is this" signal; the label just
+              needs to be legible. Same reasoning on the "heading · corrected" chip below,
+              where text-selection is only 2.8:1. */}
+          <span className="absolute left-[26px] top-[42px] rounded-sm border border-detection-model bg-surface px-1.5 py-[1px] font-mono text-[10px] uppercase leading-[1.6] tracking-wide text-text-primary">
+            card · model
+          </span>
+
+          <div className="absolute left-[24px] top-[173px] h-[42px] w-[116px] rounded-[3px] border-2 border-selection">
+            <span className="absolute -left-[3px] -top-[3px] h-[6px] w-[6px] bg-selection" />
+            <span className="absolute -right-[3px] -top-[3px] h-[6px] w-[6px] bg-selection" />
+            <span className="absolute -bottom-[3px] -left-[3px] h-[6px] w-[6px] bg-selection" />
+            <span className="absolute -bottom-[3px] -right-[3px] h-[6px] w-[6px] bg-selection" />
+          </div>
+          <span className="absolute left-[24px] top-[220px] rounded-sm border border-selection bg-surface px-1.5 py-[1px] font-mono text-[10px] uppercase leading-[1.6] tracking-wide text-text-primary">
+            heading · corrected
+          </span>
+
+          <div className="absolute inset-[8px] rounded-md border-2 border-dashed border-page-boundary/70" />
         </div>
       </div>
-
-      <svg
-        className="absolute left-[150px] top-[92px] h-20 w-24 text-accent"
-        viewBox="0 0 96 80"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path d="M6 8c30 4 46 30 84 58" strokeLinecap="round" />
-        <path d="M78 58l12 8-4-14" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-
-      <div className="absolute bottom-2 right-0 w-[250px] rotate-2 rounded-xl border border-border bg-surface p-md shadow-elevated">
-        <div className="flex items-center gap-2xs">
-          <span className="h-2 w-2 rounded-pill bg-error" />
-          <span className="h-2 w-2 rounded-pill bg-warning" />
-          <span className="h-2 w-2 rounded-pill bg-success" />
-        </div>
-        <pre className="mt-sm whitespace-pre-wrap font-mono text-2xs leading-relaxed text-text-secondary">
-          <span className="text-primary">&lt;header</span> <span className="text-accent">class</span>=
-          <span className="text-success">&quot;hero&quot;</span>
-          <span className="text-primary">&gt;</span>
-          {"\n  "}
-          <span className="text-primary">&lt;h1&gt;</span>Turn hand-drawn<span className="text-primary">&lt;/h1&gt;</span>
-          {"\n  "}
-          <span className="text-primary">&lt;p&gt;</span>wireframes into code.<span className="text-primary">&lt;/p&gt;</span>
-          {"\n"}
-          <span className="text-primary">&lt;/header&gt;</span>
-        </pre>
-      </div>
+      <p className="mt-md text-center font-mono text-2xs text-text-muted">
+        The detection canvas's own colors — nothing staged for this page.
+      </p>
     </div>
   );
 }
@@ -358,16 +399,27 @@ export default function Home() {
 
       {/* Hero */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-bg to-primary-light" aria-hidden="true" />
+        <div
+          className="absolute inset-0 -z-10"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, rgba(210,205,234,0.55) 1px, transparent 1px), linear-gradient(to bottom, rgba(210,205,234,0.55) 1px, transparent 1px)",
+            backgroundSize: "40px 40px",
+            maskImage: "linear-gradient(to bottom, black, transparent 85%)",
+            WebkitMaskImage: "linear-gradient(to bottom, black, transparent 85%)",
+          }}
+          aria-hidden="true"
+        />
         <div className="mx-auto grid max-w-[1120px] items-center gap-2xl px-lg pb-3xl pt-3xl sm:pt-[64px] lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="text-center lg:text-left">
-            <Badge tone="brand">
-              <SparkleIcon /> Sketch to working UI
-            </Badge>
+            <div className="flex justify-center lg:justify-start">
+              <Eyebrow>Detect → Correct → Generate</Eyebrow>
+            </div>
             <h1 className="mt-lg text-4xl font-semibold leading-tight text-text-primary sm:text-5xl">
               Turn hand-drawn wireframes into{" "}
-              <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+              <span className="relative inline-block whitespace-nowrap">
                 working websites.
+                <CorrectionMark className="absolute -bottom-1 left-0 h-[0.4em] w-full text-selection" />
               </span>
             </h1>
             <p className="mx-auto mt-lg max-w-[560px] text-md text-text-secondary lg:mx-0">
@@ -392,22 +444,24 @@ export default function Home() {
               </span>
             </div>
           </div>
-          <HeroSchematic />
+          <AnnotationHero />
         </div>
       </section>
 
-      {/* Product demonstration — a schematic of the real pipeline, not a screenshot */}
+      {/* Pipeline strip — a compact map of the five steps below, not a repeat of their
+          full cards. Numbered 01–05 deliberately: this is one of the few places on the
+          page where the order genuinely carries information. */}
       <section className="border-y border-border bg-surface">
-        <div className="mx-auto max-w-[1120px] px-lg py-2xl">
-          <div className="flex flex-wrap items-center justify-center gap-y-sm sm:flex-nowrap">
+        <div className="mx-auto max-w-[1120px] px-lg py-xl">
+          <div className="flex flex-wrap items-center justify-center gap-y-lg sm:flex-nowrap">
             {PIPELINE_STEPS.map((step, i) => (
               <div key={step.title} className="flex flex-1 items-center">
-                <div className="flex w-[132px] flex-1 flex-col items-center gap-xs rounded-md border border-border p-md text-center sm:w-auto">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-subtle text-primary">
+                <div className="flex w-[130px] flex-1 flex-col items-center gap-2xs text-center sm:w-auto">
+                  <span className="font-mono text-2xs text-text-muted">{`0${i + 1}`}</span>
+                  <span className="flex h-8 w-8 items-center justify-center text-primary">
                     <step.icon />
                   </span>
-                  <span className="font-mono text-2xs text-text-muted">{`0${i + 1}`}</span>
-                  <span className="text-sm font-medium text-text-primary">{step.title}</span>
+                  <span className="text-xs font-medium text-text-primary">{step.title}</span>
                 </div>
                 {i < PIPELINE_STEPS.length - 1 && (
                   <ArrowRightIcon className="mx-2xs hidden shrink-0 text-border-strong sm:block" />
@@ -418,30 +472,36 @@ export default function Home() {
         </div>
       </section>
 
-      {/* How it works */}
-      <section id="how-it-works" className="mx-auto max-w-[1120px] px-lg py-3xl">
+      {/* How it works — a vertical, numbered spec list rather than five identical
+          cards; narrower measure than the rest of the page since it's a reading list,
+          not a grid. */}
+      <section id="how-it-works" className="mx-auto max-w-[880px] px-lg py-3xl">
         <SectionHeading
           eyebrow="How it works"
           title="From a photo of a sketch to an exported page"
           lede="Five steps, the same ones the workspace walks you through on every project."
         />
-        <div className="mt-2xl grid gap-lg lg:grid-cols-5">
+        <div className="mt-2xl border-t border-border">
           {PIPELINE_STEPS.map((step, i) => (
-            <Card key={step.title} className="flex flex-col gap-sm">
-              <div className="flex items-center gap-sm">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-subtle text-primary">
+            <div key={step.title} className="flex flex-col gap-sm border-b border-border py-lg sm:flex-row sm:items-start sm:gap-lg">
+              <span className="shrink-0 font-mono text-2xl font-semibold leading-none text-text-muted sm:w-[64px]">{`0${i + 1}`}</span>
+              <div className="flex flex-1 items-start gap-md">
+                <span className="mt-2xs flex h-8 w-8 shrink-0 items-center justify-center text-primary">
                   <step.icon />
                 </span>
-                <span className="font-mono text-2xs text-text-muted">{`Step ${i + 1}`}</span>
+                <div>
+                  <h3 className="text-md font-semibold text-text-primary">{step.title}</h3>
+                  <p className="mt-2xs text-sm text-text-secondary">{step.body}</p>
+                </div>
               </div>
-              <h3 className="text-sm font-semibold text-text-primary">{step.title}</h3>
-              <p className="text-sm text-text-secondary">{step.body}</p>
-            </Card>
+            </div>
           ))}
         </div>
       </section>
 
-      {/* Core features */}
+      {/* Core features — a tagged spec list (category tag drawn from the app's real
+          taxonomy groupings below, not an invented sequence) instead of another row of
+          icon-in-a-box cards. */}
       <section id="features" className="border-t border-border bg-surface">
         <div className="mx-auto max-w-[1120px] px-lg py-3xl">
           <SectionHeading
@@ -449,15 +509,17 @@ export default function Home() {
             title="Everything from first detection to final export"
             lede="The same tools that power the workspace, not a stripped-down demo of them."
           />
-          <div className="mt-2xl grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mt-2xl border-t border-border sm:grid sm:grid-cols-2 sm:gap-x-2xl">
             {CORE_FEATURES.map((f) => (
-              <Card key={f.title} className="flex flex-col gap-sm">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-subtle text-primary">
-                  <f.icon />
+              <div key={f.title} className="flex gap-lg border-b border-border py-lg">
+                <span className="w-[92px] shrink-0 font-mono text-2xs uppercase leading-[1.6] tracking-wide text-text-muted">
+                  {f.tag}
                 </span>
-                <h3 className="text-sm font-semibold text-text-primary">{f.title}</h3>
-                <p className="text-sm text-text-secondary">{f.body}</p>
-              </Card>
+                <div>
+                  <h3 className="text-sm font-semibold text-text-primary">{f.title}</h3>
+                  <p className="mt-2xs text-sm text-text-secondary">{f.body}</p>
+                </div>
+              </div>
             ))}
           </div>
 
@@ -467,8 +529,8 @@ export default function Home() {
           <div className="mt-2xl overflow-hidden rounded-xl border border-border bg-primary-light">
             <div className="grid divide-y divide-border sm:grid-cols-3 sm:divide-x sm:divide-y-0">
               {WHY_POINTS.map((p) => (
-                <div key={p.title} className="flex flex-col items-center gap-xs px-lg py-lg text-center">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-surface text-primary">
+                <div key={p.title} className="flex flex-col items-center gap-sm px-lg py-xl text-center">
+                  <span className="text-primary">
                     <p.icon />
                   </span>
                   <h3 className="text-sm font-semibold text-text-primary">{p.title}</h3>
@@ -484,7 +546,7 @@ export default function Home() {
       <section className="border-t border-border bg-surface">
         <div className="mx-auto grid max-w-[1120px] items-center gap-2xl px-lg py-3xl lg:grid-cols-2">
           <div>
-            <Badge tone="brand">Workflow</Badge>
+            <Eyebrow>Workflow</Eyebrow>
             <h2 className="mt-md text-xl font-semibold text-text-primary sm:text-2xl">
               One project, as many pages as your site needs
             </h2>
@@ -501,7 +563,7 @@ export default function Home() {
               { label: "Page 3", sub: "Pricing" },
             ].map((p) => (
               <div key={p.label} className="flex items-center gap-sm rounded-md px-sm py-sm">
-                <span className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-subtle text-primary">
+                <span className="flex h-8 w-8 items-center justify-center text-primary">
                   <PagesIcon />
                 </span>
                 <div className="flex flex-col">
@@ -541,15 +603,16 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Technology / trust */}
+      {/* Technology / trust — same tagged-row language as Core features, since both
+          are reference material rather than a narrative sequence. */}
       <section className="border-t border-border bg-surface">
         <div className="mx-auto max-w-[1120px] px-lg py-3xl">
           <SectionHeading eyebrow="Technology" title="Built to be inspected, not just trusted" />
           <div className="mt-2xl grid gap-lg sm:grid-cols-2 lg:grid-cols-4">
             {TRUST_POINTS.map((p) => (
-              <div key={p.title} className="flex flex-col gap-xs rounded-md border border-border p-lg">
-                <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary-subtle text-primary">
-                  <ShieldIcon />
+              <div key={p.title} className="flex flex-col gap-xs border-t-2 border-border-strong pt-md">
+                <span className="text-primary">
+                  <p.icon />
                 </span>
                 <h3 className="text-sm font-semibold text-text-primary">{p.title}</h3>
                 <p className="text-sm text-text-secondary">{p.body}</p>
@@ -561,7 +624,11 @@ export default function Home() {
 
       {/* Bottom CTA */}
       <section className="mx-auto max-w-[1120px] px-lg py-3xl">
-        <div className="overflow-hidden rounded-xl bg-gradient-to-r from-primary to-accent px-lg py-2xl text-center sm:px-2xl">
+        <div className="relative overflow-hidden rounded-xl bg-gradient-to-r from-primary to-accent px-lg py-2xl text-center sm:px-2xl">
+          <span className="absolute left-4 top-4 h-4 w-4 border-l-2 border-t-2 border-text-inverse/40" aria-hidden="true" />
+          <span className="absolute right-4 top-4 h-4 w-4 border-r-2 border-t-2 border-text-inverse/40" aria-hidden="true" />
+          <span className="absolute bottom-4 left-4 h-4 w-4 border-b-2 border-l-2 border-text-inverse/40" aria-hidden="true" />
+          <span className="absolute bottom-4 right-4 h-4 w-4 border-b-2 border-r-2 border-text-inverse/40" aria-hidden="true" />
           <h2 className="text-xl font-semibold text-text-inverse sm:text-2xl">
             Start turning sketches into working pages.
           </h2>

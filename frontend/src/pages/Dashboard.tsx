@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Project, ProjectStatus } from "@sketch2ui/shared-types";
 import { api } from "../services/api.js";
@@ -9,6 +10,7 @@ import { BrandMark } from "../components/BrandMark.js";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
 import { EmptyState } from "../components/EmptyState.js";
+import { Eyebrow } from "../components/Eyebrow.js";
 import { ErrorState } from "../components/ErrorState.js";
 import { IconButton } from "../components/IconButton.js";
 import { Input } from "../components/Input.js";
@@ -67,6 +69,19 @@ function PencilIcon() {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+// A small mono label chip over each thumbnail's corner — the same "detection label"
+// idiom the marketing redesign introduced for the hero's annotation graphic (a tagged
+// pill sitting on the artifact it describes, not decoration next to it). Carries real
+// data (page count), so it replaces rather than duplicates the plain-text page count
+// that used to sit in the meta line below.
+function ThumbnailTag({ children }: { children: ReactNode }) {
+  return (
+    <span className="absolute left-sm top-sm rounded-sm border border-border bg-surface/95 px-1.5 py-[1px] font-mono text-[10px] uppercase leading-[1.6] tracking-wide text-text-secondary shadow-subtle">
+      {children}
+    </span>
   );
 }
 
@@ -285,51 +300,59 @@ export default function Dashboard() {
         </div>
 
         <Card className="mt-xl p-xl">
-          <h2 className="text-lg font-semibold text-text-primary">Create a new Sketch2UI project</h2>
+          <Eyebrow>New project</Eyebrow>
+          <h2 className="mt-xs text-lg font-semibold text-text-primary">Start from a sketch, or a blank page</h2>
           <p className="mt-2xs text-sm text-text-secondary">
-            Start with a hand-drawn wireframe. Upload your sketch and turn it into a working UI.
+            Upload a hand-drawn wireframe now, or skip it and add one from inside the project later.
           </p>
 
-          <div className="mt-lg">
-            {stagedFile ? (
-              <StagedSketchPreview file={stagedFile} previewUrl={stagedPreviewUrl} onRemove={() => setStagedFile(null)} />
-            ) : (
-              <UploadDropzone onFile={setStagedFile} />
-            )}
-          </div>
-
-          <form onSubmit={handleCreate} className="mt-lg">
-            <label htmlFor="dashboard-project-name" className="block text-xs font-medium text-text-secondary">
-              Project name
-            </label>
-            <div className="mt-xs flex items-center gap-sm">
-              <Input
-                id="dashboard-project-name"
-                ref={nameInputRef}
-                size="md"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="New project name"
-                disabled={creating}
-                className="flex-1 text-md"
-              />
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                disabled={!name.trim()}
-                loading={creating}
-                loadingLabel="Creating…"
-              >
-                Create project
-              </Button>
+          <div className="mt-lg lg:grid lg:grid-cols-[320px_1fr] lg:gap-xl">
+            <div>
+              {stagedFile ? (
+                <StagedSketchPreview file={stagedFile} previewUrl={stagedPreviewUrl} onRemove={() => setStagedFile(null)} />
+              ) : (
+                <UploadDropzone onFile={setStagedFile} />
+              )}
             </div>
-            {createError && <p className="mt-sm text-sm text-error">{createError}</p>}
-          </form>
+
+            <form onSubmit={handleCreate} className="mt-lg flex flex-col justify-center lg:mt-0">
+              <label htmlFor="dashboard-project-name" className="block text-xs font-medium text-text-secondary">
+                Project name
+              </label>
+              <div className="mt-xs flex items-center gap-sm">
+                <Input
+                  id="dashboard-project-name"
+                  ref={nameInputRef}
+                  size="md"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="New project name"
+                  disabled={creating}
+                  className="flex-1 text-md"
+                />
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="lg"
+                  disabled={!name.trim()}
+                  loading={creating}
+                  loadingLabel="Creating…"
+                >
+                  Create project
+                </Button>
+              </div>
+              {createError && <p className="mt-sm text-sm text-error">{createError}</p>}
+            </form>
+          </div>
         </Card>
 
         <div className="mt-2xl">
-          <h2 className="text-lg font-semibold text-text-primary">Recent projects</h2>
+          <div className="flex items-baseline gap-sm">
+            <h2 className="text-lg font-semibold text-text-primary">Recent projects</h2>
+            {!loading && !listError && projects.length > 0 && (
+              <span className="font-mono text-2xs text-text-muted">{filteredProjects.length}</span>
+            )}
+          </div>
 
           <div className="mt-lg">
             {loading ? (
@@ -380,6 +403,11 @@ export default function Dashboard() {
                           projectName={p.name}
                           onPageCount={(count) => setPageCounts((prev) => ({ ...prev, [p.id]: count }))}
                         />
+                        {pageCounts[p.id] !== undefined && pageCounts[p.id] > 0 && (
+                          <ThumbnailTag>
+                            {pageCounts[p.id]} {pageCounts[p.id] === 1 ? "page" : "pages"}
+                          </ThumbnailTag>
+                        )}
                         <div
                           className={cn(
                             "absolute right-sm top-sm flex items-center gap-2xs opacity-0 transition-opacity duration-fast",
@@ -434,12 +462,7 @@ export default function Dashboard() {
                       )}
                       <div className="mt-2xs flex items-center gap-sm">
                         <Badge tone={STATUS_BADGE_TONE[p.status]}>{p.status}</Badge>
-                        <p className="truncate text-xs text-text-muted">
-                          {pageCounts[p.id] !== undefined
-                            ? `${pageCounts[p.id]} ${pageCounts[p.id] === 1 ? "page" : "pages"} · `
-                            : ""}
-                          Created {formatDate(p.createdAt)}
-                        </p>
+                        <p className="truncate font-mono text-2xs text-text-muted">Created {formatDate(p.createdAt)}</p>
                       </div>
                     </Card>
                   );

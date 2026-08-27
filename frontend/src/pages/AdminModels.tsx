@@ -64,7 +64,21 @@ export default function AdminModels() {
         ) : models ? (
           <div className="mt-xl flex flex-col gap-lg">
             {models.map((m) => (
-              <Card key={`${m.family}-${m.version}`} className="flex flex-col gap-md">
+              <Card
+                key={`${m.family}-${m.version}`}
+                className={m.active ? "relative flex flex-col gap-md" : "flex flex-col gap-md"}
+              >
+                {/* The same corner-bracket mark used everywhere else in the app to
+                    flag "this is the real, currently-live thing" — here on the one
+                    model actually serving detections, not decoration on the others. */}
+                {m.active && (
+                  <>
+                    <span className="pointer-events-none absolute -left-px -top-px h-3 w-3 border-l-2 border-t-2 border-success" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -right-px -top-px h-3 w-3 border-r-2 border-t-2 border-success" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -bottom-px -left-px h-3 w-3 border-b-2 border-l-2 border-success" aria-hidden="true" />
+                    <span className="pointer-events-none absolute -bottom-px -right-px h-3 w-3 border-b-2 border-r-2 border-success" aria-hidden="true" />
+                  </>
+                )}
                 <div className="flex items-center gap-sm">
                   <h2 className="font-mono text-md font-semibold text-text-primary">
                     {m.family} {m.version}
@@ -80,7 +94,7 @@ export default function AdminModels() {
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-text-muted">Dataset</p>
                     <p className="mt-2xs text-sm text-text-primary">
-                      {m.classCount} classes
+                      <span className="font-mono">{m.classCount}</span> classes
                       <br />
                       <span className="text-text-muted">{m.datasetVersion}</span>
                     </p>

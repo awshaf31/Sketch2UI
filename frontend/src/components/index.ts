@@ -24,3 +24,4 @@ export * from "./DialogHost.js";
 export * from "./Card.js";
 export * from "./EmptyState.js";
 export * from "./ErrorState.js";
+export * from "./Eyebrow.js";

@@ -14,6 +14,17 @@ import { bboxToPolygon, polygonBounds } from "@sketch2ui/shared-types";
 const HANDLE_SIZE = 10;
 const MIN_SIZE = 0.02;
 
+// Same decorative registration-mark corners AnnotationCanvas.tsx draws around a
+// selected detection (which itself echoes BrandMark.tsx's identity mark) — purely
+// visual, drawn outside the real interactive handles below, never affecting
+// hit-testing or drag behavior.
+const BRACKET_OUT = 6;
+const BRACKET_ARM = 14;
+
+function bracketPath(x: number, y: number, dx: 1 | -1, dy: 1 | -1, arm: number): string {
+  return `M ${x + dx * arm} ${y} L ${x} ${y} L ${x} ${y + dy * arm}`;
+}
+
 type Handle = "nw" | "ne" | "sw" | "se";
 
 type Drag =
@@ -171,6 +182,20 @@ export default function PageBoundaryOverlay({
             />
           );
         })}
+      {editable && (
+        <g className="pointer-events-none stroke-page-boundary" aria-hidden="true">
+          {(
+            [
+              [px.x - BRACKET_OUT, px.y - BRACKET_OUT, 1, 1],
+              [px.x + px.width + BRACKET_OUT, px.y - BRACKET_OUT, -1, 1],
+              [px.x - BRACKET_OUT, px.y + px.height + BRACKET_OUT, 1, -1],
+              [px.x + px.width + BRACKET_OUT, px.y + px.height + BRACKET_OUT, -1, -1],
+            ] as Array<[number, number, 1 | -1, 1 | -1]>
+          ).map(([cx, cy, dx, dy], i) => (
+            <path key={i} d={bracketPath(cx, cy, dx, dy, BRACKET_ARM)} strokeWidth={2} strokeLinecap="round" fill="none" />
+          ))}
+        </g>
+      )}
     </g>
   );
 }

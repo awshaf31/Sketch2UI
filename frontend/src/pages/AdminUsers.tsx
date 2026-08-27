@@ -77,7 +77,7 @@ export default function AdminUsers() {
                       <Badge tone={u.role === "admin" ? "brand" : "neutral"}>{u.role}</Badge>
                     </td>
                     <td className="px-lg py-sm text-text-secondary">{formatDate(u.createdAt)}</td>
-                    <td className="px-lg py-sm text-text-secondary">{u.projectCount}</td>
+                    <td className="px-lg py-sm font-mono text-text-secondary">{u.projectCount}</td>
                   </tr>
                 ))}
               </tbody>

@@ -109,6 +109,37 @@ function normalizeRect(a: { x: number; y: number }, b: { x: number; y: number })
   };
 }
 
+// Purely decorative registration-mark corners drawn just outside a selected box —
+// the same corner-bracket motif BrandMark.tsx already uses for the app's identity
+// (which itself echoes these very resize handles). Rendered as an extra `pointer-
+// events-none`/`aria-hidden` layer alongside the real interactive handles below, so
+// this never changes hit-testing, keyboard behavior, or anything the handles do —
+// visual only. `out` keeps the brackets clear of the box's own stroke; `arm` is in
+// the same SVG user-unit space as HANDLE_SIZE, so it scales with zoom exactly like
+// the real handles do.
+const BRACKET_OUT = 5;
+const BRACKET_ARM = 11;
+
+function bracketPath(x: number, y: number, dx: 1 | -1, dy: 1 | -1, arm: number): string {
+  return `M ${x + dx * arm} ${y} L ${x} ${y} L ${x} ${y + dy * arm}`;
+}
+
+function cornerBrackets(box: BBox, colorClass: string) {
+  const corners: Array<[number, number, 1 | -1, 1 | -1]> = [
+    [box.x - BRACKET_OUT, box.y - BRACKET_OUT, 1, 1],
+    [box.x + box.width + BRACKET_OUT, box.y - BRACKET_OUT, -1, 1],
+    [box.x - BRACKET_OUT, box.y + box.height + BRACKET_OUT, 1, -1],
+    [box.x + box.width + BRACKET_OUT, box.y + box.height + BRACKET_OUT, -1, -1],
+  ];
+  return (
+    <g className={cn("pointer-events-none", colorClass)} aria-hidden="true">
+      {corners.map(([cx, cy, dx, dy], i) => (
+        <path key={i} d={bracketPath(cx, cy, dx, dy, BRACKET_ARM)} strokeWidth={2} strokeLinecap="round" fill="none" />
+      ))}
+    </g>
+  );
+}
+
 function applyHandle(original: BBox, handle: Handle, point: { x: number; y: number }): BBox {
   const fixed =
     handle === "nw"
@@ -459,6 +490,7 @@ export default function AnnotationCanvas({
                     />
                   );
                 })}
+              {selected && cornerBrackets(box, "stroke-selection")}
             </g>
           );
         })}
@@ -485,8 +517,8 @@ export default function AnnotationCanvas({
           />
         )}
       </svg>
-      <p className="pointer-events-none absolute bottom-2 left-2 rounded bg-text-primary/60 px-2 py-1 text-xs text-text-inverse">
-        Drawing as: <strong>{activeClass}</strong> · drag to draw · click box to select · Delete to remove
+      <p className="pointer-events-none absolute bottom-2 left-2 rounded-sm bg-text-primary/70 px-2 py-1 font-mono text-2xs text-text-inverse">
+        Drawing as: <strong className="font-semibold">{activeClass}</strong> · drag to draw · click box to select · Delete to remove
       </p>
     </div>
   );

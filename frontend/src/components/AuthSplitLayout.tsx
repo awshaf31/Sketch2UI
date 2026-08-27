@@ -38,6 +38,17 @@ function SketchToUIGraphic() {
       <line x1={176} y1={34} x2={266} y2={34} strokeWidth={1.5} className="stroke-border-strong" strokeLinecap="round" />
       <line x1={176} y1={46} x2={250} y2={46} strokeWidth={1.5} className="stroke-border-strong" strokeLinecap="round" />
       <rect x={176} y={56} width={40} height={10} rx={2} className="fill-primary" />
+
+      {/* The same corner-bracket mark BrandMark.tsx uses for the app's identity —
+          the visual grammar every other redesigned surface now uses to mark "this is
+          the real, structured, inspectable thing," completing it here on the one
+          remaining state Sketch2UI produces: the generated UI itself. */}
+      <g className="stroke-primary" strokeWidth={1.5} strokeLinecap="round" fill="none">
+        <path d="M172,0 L162,0 L162,10" />
+        <path d="M270,0 L280,0 L280,10" />
+        <path d="M172,78 L162,78 L162,68" />
+        <path d="M270,78 L280,78 L280,68" />
+      </g>
     </svg>
   );
 }

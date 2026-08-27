@@ -82,8 +82,8 @@ export default function AdminTraining() {
                       <Badge tone="success">Approved</Badge>
                     </td>
                     <td className="px-lg py-sm text-text-secondary">{s.datasetSplit}</td>
-                    <td className="px-lg py-sm text-text-secondary">{s.boxCount}</td>
-                    <td className="px-lg py-sm text-text-secondary">{s.classCount}</td>
+                    <td className="px-lg py-sm font-mono text-text-secondary">{s.boxCount}</td>
+                    <td className="px-lg py-sm font-mono text-text-secondary">{s.classCount}</td>
                     <td className="px-lg py-sm text-text-secondary">{formatDate(s.approvedAt)}</td>
                   </tr>
                 ))}

@@ -36,7 +36,7 @@ export function MarketingFooter() {
             {status === "authenticated" ? "Open App" : "Log in"}
           </Link>
         </nav>
-        <p className="text-xs text-text-muted">© 2026 Sketch2UI</p>
+        <p className="font-mono text-2xs text-text-muted">© 2026 Sketch2UI</p>
       </div>
     </footer>
   );

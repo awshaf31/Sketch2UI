@@ -25,12 +25,12 @@ export default function Account() {
 
       <Card className="mt-xl flex flex-col gap-lg">
         <div className="flex flex-col gap-xs">
-          <span className="text-xs text-text-secondary">Email</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-text-muted">Email</span>
           <span className="text-md text-text-primary">{user?.email}</span>
         </div>
         {user?.createdAt && (
           <div className="flex flex-col gap-xs">
-            <span className="text-xs text-text-secondary">Member since</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-text-muted">Member since</span>
             <span className="text-md text-text-primary">{formatMemberSince(user.createdAt)}</span>
           </div>
         )}

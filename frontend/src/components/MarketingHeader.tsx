@@ -14,7 +14,7 @@ export function MarketingHeader() {
   const { status } = useAuth();
 
   return (
-    <header className="sticky top-0 z-10 border-b border-border bg-surface/95 backdrop-blur-sm">
+    <header className="sticky top-0 z-10 border-b border-border bg-surface">
       <div className="mx-auto flex max-w-[1120px] items-center justify-between px-lg py-md">
         <Link to="/" className="flex items-center gap-xs text-text-primary transition-colors duration-fast hover:text-primary">
           <BrandMark className="text-primary" />

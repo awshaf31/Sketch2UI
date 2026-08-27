@@ -41,11 +41,17 @@ export function CanvasLegend({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "flex flex-wrap items-center gap-md rounded-md border border-border bg-surface-raised",
+        "relative flex flex-wrap items-center gap-md rounded-md border border-border bg-surface-raised",
         "px-md py-xs text-2xs text-text-secondary shadow-elevated",
         className
       )}
     >
+      {/* The same corner-bracket mark BrandMark.tsx uses for the app's identity —
+          fitting here since this panel is literally the canvas's own color key. */}
+      <span className="pointer-events-none absolute -left-px -top-px h-2.5 w-2.5 border-l-2 border-t-2 border-primary" aria-hidden="true" />
+      <span className="pointer-events-none absolute -right-px -top-px h-2.5 w-2.5 border-r-2 border-t-2 border-primary" aria-hidden="true" />
+      <span className="pointer-events-none absolute -bottom-px -left-px h-2.5 w-2.5 border-b-2 border-l-2 border-primary" aria-hidden="true" />
+      <span className="pointer-events-none absolute -bottom-px -right-px h-2.5 w-2.5 border-b-2 border-r-2 border-primary" aria-hidden="true" />
       {ITEMS.map((item) => (
         <span key={item.label} className="flex items-center gap-2xs whitespace-nowrap">
           <span aria-hidden="true" className={cn("h-2.5 w-2.5 rounded-sm border-2 bg-transparent", item.swatch)} />
