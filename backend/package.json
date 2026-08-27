@@ -9,6 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "postinstall": "prisma generate --schema database/schema.prisma",
     "db:generate": "prisma generate --schema database/schema.prisma",
     "db:migrate": "prisma migrate deploy --schema database/schema.prisma",
     "db:import-json": "tsx src/db/migrate-json-to-postgres.ts",
