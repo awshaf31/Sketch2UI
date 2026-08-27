@@ -2,9 +2,8 @@ import { Link } from "react-router-dom";
 import { BrandMark } from "./BrandMark.js";
 import { useAuth } from "../context/AuthContext.js";
 
-// SaaS phase S3 — deliberately minimal. Only links to routes that actually exist
-// (per PROJECT_STATUS.md / the "do not invent features" constraint carried over from
-// docs/frontend/design-direction.md) — no /about or /contact, since there is no real
+// SaaS phase S3 — deliberately minimal. Only links to routes that actually exist (the "do
+// not invent features" constraint) — no /about or /contact, since there is no real
 // company/support content to put there yet.
 
 export function MarketingFooter() {

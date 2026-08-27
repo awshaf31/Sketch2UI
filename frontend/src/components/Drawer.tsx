@@ -4,16 +4,16 @@ import { createPortal } from "react-dom";
 import { cn } from "./cn.js";
 import { IconButton } from "./IconButton.js";
 
-// docs/frontend/responsive-design.md — tablet-width Layers/Inspector overlay drawers.
-// A deliberately minimal sibling to Dialog.tsx: Escape + overlay-click to dismiss.
+// tablet-width Layers/Inspector overlay drawers. A deliberately minimal sibling to
+// Dialog.tsx: Escape + overlay-click to dismiss.
 //
-// QA audit DEF-005 (docs/qa/MASTER_DEFECT_REGISTER.md): this previously set
-// `aria-modal="true"` without actually trapping focus — Tab could escape the drawer
-// into the page behind the scrim, contradicting what `aria-modal` promises assistive
-// tech, and there was no visible close affordance for a mouse user who doesn't know
-// Escape or the (also invisible-looking) scrim click dismiss it. Now mirrors Dialog.tsx's
-// proven focus-trap contract (focus moves in on open, Tab cycles within the panel,
-// focus returns to the trigger on close by any method) and adds a visible close button.
+// QA audit DEF-005: this previously set `aria-modal="true"` without actually trapping focus
+// — Tab could escape the drawer into the page behind the scrim, contradicting what
+// `aria-modal` promises assistive tech, and there was no visible close affordance for a
+// mouse user who doesn't know Escape or the (also invisible-looking) scrim click dismiss
+// it. Now mirrors Dialog.tsx's proven focus-trap contract (focus moves in on open, Tab
+// cycles within the panel, focus returns to the trigger on close by any method) and adds a
+// visible close button.
 
 const FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 

@@ -7,12 +7,11 @@ import type { Detection, ProjectAsset } from "@sketch2ui/shared-types";
 import { env } from "../../config/env.js";
 import { CropError, cropDetection, cropFromDecoded, decodeSourceImage } from "./crop.service.js";
 
-// DEF-012 (docs/qa/MASTER_DEFECT_REGISTER.md): exports.routes.ts used to call
-// cropDetection() — which re-opens and re-decodes the source file from disk — once
-// per detection cropped from the same source image. decodeSourceImage()/
-// cropFromDecoded() let a caller decode once and extract many crops instead. The one
-// thing that refactor must not change is the actual output, so this file's main job
-// is proving byte-for-byte equivalence, not just "it doesn't throw."
+// DEF-012: exports.routes.ts used to call cropDetection() — which re-opens and re-decodes
+// the source file from disk — once per detection cropped from the same source image.
+// decodeSourceImage()/ cropFromDecoded() let a caller decode once and extract many crops
+// instead. The one thing that refactor must not change is the actual output, so this file's
+// main job is proving byte-for-byte equivalence, not just "it doesn't throw."
 
 const WIDTH = 40;
 const HEIGHT = 30;

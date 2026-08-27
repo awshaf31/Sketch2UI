@@ -7,9 +7,9 @@ import { useAuth } from "../context/AuthContext.js";
 // button a signed ID token on success; backend/src/modules/auth/auth.routes.ts's
 // POST /google is the only place that token is verified.
 //
-// VITE_GOOGLE_CLIENT_ID is optional on purpose: until it's set (a Google Cloud OAuth
-// client has to be created first — see docs/frontend, or ask), this component renders
-// nothing rather than erroring, so Login/Register keep working today.
+// VITE_GOOGLE_CLIENT_ID is optional on purpose: until it's set (a Google Cloud OAuth client
+// has to be created first — see .env.example), this component renders nothing rather than
+// erroring, so Login/Register keep working today.
 
 const GIS_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 

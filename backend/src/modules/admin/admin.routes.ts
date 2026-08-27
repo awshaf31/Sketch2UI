@@ -4,9 +4,8 @@ import { sendError } from "../../middleware/apiError.js";
 import { getRepositories } from "../../repositories/index.js";
 import { listModels } from "./models.service.js";
 
-// Admin API. Grown incrementally, one SaaS phase per domain (S6 shell/Overview, S7
-// Users, S8 Projects, S9 Jobs/Models/Training; Audit Logs is still ahead — see
-// docs/execution/phase-log.md's per-phase entries).
+// Admin API. Grown incrementally, one SaaS phase per domain (S6 shell/Overview, S7 Users,
+// S8 Projects, S9 Jobs/Models/Training; Audit Logs is still ahead).
 //
 // /overview's numbers are real, currently-cheap-to-compute database aggregates — no
 // fabricated or placeholder stats (per the brief's explicit "do not invent

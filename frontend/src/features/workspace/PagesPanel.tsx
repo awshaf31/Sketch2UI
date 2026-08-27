@@ -7,8 +7,8 @@ import { useDialog } from "../../components/DialogHost.js";
 import { api } from "../../services/api.js";
 import { cn } from "../../components/cn.js";
 
-// docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 (Gap 2) — the vertical Pages list that
-// replaces the horizontal PagesStrip, now living inside the Navigator's "Pages" tab.
+// the vertical Pages list that replaces the horizontal PagesStrip, now living inside the
+// Navigator's "Pages" tab.
 //
 // This is a LAYOUT move, not a behavior change: every handler below (rename via
 // click-to-edit, delete via the shared confirm dialog, add) is carried over verbatim

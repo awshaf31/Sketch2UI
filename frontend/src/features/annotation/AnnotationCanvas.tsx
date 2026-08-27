@@ -7,14 +7,13 @@ import { cn } from "../../components/cn.js";
 const MIN_BOX_PX = 6;
 const HANDLE_SIZE = 8;
 
-// docs/frontend/canvas-design.md — every detection state is encoded on at least two
-// channels (color + stroke pattern/weight/opacity), never color alone; this table is
-// the same state→color mapping the app already had, expressed as Tailwind's
-// fill-*/stroke-* utilities against the design-tokens.md palette instead of hardcoded
-// hex literals repeated at each call site. Per canvas-design.md, a detection's label
+// every detection state is encoded on at least two channels (color + stroke
+// pattern/weight/opacity), never color alone; this table is the same state→color mapping
+// the app already had, expressed as Tailwind's fill-*/stroke-* utilities against the token
+// palette instead of hardcoded hex literals repeated at each call site. A detection's label
 // text now matches its own box color exactly (the original hardcoded a separate flat
-// gray/#7e22ce for text regardless of class) — a small, deliberate consistency
-// improvement, not a functional change.
+// gray/#7e22ce for text regardless of class) — a small, deliberate consistency improvement,
+// not a functional change.
 type DetectionTone = "selected" | "model" | "container" | "manual";
 
 function detectionTone(detection: Detection, selected: boolean): DetectionTone {
@@ -138,11 +137,10 @@ export default function AnnotationCanvas({
 }: AnnotationCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
-  // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): a
-  // real 21-detection sketch made every box's always-on "class 0.NN" label
-  // unreadable clutter, especially in dense grids. Confidence now only shows for
-  // the selected or hovered detection — every box still gets a lightweight class
-  // label at rest, so scanning still works, just without the constant number noise.
+  // Design audit 2026-08-26: a real 21-detection sketch made every box's always-on "class
+  // 0.NN" label unreadable clutter, especially in dense grids. Confidence now only shows
+  // for the selected or hovered detection — every box still gets a lightweight class label
+  // at rest, so scanning still works, just without the constant number noise.
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   const getImagePoint = useCallback(
@@ -173,11 +171,11 @@ export default function AnnotationCanvas({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedId, onDeleteSelected]);
 
-  // docs/frontend/accessibility.md — keyboard nudge for the selected detection: arrow
-  // keys move it by a 1px-equivalent step, Shift+arrow by 10px. A new, separate effect
-  // (not folded into the delete handler above) so this addition is easy to review and
-  // revert independently of the existing keyboard-delete behavior. Reuses the same
-  // `onUpdate` callback the mouse-drag path already calls — no new mutation surface.
+  // keyboard nudge for the selected detection: arrow keys move it by a 1px-equivalent step,
+  // Shift+arrow by 10px. A new, separate effect (not folded into the delete handler above)
+  // so this addition is easy to review and revert independently of the existing
+  // keyboard-delete behavior. Reuses the same `onUpdate` callback the mouse-drag path
+  // already calls — no new mutation surface.
   useEffect(() => {
     function handleArrowNudge(e: KeyboardEvent) {
       if (!selectedId) return;
@@ -334,7 +332,7 @@ export default function AnnotationCanvas({
           // Rejected (outside the page boundary) detections read as unambiguously
           // "excluded" — true neutral gray, not just a dimmer version of their own
           // class color — while still keeping the opacity dip below for a second,
-          // independent signal (canvas-design.md's "at least two channels" rule).
+          // independent signal (the "at least two channels" rule).
           const muted = rejected && !selected;
           const strokeClass = muted ? "stroke-text-muted" : STROKE_CLASS[tone];
           const fillClass = muted ? "fill-text-muted" : FILL_CLASS[tone];
@@ -419,16 +417,16 @@ export default function AnnotationCanvas({
                         e.stopPropagation();
                         setDrag({ kind: "resize", id: detection.id, handle, original: box });
                       }}
-                      // QA audit DEF-011 (docs/qa/MASTER_DEFECT_REGISTER.md): resize
-                      // had no keyboard path at all. Mirrors the whole-box arrow-nudge
-                      // handler above — same step sizes (1px-equivalent, 10px with
-                      // Shift), same "commit immediately, no drag state" model — but
-                      // moves only THIS corner, via the same `applyHandle` function the
-                      // mouse-drag resize path already uses, so a keyboard resize from
-                      // a given corner behaves identically to dragging that corner by
-                      // the same amount. `stopPropagation` is required: without it this
-                      // keydown would also bubble to the window-level arrow-nudge
-                      // listener above and move the WHOLE box on top of this resize.
+                      // QA audit DEF-011: resize had no keyboard path at all. Mirrors the
+                      // whole-box arrow-nudge handler above — same step sizes
+                      // (1px-equivalent, 10px with Shift), same "commit immediately, no
+                      // drag state" model — but moves only THIS corner, via the same
+                      // `applyHandle` function the mouse-drag resize path already uses, so
+                      // a keyboard resize from a given corner behaves identically to
+                      // dragging that corner by the same amount. `stopPropagation` is
+                      // required: without it this keydown would also bubble to the
+                      // window-level arrow-nudge listener above and move the WHOLE box on
+                      // top of this resize.
                       onKeyDown={(e) => {
                         if (
                           e.key !== "ArrowUp" &&

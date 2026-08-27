@@ -175,7 +175,7 @@ function emptyStats(): ExportStats {
  * Deduplication has to key on CONTENT, not filename or asset id: the same sketch
  * re-uploaded through the UI gets a fresh asset uuid and a fresh storage key, so
  * every filename-based check sees two unrelated images. Measured on the real corpus
- * (docs/ml/dataset-quality-v1.1.md §5.1): 6 byte-identical extra copies were
+ *: 6 byte-identical extra copies were
  * inflating ~7.5% of all label instances, entirely from the same handful of in-house
  * sketches being re-uploaded across development/test projects.
  *
@@ -478,9 +478,8 @@ function report(stats: ExportStats): void {
       "  These are re-uploads of the same sketch under a different asset id. Exporting"
     );
     console.log(
-      "  both would inflate per-class counts without adding visual diversity — see"
+      "  both would inflate per-class counts without adding visual diversity."
     );
-    console.log("  docs/ml/dataset-quality-v1.1.md §5.1.");
   }
 
   console.log(`\nLabels: ${stats.labels}`);

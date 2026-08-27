@@ -61,16 +61,15 @@ export interface DecodedSourceImage {
   channels: 1 | 2 | 3 | 4;
 }
 
-// DEF-012 (docs/qa/MASTER_DEFECT_REGISTER.md): the export ZIP builder used to call
-// cropDetection() once per detection, which re-opened and re-decoded the same source
-// file from scratch every time — a page with N image/avatar/video/logo detections
-// decoded its one sketch N times. decodeSourceImage()/cropFromDecoded() split that
-// into "decode once" + "extract many," so a caller producing several crops from the
-// same source (exports.routes.ts's appendPageAssets) can reuse one decode. Output is
-// unchanged: extracting a region from an already-decoded raw buffer and PNG-encoding
-// it is pixel-for-pixel identical to extracting straight from the file — same decode,
-// same encoder, just not repeated — verified by crop.service.test.ts's byte-equality
-// assertion against the un-refactored path.
+// DEF-012: the export ZIP builder used to call cropDetection() once per detection, which
+// re-opened and re-decoded the same source file from scratch every time — a page with N
+// image/avatar/video/logo detections decoded its one sketch N times.
+// decodeSourceImage()/cropFromDecoded() split that into "decode once" + "extract many," so
+// a caller producing several crops from the same source (exports.routes.ts's
+// appendPageAssets) can reuse one decode. Output is unchanged: extracting a region from an
+// already-decoded raw buffer and PNG-encoding it is pixel-for-pixel identical to extracting
+// straight from the file — same decode, same encoder, just not repeated — verified by
+// crop.service.test.ts's byte-equality assertion against the un-refactored path.
 
 /** Decode a source sketch once so multiple crops can be extracted from memory. */
 export async function decodeSourceImage(

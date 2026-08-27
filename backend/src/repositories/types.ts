@@ -1,10 +1,10 @@
 /**
  * Repository contracts — Phase 8 architecture amendment.
  *
- * See docs/execution/phase-8-architecture-amendment.md for why this layer exists: the
- * plan assumed the JSON store already provided a swappable functional abstraction, but
- * it exposes a synchronous mutable object graph (`db.state`) that 19 modules reach into
- * directly. These interfaces are that abstraction, defined for real.
+ * Why this layer exists: the original plan assumed the JSON store already provided a
+ * swappable functional abstraction, but it exposes a synchronous mutable object graph
+ * (`db.state`) that 19 modules reach into directly. These interfaces are that abstraction,
+ * defined for real.
  *
  * DESIGN RULES
  *   1. Every method is async. Prisma has no synchronous API, and pretending otherwise

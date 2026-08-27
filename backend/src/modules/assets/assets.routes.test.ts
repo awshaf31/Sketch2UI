@@ -15,14 +15,13 @@ import { pagesRouter } from "../pages/pages.routes.js";
 import { assetsRouter } from "./assets.routes.js";
 
 /**
- * HTTP-integration regression coverage for DEF-004
- * (docs/qa/MASTER_DEFECT_REGISTER.md) — multer-level upload rejections (an oversized
- * file, or a file whose declared Content-Type isn't in the allowlist) used to fall
- * straight through to the catch-all error handler and come back as a generic
- * `500 INTERNAL "An unexpected server error occurred."`, misrepresenting an ordinary
- * client input-validation failure as a server crash. Both cases must now report as
- * `VALIDATION_FAILED` with the correct HTTP status (413 for oversized, 400 for
- * unsupported type) and a specific, actionable message.
+ * HTTP-integration regression coverage for DEF-004 — multer-level upload rejections (an
+ * oversized file, or a file whose declared Content-Type isn't in the allowlist) used to
+ * fall straight through to the catch-all error handler and come back as a generic `500
+ * INTERNAL "An unexpected server error occurred."`, misrepresenting an ordinary client
+ * input-validation failure as a server crash. Both cases must now report as
+ * `VALIDATION_FAILED` with the correct HTTP status (413 for oversized, 400 for unsupported
+ * type) and a specific, actionable message.
  */
 
 function makeApp() {
@@ -77,15 +76,14 @@ describe("assets routes — multer error normalization", () => {
 });
 
 /**
- * HTTP-integration regression coverage for DEF-008
- * (docs/qa/MASTER_DEFECT_REGISTER.md) — the source sketch used to be served from a
- * flat, unauthenticated-by-ownership `/uploads/:storageKey` static route: gated by
+ * HTTP-integration regression coverage for DEF-008 The source sketch used to be served from
+ * a flat, unauthenticated-by-ownership `/uploads/:storageKey` static route: gated by
  * `requireAuth` (any logged-in session) but not by project/page ownership, so any
- * authenticated user who learned another user's storageKey could fetch that file
- * directly. `/uploads` no longer exists at all — the image is now served from
- * `GET /api/projects/:id/pages/:pageId/assets/:assetId/image`, inheriting the same
- * `requireProjectOwnership` + `requirePageInProject` gates every other page-owned
- * resource already uses.
+ * authenticated user who learned another user's storageKey could fetch that file directly.
+ * `/uploads` no longer exists at all — the image is now served from `GET
+ * /api/projects/:id/pages/:pageId/assets/:assetId/image`, inheriting the same
+ * `requireProjectOwnership` + `requirePageInProject` gates every other page-owned resource
+ * already uses.
  */
 describe("assets routes — GET /:assetId/image ownership (DEF-008)", () => {
   const app = makeApp();

@@ -12,14 +12,13 @@ import { detectionsRouter } from "../detections/detections.routes.js";
 import { boundariesRouter } from "./boundaries.routes.js";
 
 /**
- * HTTP-integration regression coverage for DEF-002
- * (docs/qa/MASTER_DEFECT_REGISTER.md) — saving a manually-adjusted page boundary only
- * ever updated the CLIENT's live-computed accept/reject view; the persisted
- * `Detection.status` column was never re-derived, so a later "Save Version"/export
- * (both of which read `listActiveByPage`, filtered on the stored `status`) silently
- * kept using the OLD boundary's verdicts. This test seeds two model detections with
- * stale statuses relative to the boundary about to be saved, and one manual detection
- * that must never be reclassified by boundary geometry regardless of position.
+ * HTTP-integration regression coverage for DEF-002 Saving a manually-adjusted page boundary
+ * only ever updated the CLIENT's live-computed accept/reject view; the persisted
+ * `Detection.status` column was never re-derived, so a later "Save Version"/export (both of
+ * which read `listActiveByPage`, filtered on the stored `status`) silently kept using the
+ * OLD boundary's verdicts. This test seeds two model detections with stale statuses
+ * relative to the boundary about to be saved, and one manual detection that must never be
+ * reclassified by boundary geometry regardless of position.
  */
 
 function makeApp() {

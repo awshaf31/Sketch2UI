@@ -3,10 +3,9 @@ import type { UINode, UIRoot } from "@sketch2ui/shared-types";
 import { cn } from "../../components/cn.js";
 import { EmptyState } from "../../components/EmptyState.js";
 
-// docs/frontend/component-specification.md — Tree Node. Restyled onto tokens; adds a
-// per-type icon (replacing the bare font-mono type label as the primary visual — the
-// label moves to a secondary position, still present) and a collapse/expand chevron
-// for any node with children (both new).
+// Tree Node. Restyled onto tokens; adds a per-type icon (replacing the bare font-mono type
+// label as the primary visual — the label moves to a secondary position, still present) and
+// a collapse/expand chevron for any node with children (both new).
 //
 // DOM-shape constraint: e2e/golden-path.spec.ts and e2e/inspector-overrides.spec.ts
 // both locate a tree row via `page.locator("ul.p-2 > li > button").first()` — the
@@ -17,7 +16,7 @@ import { EmptyState } from "../../components/EmptyState.js";
 // <button>/tabindex element would, so this stays valid markup; the tradeoff is the
 // chevron is mouse-only for now (stopPropagation keeps a chevron click from also
 // selecting the row) — full keyboard tree navigation (arrow keys, →/← to expand/
-// collapse) is docs/frontend/accessibility.md's Phase 2J scope, not this one.
+// collapse) is Phase 2J's accessibility scope, not this one.
 
 interface UITreePanelProps {
   root: UIRoot;
@@ -147,12 +146,11 @@ function TreeNode({
     <li>
       <button
         onClick={() => onSelect(node.sourceDetectionId ?? null)}
-        // docs/frontend/accessibility.md — →/← expand/collapse, ↑/↓ move focus
-        // between visible rows (standard tree-widget keyboard contract). Collapsed
-        // subtrees are removed from the DOM entirely (see the `!collapsed` guard
-        // below), so "next/previous visible row" is exactly "next/previous
-        // `li > button` in document order" within this panel's root <ul> — no
-        // separate flattened-row model needs to be tracked.
+        // →/← expand/collapse, ↑/↓ move focus between visible rows (standard tree-widget
+        // keyboard contract). Collapsed subtrees are removed from the DOM entirely (see the
+        // `!collapsed` guard below), so "next/previous visible row" is exactly
+        // "next/previous `li > button` in document order" within this panel's root <ul> —
+        // no separate flattened-row model needs to be tracked.
         onKeyDown={(e) => {
           if (hasChildren) {
             if (e.key === "ArrowRight" && collapsed) {

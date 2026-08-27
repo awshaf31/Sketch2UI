@@ -4,12 +4,11 @@ import { Button } from "./Button.js";
 import { cn } from "./cn.js";
 import { useAuth } from "../context/AuthContext.js";
 
-// docs/frontend/dashboard-design.md — "Top navigation / brand area". Built this phase
-// but NOT mounted anywhere yet: see docs/frontend/frontend-implementation-roadmap.md's
-// Phase 2B result for why — mounting it above both routes today would either duplicate
-// Dashboard's own "Sketch2UI" H1 or push ProjectWorkspace's h-screen layout past the
-// viewport. It's wired in by Phase 2C (Dashboard) and Phase 2D (Workspace shell), each
-// of which already owns edits to the page that needs it.
+// "Top navigation / brand area". Built this phase but NOT mounted anywhere yet: mounting it
+// above both routes today would either duplicate Dashboard's own "Sketch2UI" H1 or push
+// ProjectWorkspace's h-screen layout past the viewport. It's wired in by Phase 2C
+// (Dashboard) and Phase 2D (Workspace shell), each of which already owns edits to the page
+// that needs it.
 //
 // Phase D1 — also renders the current user + logout when authenticated. Login/
 // Register mount this same header while status is "unauthenticated", so the menu
@@ -41,11 +40,10 @@ export function AppHeader({ className }: { className?: string }) {
   }
 
   return (
-    // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): on a
-    // phone-width viewport this row's content (brand + nav + email + Log out) doesn't
-    // fit and previously had no overflow strategy at all — the right-hand group
-    // (email, Log out) rendered past the visible edge, off-screen. Same fix as
-    // AdminHeader's Phase S13 tablet-overflow bug: a single horizontally-scrollable
+    // Design audit 2026-08-26: on a phone-width viewport this row's content (brand + nav +
+    // email + Log out) doesn't fit and previously had no overflow strategy at all — the
+    // right-hand group (email, Log out) rendered past the visible edge, off-screen. Same
+    // fix as AdminHeader's Phase S13 tablet-overflow bug: a single horizontally-scrollable
     // row instead of wrapping/clipping, since a hamburger menu would be new scope.
     <header
       className={cn(

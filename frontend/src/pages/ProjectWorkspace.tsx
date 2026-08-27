@@ -52,12 +52,11 @@ import { IconButton } from "../components/IconButton.js";
 import { useMediaQuery } from "../components/useMediaQuery.js";
 import { WorkspaceUnavailable } from "./WorkspaceUnavailable.js";
 
-// docs/frontend/workspace-design.md — Phase 2D. The shell (toolbar, status bar, the
-// 4-region body layout) is rebuilt on the new primitives; every piece of state, every
-// handler, and every prop passed to AnnotationCanvas/UITreePanel/InspectorPanel/
-// PreviewPane/CodePanel below is byte-identical to before this phase — only WHERE
-// those components render changed, not what they do or receive. See
-// docs/frontend/design-to-code-mapping.md for the full preserve/move/change ledger.
+// Phase 2D. The shell (toolbar, status bar, the 4-region body layout) is rebuilt on the new
+// primitives; every piece of state, every handler, and every prop passed to
+// AnnotationCanvas/UITreePanel/InspectorPanel/ PreviewPane/CodePanel below is
+// byte-identical to before this phase — only WHERE those components render changed, not
+// what they do or receive.
 
 // Stable reference for "no style override" — InspectorPanel resets its style draft
 // whenever this prop's identity changes (see its useEffect on [selected?.id,
@@ -89,9 +88,8 @@ function DockChevronIcon({ collapsed }: { collapsed: boolean }) {
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
-  // docs/frontend/responsive-design.md's breakpoint tiers (Phase 2J) — plain media
-  // queries, not a JS-measured width, so there's no drift from what CSS breakpoint
-  // classes elsewhere would show for the same viewport.
+  // Phase 2J breakpoint tiers — plain media queries, not a JS-measured width, so there's no
+  // drift from what CSS breakpoint classes elsewhere would show for the same viewport.
   const isMobile = useMediaQuery("(max-width: 767px)");
   const isTablet = useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
   const [project, setProject] = useState<Project | null>(null);
@@ -101,9 +99,9 @@ export default function ProjectWorkspace() {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [rightTab, setRightTab] = useState<"preview" | "code">("preview");
-  // Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): the dock
-  // was a fixed 40%/32% of the viewport with no way to reclaim that space for the
-  // canvas during Detect/Correct, where Preview/Code isn't needed yet.
+  // Design audit 2026-08-26: the dock was a fixed 40%/32% of the viewport with no way to
+  // reclaim that space for the canvas during Detect/Correct, where Preview/Code isn't
+  // needed yet.
   const [dockCollapsed, setDockCollapsed] = useState(false);
   const [saving, setSaving] = useState(false);
   // Section 10: the page boundary for the current asset, plus UI toggles.
@@ -150,11 +148,10 @@ export default function ProjectWorkspace() {
   // slice for whichever detection is selected. Read-only from this component too:
   // records are written server-side as a side effect of the mutation routes below.
   const [corrections, setCorrections] = useState<CorrectionRecord[]>([]);
-  // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 (Gap 3) — the Assets tab needs the
-  // full per-page asset list; the Zustand store only ever tracked the single most
-  // recent `asset` driving the canvas (by design — see its own comments). This is a
-  // plain local list fed by the same listAssets()/uploadAsset() calls, kept in sync
-  // alongside `asset` rather than replacing it.
+  // the Assets tab needs the full per-page asset list; the Zustand store only ever tracked
+  // the single most recent `asset` driving the canvas (by design — see its own comments).
+  // This is a plain local list fed by the same listAssets()/uploadAsset() calls, kept in
+  // sync alongside `asset` rather than replacing it.
   const [assetList, setAssetList] = useState<ProjectAsset[]>([]);
 
   const {
@@ -900,10 +897,10 @@ export default function ProjectWorkspace() {
     return <p className="p-6 text-sm text-error">Project not found.</p>;
   }
 
-  // docs/frontend/responsive-design.md — below 768px the full editor is not attempted
-  // (including upload, per that doc's explicit "Upload is NOT offered on mobile") —
-  // a dedicated screen instead of a silently-broken cramped layout. Checked after the
-  // loading/error/not-found guards above so it always has a real `project` to show.
+  // below 768px the full editor is not attempted (including upload, per that doc's explicit
+  // "Upload is NOT offered on mobile") — a dedicated screen instead of a silently-broken
+  // cramped layout. Checked after the loading/error/not-found guards above so it always has
+  // a real `project` to show.
   if (isMobile) {
     return (
       <WorkspaceUnavailable
@@ -945,7 +942,7 @@ export default function ProjectWorkspace() {
         onSaveVersion={handleSaveVersion}
       />
 
-      {/* docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 — Pages moved into the
+      {/* Pages moved into the
           Navigator's "Pages" tab (below, once an asset exists and WorkspaceBody is
           showing). Before any asset is uploaded there is no Navigator to hold it yet
           (WorkspaceBody's whole 4-region shell mounts only post-upload — see the
@@ -1102,7 +1099,7 @@ export default function ProjectWorkspace() {
             <div className="flex h-full flex-col">
               {/* Interactive version switcher — relocated here from its old standalone
                   banner, next to the Preview/Code content it controls (matches
-                  code-preview-design.md's dock-header placement). The compact
+                  the dock-header placement). The compact
                   ActiveVersionSegment above stays a read-only summary; this row is the
                   full clickable list, same handleActivateVersion call as before. */}
               {!dockCollapsed && versionList.length > 0 && (

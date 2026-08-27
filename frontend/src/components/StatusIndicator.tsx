@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Status Indicator. A dot + label pattern
-// for the future consolidated StatusBar (workspace-design.md) and any semantic status
-// callout — success/warning/error/info plus the app's own brand/selection/violet
-// (model-detection) hues, so a job-progress or boundary-confidence line reads
-// consistently with the rest of the token system instead of a bespoke colored <div>.
+// Status Indicator. A dot + label pattern for the future consolidated StatusBar and any
+// semantic status callout — success/warning/error/info plus the app's own
+// brand/selection/violet (model-detection) hues, so a job-progress or boundary-confidence
+// line reads consistently with the rest of the token system instead of a bespoke colored
+// <div>.
 
 export type StatusTone =
   | "neutral"
@@ -23,8 +23,8 @@ const DOT_CLASSES: Record<StatusTone, string> = {
   brand: "bg-primary",
   selection: "bg-selection",
   violet: "bg-detection-model",
-  // Page boundary (canvas-design.md) is its own distinct semantic color — rose, not
-  // to be confused with error red or warning amber, even though all three are warm.
+  // Page boundary is its own distinct semantic color — rose, not to be confused with error
+  // red or warning amber, even though all three are warm.
   boundary: "bg-page-boundary",
   success: "bg-success",
   warning: "bg-warning",

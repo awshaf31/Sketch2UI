@@ -2,13 +2,12 @@ import { useEffect, useState } from "react";
 import { api } from "../services/api.js";
 import { cn } from "./cn.js";
 
-// docs/frontend/SKETCH2UI_REDESIGN_BLUEPRINT_2026-08-27.md — Mockup 2 (Dashboard
-// project cards). Dashboard's project list (GET /api/projects) carries no page/asset
-// ids, so this component looks its own thumbnail up via the existing
+// Mockup 2 (Dashboard project cards). Dashboard's project list (GET /api/projects) carries
+// no page/asset ids, so this component looks its own thumbnail up via the existing
 // listPages -> listAssets -> assetUrl chain (the same ownership-gated image route the
 // workspace already uses) rather than the API gaining a new field. Page count is a
-// byproduct of that same listPages call, so it's reported back via onPageCount instead
-// of Dashboard fetching it again separately.
+// byproduct of that same listPages call, so it's reported back via onPageCount instead of
+// Dashboard fetching it again separately.
 
 interface ProjectThumbnailProps {
   projectId: string;

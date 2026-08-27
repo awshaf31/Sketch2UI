@@ -1,17 +1,16 @@
 import { useState } from "react";
 import { cn } from "../../components/cn.js";
 
-// docs/frontend/canvas-design.md §6 — on-canvas legend. New: the color/pattern
-// mapping (model=violet dashed, container=blue, manual=emerald, selected=orange,
-// outside-page=dimmed) previously existed only as a code comment (Phase 1 audit
-// §14/§23/§25's most-cited gap). Collapsed by default to a small "?" trigger so it
-// doesn't compete with the sketch for attention until asked for.
+// on-canvas legend. New: the color/pattern mapping (model=violet dashed, container=blue,
+// manual=emerald, selected=orange, outside-page=dimmed) previously existed only as a code
+// comment (Phase 1 audit §14/§23/§25's most-cited gap). Collapsed by default to a small "?"
+// trigger so it doesn't compete with the sketch for attention until asked for.
 //
-// Positioned bottom-right by the caller (CanvasPanel) rather than canvas-design.md's
-// literal bottom-left, to avoid overlapping AnnotationCanvas's own existing bottom-
-// left interaction caption ("Drawing as: … · drag to draw …"), which this phase does
-// not remove — the two captions serve different purposes (how to interact vs. what
-// the colors mean) and can coexist without touching AnnotationCanvas's own JSX.
+// Positioned bottom-right by the caller (CanvasPanel) rather than the design's literal
+// bottom-left, to avoid overlapping AnnotationCanvas's own existing bottom- left
+// interaction caption ("Drawing as: … · drag to draw …"), which this phase does not remove
+// — the two captions serve different purposes (how to interact vs. what the colors mean)
+// and can coexist without touching AnnotationCanvas's own JSX.
 
 const ITEMS: Array<{ label: string; swatch: string }> = [
   { label: "Model", swatch: "border-detection-model border-dashed" },

@@ -44,9 +44,8 @@ test("sketch to export golden path", async ({ page }) => {
   await expect(page.getByText("Saved")).toBeVisible({ timeout: 10_000 });
 
   // 5. Generate: explicit "Save version" also regenerates and records a version.
-  // Renamed from "Save code version" in docs/frontend design Phase 2D — see
-  // docs/frontend/design-to-code-mapping.md's e2e-selector table for why this is a
-  // deliberate, tracked change rather than a silent rename.
+  // Renamed from "Save code version" in the Phase 2D frontend design — a deliberate,
+  // tracked change rather than a silent rename.
   await page.getByRole("button", { name: "Save version" }).click();
   await expect(page.getByRole("button", { name: "Save version" })).toBeEnabled({ timeout: 10_000 });
 

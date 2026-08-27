@@ -18,9 +18,8 @@ export default function Account() {
   const { user } = useAuth();
 
   return (
-    // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 — AppHeader's top nav is replaced
-    // by the persistent rail here and on the Dashboard. The page's own content below
-    // is unchanged.
+    // AppHeader's top nav is replaced by the persistent rail here and on the Dashboard. The
+    // page's own content below is unchanged.
     <AppShell maxWidth="max-w-[560px]">
       <PageHeader title="Account" description="Your Sketch2UI account details." />
 

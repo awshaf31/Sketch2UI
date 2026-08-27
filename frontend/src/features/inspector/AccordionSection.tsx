@@ -2,12 +2,12 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { cn } from "../../components/cn.js";
 
-// docs/frontend/inspector-design.md — "Shell: accordion, not always-expanded".
-// Uncontrolled: each section owns its own open/closed state locally. Because the six
-// AccordionSection instances in InspectorPanel are never remounted when `selected`
-// changes upstream (only their children's data does), a user's open/closed choice per
-// section naturally persists across selecting a different detection, rather than
-// resetting every time — no extra state-sync needed for that to be true.
+// "Shell: accordion, not always-expanded". Uncontrolled: each section owns its own
+// open/closed state locally. Because the six AccordionSection instances in InspectorPanel
+// are never remounted when `selected` changes upstream (only their children's data does), a
+// user's open/closed choice per section naturally persists across selecting a different
+// detection, rather than resetting every time — no extra state-sync needed for that to be
+// true.
 
 export type AccordionDot = "applied" | "dirty" | null;
 

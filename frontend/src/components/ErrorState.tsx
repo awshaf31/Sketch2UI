@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Error State (full-panel variant). Used
-// when an entire panel's data fetch fails, e.g. Dashboard's project list — distinct
-// from the inline error-text pattern used for a single failed action (kept as plain
-// text at its call site, since that's "replacing nothing structural" per
-// docs/frontend/dashboard-design.md).
+// Error State (full-panel variant). Used when an entire panel's data fetch fails, e.g.
+// Dashboard's project list — distinct from the inline error-text pattern used for a single
+// failed action (kept as plain text at its call site, since that's "replacing nothing
+// structural").
 
 interface ErrorStateProps {
   message: string;

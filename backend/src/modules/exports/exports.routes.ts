@@ -125,11 +125,11 @@ NOTE ON IMAGES
  * HTML references. Shared assets/ folder across pages is collision-safe because
  * codegen's per-page idPrefix makes every referenced path globally unique.
  *
- * DEF-012 (docs/qa/MASTER_DEFECT_REGISTER.md): this used to do two sequential DB
- * point-queries plus a full source-image re-decode per referenced path. The
- * detection/asset lookups now run concurrently, and — since every referenced path on
- * a page overwhelmingly crops from that page's one source sketch — each distinct
- * source asset is decoded at most once and reused for every crop taken from it. */
+ * DEF-012: this used to do two sequential DB point-queries plus a full source-image
+ * re-decode per referenced path. The detection/asset lookups now run concurrently, and —
+ * since every referenced path on a page overwhelmingly crops from that page's one source
+ * sketch — each distinct source asset is decoded at most once and reused for every crop
+ * taken from it. */
 async function appendPageAssets(archive: ReturnType<typeof createArchive>, codeVersion: CodeVersion): Promise<void> {
   const assetMap = codeVersion.metadata?.assets ?? {};
 

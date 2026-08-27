@@ -48,12 +48,11 @@ function WorkspacePrefetch() {
   return null;
 }
 
-// Phase 2B (docs/frontend/frontend-implementation-roadmap.md) — ToastProvider and
-// DialogProvider are mounted once here so useToast()/useDialog() are callable from
-// anywhere without prop-drilling. Both render nothing visible until a later phase
-// actually calls showToast()/confirm() — see each provider's own header comment for
-// which future phase wires that up. AppHeader is deliberately NOT mounted here; see
-// the roadmap's Phase 2B result for why.
+// Phase 2B — ToastProvider and DialogProvider are mounted once here so
+// useToast()/useDialog() are callable from anywhere without prop-drilling. Both render
+// nothing visible until a later phase actually calls showToast()/confirm() — see each
+// provider's own header comment for which future phase wires that up. AppHeader is
+// deliberately NOT mounted here; see the roadmap's Phase 2B result for why.
 //
 // Phase D1 — AuthProvider wraps everything (same "context provider around Routes"
 // pattern as Toast/Dialog) so /login and /register are public and the app routes are
@@ -63,8 +62,7 @@ function WorkspacePrefetch() {
 // Home reads useAuth() itself to point its CTA at /register or /app). The authenticated
 // app moved from "/" and "/projects/:id" to "/app" and "/app/projects/:id" so a real
 // homepage could exist without colliding with the Dashboard. Every internal link/
-// navigate() call and all Playwright specs were updated in the same change — see
-// docs/execution/phase-log.md's Phase S3 entry.
+// navigate() call and all Playwright specs were updated in the same change.
 export default function App() {
   return (
     <AuthProvider>

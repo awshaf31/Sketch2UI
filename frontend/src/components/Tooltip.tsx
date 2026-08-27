@@ -2,13 +2,12 @@ import { cloneElement, useId, useState } from "react";
 import type { FocusEvent, MouseEvent, ReactElement } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Tooltip foundation. Triggers on hover
-// AND keyboard focus (never click-only — several current uses, e.g. Export ZIP's
-// title= while disabled, are on buttons that may not be clickable). This is the
-// foundation only: simple centered placement, no collision/flip logic yet. Intended
-// to eventually replace the app's `title="..."` attributes (see
-// docs/frontend/design-to-code-mapping.md's e2e-selector table for why that swap must
-// preserve the exact existing strings) — not wired into any call site in this phase.
+// Tooltip foundation. Triggers on hover AND keyboard focus (never click-only — several
+// current uses, e.g. Export ZIP's title= while disabled, are on buttons that may not be
+// clickable). This is the foundation only: simple centered placement, no collision/flip
+// logic yet. Intended to eventually replace the app's `title="..."` attributes (that swap
+// must preserve the exact existing strings, which e2e selectors assert on) — not wired into
+// any call site in this phase.
 
 interface TooltipProps {
   content: string;

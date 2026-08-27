@@ -6,16 +6,14 @@ import { IconButton } from "../../components/IconButton.js";
 import { Input } from "../../components/Input.js";
 import { Tooltip } from "../../components/Tooltip.js";
 
-// docs/frontend/workspace-design.md — "Top toolbar". Extracted from
-// ProjectWorkspace.tsx's inline <header>; every action calls the exact same handler
-// the page already had — this is a presentation move, not new behavior. The Save
-// button's label changes from "Save code version" to "Save version" per
-// workspace-design.md's explicit rename call-out (there is no separate "Generate"
-// step in this app — Save already generates and persists in one action, so the label
-// change plus a tooltip explaining that is the fix, not a new control). This is a
-// DELIBERATE, tracked e2e-breaking change — see
-// docs/frontend/design-to-code-mapping.md's selector table; e2e/golden-path.spec.ts
-// is updated in the same change that introduces this component.
+// "Top toolbar". Extracted from ProjectWorkspace.tsx's inline <header>; every action calls
+// the exact same handler the page already had — this is a presentation move, not new
+// behavior. The Save button's label changes from "Save code version" to "Save version" per
+// an explicit rename call-out (there is no separate "Generate" step in this app — Save
+// already generates and persists in one action, so the label change plus a tooltip
+// explaining that is the fix, not a new control). This is a DELIBERATE, tracked
+// e2e-breaking change: e2e/golden-path.spec.ts is updated in the same change that
+// introduces this component.
 //
 // SaaS phase S5 — Phase 4 of the brief ("rename if supported" — the API already did,
 // per projects.routes.ts's PATCH handler). Click-to-edit on the project name, same

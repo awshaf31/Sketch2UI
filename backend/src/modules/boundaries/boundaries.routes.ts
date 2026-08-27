@@ -79,18 +79,17 @@ boundariesRouter.put<AssetParams>(
       "manual"
     );
 
-    // QA audit DEF-002 (docs/qa/MASTER_DEFECT_REGISTER.md): re-derive accept/reject for
-    // every model detection against the boundary just saved. Without this, only the
-    // CLIENT's own effectiveDetections memo re-classified boxes live — the persisted
-    // `status` column never changed, so a later "Save Version"/export (both of which
-    // read `listActiveByPage`, filtered on the stored `status`) silently kept using the
-    // OLD boundary's accept/reject verdicts. Mirrors the exact re-derivation
-    // detect.job.ts already does for a manual boundary in force at detect-time — this is
-    // the same rule applied at boundary-SAVE time instead, so Canvas/Tree (client-side,
-    // already live) and Preview/Code/Export (server-side, previously stale) agree.
-    // Deleted detections are left alone; only active/rejected model boxes are eligible
-    // to flip. Manual detections are never re-classified by boundary geometry (the same
-    // rule effectiveDetections already applies client-side).
+    // QA audit DEF-002: re-derive accept/reject for every model detection against the
+    // boundary just saved. Without this, only the CLIENT's own effectiveDetections memo
+    // re-classified boxes live — the persisted `status` column never changed, so a later
+    // "Save Version"/export (both of which read `listActiveByPage`, filtered on the stored
+    // `status`) silently kept using the OLD boundary's accept/reject verdicts. Mirrors the
+    // exact re-derivation detect.job.ts already does for a manual boundary in force at
+    // detect-time — this is the same rule applied at boundary-SAVE time instead, so
+    // Canvas/Tree (client-side, already live) and Preview/Code/Export (server-side,
+    // previously stale) agree. Deleted detections are left alone; only active/rejected
+    // model boxes are eligible to flip. Manual detections are never re-classified by
+    // boundary geometry (the same rule effectiveDetections already applies client-side).
     const pageDetections = await getRepositories().detections.listByPage(req.params.pageId);
     for (const detection of pageDetections) {
       if (detection.source !== "model" || detection.status === "deleted") continue;

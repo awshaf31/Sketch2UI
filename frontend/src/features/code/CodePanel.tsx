@@ -6,11 +6,11 @@ import { Button } from "../../components/Button.js";
 import { Tab, Tabs } from "../../components/Tabs.js";
 import { Tooltip } from "../../components/Tooltip.js";
 
-// docs/frontend/code-preview-design.md (Phase 2H) — Monaco flips from the hardcoded
-// `vs-dark` theme to light (the one permanently-dark surface in an otherwise
-// all-light app, per the Phase 1 audit's §17/§21 finding), and the surrounding chrome
-// moves onto tokens. The draft/dirty state machine and the validateGeneratedCode()
-// gate below are byte-for-byte unchanged — this phase touches presentation only.
+// Phase 2H — Monaco flips from the hardcoded `vs-dark` theme to light (the one
+// permanently-dark surface in an otherwise all-light app, per the Phase 1 audit's §17/§21
+// finding), and the surrounding chrome moves onto tokens. The draft/dirty state machine and
+// the validateGeneratedCode() gate below are byte-for-byte unchanged — this phase touches
+// presentation only.
 
 interface CodePanelProps {
   /** The HTML the panel starts from — either live-regenerated or a stored version. */

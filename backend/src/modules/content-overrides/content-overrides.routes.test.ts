@@ -11,15 +11,15 @@ import { detectionsRouter } from "../detections/detections.routes.js";
 import { contentOverridesRouter } from "./content-overrides.routes.js";
 
 /**
- * HTTP-integration regression coverage for DEF-001 (docs/qa/MASTER_DEFECT_REGISTER.md)
- * — a stored-XSS bypass in the href allowlist. `isSafeHref`'s scheme-detection regex
- * failed to match a scheme containing an embedded whitespace/control character (e.g.
- * "java\nscript:alert(1)"), so the "no scheme found -> treat as relative path -> allow"
- * branch fired instead. Browsers strip exactly those characters from a URL during
- * parsing (WHATWG URL spec) regardless of position, so the stored value still resolved
- * to `javascript:alert(1)` on click. Mirrors e2e/inspector-overrides.spec.ts's existing
- * "<script>" content-security test, but at the HTTP layer and for this specific
- * obfuscation technique rather than the unobfuscated form that test already covers.
+ * HTTP-integration regression coverage for DEF-001 — a stored-XSS bypass in the href
+ * allowlist. `isSafeHref`'s scheme-detection regex failed to match a scheme containing an
+ * embedded whitespace/control character (e.g. "java\nscript:alert(1)"), so the "no scheme
+ * found -> treat as relative path -> allow" branch fired instead. Browsers strip exactly
+ * those characters from a URL during parsing (WHATWG URL spec) regardless of position, so
+ * the stored value still resolved to `javascript:alert(1)` on click. Mirrors
+ * e2e/inspector-overrides.spec.ts's existing "<script>" content-security test, but at the
+ * HTTP layer and for this specific obfuscation technique rather than the unobfuscated form
+ * that test already covers.
  */
 
 function makeApp() {

@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import type { BBox } from "@sketch2ui/shared-types";
 import { cn } from "../../components/cn.js";
 
-// docs/frontend/SKETCH2UI_REDESIGN_BLUEPRINT_2026-08-27.md — Mockup 1 (Geometry
-// spatial editor). Supplementary illustration of the SAME geometryDraft state
-// InspectorPanel's numeric x/y/width/height fields already own — this component never
+// Mockup 1 (Geometry spatial editor). Supplementary illustration of the SAME geometryDraft
+// state InspectorPanel's numeric x/y/width/height fields already own — this component never
 // holds its own copy of the geometry, it only reads `bbox`/`draft` and calls
-// `onDraftChange`, exactly like typing into one of those fields already does. Diagram
-// is `aria-hidden`: the four numeric fields (rendered by InspectorPanel, unchanged)
-// remain the sole accessible/keyboard interaction path (blueprint Accessibility §).
+// `onDraftChange`, exactly like typing into one of those fields already does. Diagram is
+// `aria-hidden`: the four numeric fields (rendered by InspectorPanel, unchanged) remain the
+// sole accessible/keyboard interaction path (blueprint Accessibility §).
 //
 // Per-handle field mapping is deliberately simple rather than the anchor-preserving
 // corner resize AnnotationCanvas.tsx uses for the sketch canvas: each handle writes

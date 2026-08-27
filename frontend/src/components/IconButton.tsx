@@ -2,10 +2,10 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Icon Button. `aria-label` is required
-// (narrowed from the optional DOM attribute) so an icon-only control can never ship
-// without an accessible name — direct fix for the audit's §20 "five indistinguishable
-// Apply buttons" finding, generalized as a type-level rule for every future usage.
+// Icon Button. `aria-label` is required (narrowed from the optional DOM attribute) so an
+// icon-only control can never ship without an accessible name — direct fix for the audit's
+// §20 "five indistinguishable Apply buttons" finding, generalized as a type-level rule for
+// every future usage.
 
 interface IconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "aria-label"> {
   icon: ReactNode;

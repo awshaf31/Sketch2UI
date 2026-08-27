@@ -4,9 +4,8 @@ import { cn } from "./cn.js";
 import { Input } from "./Input.js";
 import { IconButton } from "./IconButton.js";
 
-// Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): Login and
-// Register are the only two password fields in the app — a small shared wrapper here
-// beats duplicating the show/hide toggle in both pages.
+// Design audit 2026-08-26: Login and Register are the only two password fields in the app —
+// a small shared wrapper here beats duplicating the show/hide toggle in both pages.
 
 function EyeIcon() {
   return (

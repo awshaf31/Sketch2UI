@@ -7,11 +7,10 @@ import { login, registerAndLogin } from "./auth.js";
 // account (playwright.config.ts) exists specifically so this can log in as a real
 // admin without a test-only backdoor route — see that file's header comment.
 //
-// Registers a normal user first so every admin screen has real data to show, not an
-// empty state — the point of this suite is proving the admin UI renders genuine
-// cross-account data end-to-end, the same thing the manual browser verification in
-// docs/execution/phase-log.md's S6–S10 entries already confirmed, now as a repeatable
-// automated check.
+// Registers a normal user first so every admin screen has real data to show, not an empty
+// state — the point of this suite is proving the admin UI renders genuine cross-account
+// data end-to-end, the same thing the manual browser verification of phases S6–S10 already
+// confirmed, now as a repeatable automated check.
 
 test("admin can log in and walk every admin screen, seeing real cross-account data", async ({ page }) => {
   const subjectEmail = `admin-journey-subject-${Date.now()}@e2e.local`;

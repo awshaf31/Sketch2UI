@@ -24,15 +24,14 @@ import { Tooltip } from "../../components/Tooltip.js";
 // live locally in this panel and are pushed to the API only when the user hits
 // Apply, so typing a value never triggers a codegen round-trip.
 //
-// docs/frontend/inspector-design.md (Phase 2G) — accordion shell + shared footer.
-// EVERY draft/dirty/validation/handler function below is unchanged from before this
-// phase, including the EMPTY_STYLE_OVERRIDE reference-identity contract this
-// component's props depend on (see ProjectWorkspace.tsx's own comment on that
-// constant) — only the JSX this component RETURNS was restructured. Per-section
-// status labels keep their EXACT original text (e.g. Detection's clean-state
-// "Saved") rather than inspector-design.md's simplified generic table, because
-// e2e/golden-path.spec.ts asserts `getByText("Saved")` verbatim — preserving that
-// assertion overrides the doc's illustrative label table.
+// Phase 2G — accordion shell + shared footer. EVERY draft/dirty/validation/handler function
+// below is unchanged from before this phase, including the EMPTY_STYLE_OVERRIDE
+// reference-identity contract this component's props depend on (see ProjectWorkspace.tsx's
+// own comment on that constant) — only the JSX this component RETURNS was restructured.
+// Per-section status labels keep their EXACT original text (e.g. Detection's clean-state
+// "Saved") rather than a simplified generic table, because e2e/golden-path.spec.ts asserts
+// `getByText("Saved")` verbatim — preserving that assertion wins over any illustrative
+// label table.
 
 export type StyleOverride = Record<string, string>;
 

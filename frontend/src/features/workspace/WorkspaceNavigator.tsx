@@ -2,9 +2,8 @@ import { useState } from "react";
 import type { ReactNode } from "react";
 import { Tab, Tabs } from "../../components/Tabs.js";
 
-// docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 (Gap 2) — the workspace's left panel
-// becomes one Navigator holding three structural views, per the visual-builder
-// reference in uiux/: Pages · Layers · Assets.
+// the workspace's left panel becomes one Navigator holding three structural views, per the
+// visual-builder reference in uiux/: Pages · Layers · Assets.
 //
 // A dumb shell on purpose: it owns which tab is showing and nothing else. Each panel
 // keeps its own props and its own state, so this file never has to know about pages,

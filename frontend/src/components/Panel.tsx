@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Panel. The structural shell for every
-// workspace region (Layers, Canvas, Inspector, dock — see workspace-design.md).
+// Panel. The structural shell for every workspace region (Layers, Canvas, Inspector, dock).
 // `shadow-none` always, per the elevation philosophy: panels are delineated by border,
-// never shadow. Not applied to ProjectWorkspace's existing regions in this phase
-// (Step 8) — available for 2D onward.
+// never shadow. Not applied to ProjectWorkspace's existing regions in this phase (Step 8) —
+// available for 2D onward.
 
 interface PanelProps {
   children: ReactNode;

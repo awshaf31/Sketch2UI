@@ -160,8 +160,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   /** Absolute URL of an asset's source image (§18.2). Ownership-checked server-side
-   *  — see DEF-008 in docs/qa/MASTER_DEFECT_REGISTER.md — so it needs the
-   *  project/page context, not just the storage key. */
+   * (QA audit DEF-008) — so it needs the project/page context, not just the storage key. */
   assetUrl(projectId: string, pageId: string, assetId: string): string {
     return `${API_URL}/api/projects/${projectId}/pages/${pageId}/assets/${assetId}/image`;
   },

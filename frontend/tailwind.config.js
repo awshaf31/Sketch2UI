@@ -1,8 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-// Design tokens per docs/frontend/design-tokens.md (Phase 2A). Every value here is
-// additive under `extend` — no top-level Tailwind theme key is replaced wholesale, so
-// existing className strings elsewhere in the app keep working unchanged while new
-// components (frontend/src/components/*) consume these named tokens.
+// Design tokens (Phase 2A). Every value here is additive under `extend` — no top-level
+// Tailwind theme key is replaced wholesale, so existing className strings elsewhere in the
+// app keep working unchanged while new components (frontend/src/components/*) consume these
+// named tokens.
 export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
@@ -35,8 +35,8 @@ export default {
         "text-disabled": "#A2A9BD",
         "text-inverse": "#FFFFFF",
 
-        // Brand & selection — see design-tokens.md for why brand color also serves as
-        // the canvas's structural-container color, and why selection is a dedicated hue.
+        // Brand & selection — brand color also serves as the canvas's structural-container
+        // color, and selection is a dedicated hue.
         primary: "#5633F8",
         "primary-hover": "#4824E6",
         "primary-active": "#3918C7",
@@ -50,10 +50,9 @@ export default {
         focus: "#5633F8",
 
         // Detection / canvas state — structurally meaningful, carried forward from the
-        // existing hardcoded hex values (see docs/frontend/canvas-design.md). Left
-        // untouched by the 2026-08-27 rebrand — these encode real CV/annotation
-        // semantics, not brand decoration, and detection-model's violet already reads
-        // naturally alongside the new palette.
+        // existing hardcoded hex values. Left untouched by the 2026-08-27 rebrand — these
+        // encode real CV/annotation semantics, not brand decoration, and detection-model's
+        // violet already reads naturally alongside the new palette.
         "detection-model": "#8b5cf6",
         "detection-manual": "#10b981",
         "page-boundary": "#e11d48",

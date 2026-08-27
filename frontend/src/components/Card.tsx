@@ -2,9 +2,9 @@ import { forwardRef } from "react";
 import type { HTMLAttributes } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Card. `interactive` adds the hover/focus
-// "lift" (border-strong + shadow-subtle) for a card that's a click target, e.g.
-// Dashboard's ProjectCard — kept deliberately subtle per the elevation philosophy.
+// Card. `interactive` adds the hover/focus "lift" (border-strong + shadow-subtle) for a
+// card that's a click target, e.g. Dashboard's ProjectCard — kept deliberately subtle per
+// the elevation philosophy.
 
 interface CardProps extends HTMLAttributes<HTMLDivElement> {
   interactive?: boolean;

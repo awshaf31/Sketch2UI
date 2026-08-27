@@ -4,10 +4,9 @@ import { expect, test } from "@playwright/test";
 import { registerAndLogin } from "./auth.js";
 
 // Phase D3 — Minimum Viable Multi-Page. Proves the one thing golden-path.spec.ts and
-// inspector-overrides.spec.ts can't (both only ever touch a project's single default
-// page): that a second page has its own independent asset/detections/code, and that
-// exporting bundles every page into one ZIP (index.html + page-N.html + one shared
-// styles.css) — see docs/execution/d3-multipage-handoff.md step 5.
+// inspector-overrides.spec.ts can't (both only ever touch a project's single default page):
+// that a second page has its own independent asset/detections/code, and that exporting
+// bundles every page into one ZIP (index.html + page-N.html + one shared styles.css).
 
 const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");
 
@@ -34,11 +33,10 @@ test("a second page has independent content and both pages export together", asy
   await expect(page.getByRole("button", { name: "Page 1", exact: true })).toBeVisible();
   await uploadDetectAndSave(page);
 
-  // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 — deliberate e2e-breaking change,
-  // updated in the same change that introduces it (same discipline as the Save
-  // version rename in project-rename.spec.ts): once an asset exists, page management
-  // lives in the Navigator's "Pages" tab, not a top strip. The Navigator defaults to
-  // "Layers" so the detect/correct loop stays reachable without an extra click.
+  // deliberate e2e-breaking change, updated in the same change that introduces it (same
+  // discipline as the Save version rename in project-rename.spec.ts): once an asset exists,
+  // page management lives in the Navigator's "Pages" tab, not a top strip. The Navigator
+  // defaults to "Layers" so the detect/correct loop stays reachable without an extra click.
   await page.getByRole("tab", { name: "Pages" }).click();
   await page.getByRole("button", { name: /Add page/ }).click();
   await expect(page.getByRole("button", { name: "Page 2", exact: true })).toBeVisible();
@@ -55,9 +53,8 @@ test("a second page has independent content and both pages export together", asy
   await expect(page.getByRole("button", { name: /^Detect/ })).toBeVisible();
   await expect(page.locator("svg g rect").first()).toBeVisible();
 
-  // Cross-page links need no new mechanism (docs/execution/d3-multipage-handoff.md
-  // step 7's explicit call-out): set this page's detection to link to Page 2 via the
-  // existing Content Inspector, and confirm the export carries the relative href
+  // Cross-page links need no new mechanism: set this page's detection to link to Page 2 via
+  // the existing Content Inspector, and confirm the export carries the relative href
   // through unchanged.
   const treeNode = page.locator("ul.p-2 > li > button").first();
   await treeNode.click();

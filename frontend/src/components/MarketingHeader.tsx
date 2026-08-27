@@ -4,12 +4,11 @@ import { LinkButton } from "./LinkButton.js";
 import { useAuth } from "../context/AuthContext.js";
 
 // SaaS phase S3 — public marketing site nav. Shared by Home and Pricing (the only two
-// public routes today, per docs/execution/phase-log.md's Phase S3 entry). "Features"
-// and "How it works" are same-page anchors on Home ("/#features", "/#how-it-works");
-// linking to them from Pricing navigates to Home and Home's own hash-scroll effect
-// (see Home.tsx) takes it from there. CTA follows the brief's Phase 1 rule: signed-out
-// visitors get Log in / Start Building, signed-in visitors get one "Open App" link —
-// never both a marketing CTA and an app CTA at once.
+// public routes today). "Features" and "How it works" are same-page anchors on Home
+// ("/#features", "/#how-it-works"); linking to them from Pricing navigates to Home and
+// Home's own hash-scroll effect (see Home.tsx) takes it from there. CTA follows the brief's
+// Phase 1 rule: signed-out visitors get Log in / Start Building, signed-in visitors get one
+// "Open App" link — never both a marketing CTA and an app CTA at once.
 
 export function MarketingHeader() {
   const { status } = useAuth();

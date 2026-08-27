@@ -40,17 +40,16 @@ const HREF_ALLOWED_SCHEMES = new Set(["http", "https", "mailto", "tel"]);
  * allowlisted scheme. `#foo`, `/foo`, `./foo`, `../foo`, `foo/bar` are relative;
  * `https://…` etc pass through the URL parser to catch malformed URLs.
  *
- * SECURITY (QA audit, docs/qa/MASTER_DEFECT_REGISTER.md DEF-001): the scheme-detection
- * regex below only recognizes an unbroken run of letters/digits before `:` as a
- * scheme. A tab/newline/CR/leading-space embedded in the scheme (e.g.
- * `"java\nscript:alert(1)"`) broke that match, so the "no scheme found → treat as a
- * relative path → allow" branch fired instead of ever reaching the URL-parser check
- * below it. Browsers strip exactly those characters from a URL during parsing
- * regardless of position (WHATWG URL spec), so the stored href still resolved to
+ * SECURITY (QA audit, DEF-001): the scheme-detection regex below only recognizes an
+ * unbroken run of letters/digits before `:` as a scheme. A tab/newline/CR/leading-space
+ * embedded in the scheme (e.g. `"java\nscript:alert(1)"`) broke that match, so the "no
+ * scheme found → treat as a relative path → allow" branch fired instead of ever reaching
+ * the URL-parser check below it. Browsers strip exactly those characters from a URL during
+ * parsing regardless of position (WHATWG URL spec), so the stored href still resolved to
  * `javascript:alert(1)` on click — a confirmed stored-XSS bypass of this allowlist.
- * Legitimate URLs never contain a literal embedded whitespace/control character (a
- * real space would be percent-encoded), so rejecting any href containing one, before
- * the scheme regex ever runs, closes the bypass without narrowing any real use case.
+ * Legitimate URLs never contain a literal embedded whitespace/control character (a real
+ * space would be percent-encoded), so rejecting any href containing one, before the scheme
+ * regex ever runs, closes the bypass without narrowing any real use case.
  */
 const HREF_UNSAFE_CHARS = /[\s\x00-\x1f]/;
 

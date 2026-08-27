@@ -3,9 +3,8 @@ import { EmptyState } from "../../components/EmptyState.js";
 import { api } from "../../services/api.js";
 import { cn } from "../../components/cn.js";
 
-// docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6 (Gap 3) — the Navigator's "Assets"
-// tab. Read-only by design: upload stays the first-run dropzone, because this
-// product's story is one sketch per page, not a media library (§11.3).
+// the Navigator's "Assets" tab. Read-only by design: upload stays the first-run dropzone,
+// because this product's story is one sketch per page, not a media library (§11.3).
 //
 // Every field rendered here is already on ProjectAsset — mimeType, width, height,
 // fileSize, createdAt. Nothing is computed, estimated, or invented (§11.6).

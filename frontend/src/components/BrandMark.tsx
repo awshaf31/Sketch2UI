@@ -1,7 +1,7 @@
-// docs/frontend/design-direction.md — brand mark. A corner-bracket / registration-mark
-// motif deliberately echoing the canvas's own detection-box resize handles (four
-// corner squares around a rect) — the one piece of "identity" this app already draws
-// well, reused here instead of an unrelated invented logo.
+// brand mark. A corner-bracket / registration-mark motif deliberately echoing the canvas's
+// own detection-box resize handles (four corner squares around a rect) — the one piece of
+// "identity" this app already draws well, reused here instead of an unrelated invented
+// logo.
 
 export function BrandMark({ className }: { className?: string }) {
   return (

@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Field. Owns the label→control→helper/
-// error spacing so it's defined once instead of re-typed at every Inspector call site.
-// `layout="inline-80"` matches the Inspector's existing grid-cols-[80px_1fr] rows — a
-// Field in that mode renders its label and control as two direct grid children (via
-// `display: contents`) so it can drop into that grid unchanged.
+// Field. Owns the label→control→helper/ error spacing so it's defined once instead of
+// re-typed at every Inspector call site. `layout="inline-80"` matches the Inspector's
+// existing grid-cols-[80px_1fr] rows — a Field in that mode renders its label and control
+// as two direct grid children (via `display: contents`) so it can drop into that grid
+// unchanged.
 
 interface FieldProps {
   label: string;

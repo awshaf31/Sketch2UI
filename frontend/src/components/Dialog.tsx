@@ -3,10 +3,9 @@ import type { ReactNode, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Dialog (presentational shell). Full
-// focus-trap contract per docs/frontend/accessibility.md: focus moves to the caller's
-// chosen initial element on open, Tab cycles within the panel, Escape closes, and
-// focus returns to whatever triggered the dialog on close by any method.
+// Dialog (presentational shell). Full focus-trap contract: focus moves to the caller's
+// chosen initial element on open, Tab cycles within the panel, Escape closes, and focus
+// returns to whatever triggered the dialog on close by any method.
 
 interface DialogProps {
   open: boolean;

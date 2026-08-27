@@ -5,14 +5,13 @@ import { errorHandler } from "./errorHandler.js";
 import { buildAuthRateLimiter } from "./rateLimiter.js";
 
 /**
- * HTTP-integration regression coverage for DEF-009
- * (docs/qa/MASTER_DEFECT_REGISTER.md) — /api/auth/login and /register had no rate
- * limiting at all. This exercises `buildAuthRateLimiter()` directly with a tiny
- * limit rather than going through `authRateLimiterOrNoop()`'s NODE_ENV=test bypass
- * (see rateLimiter.ts) — that bypass exists so every OTHER module's own
- * HTTP-integration tests can register/log in as many throwaway users as they need
- * without tripping the production-sized limit; it would make this file's own
- * regression coverage impossible if applied here too.
+ * HTTP-integration regression coverage for DEF-009 — /api/auth/login and /register had no
+ * rate limiting at all. This exercises `buildAuthRateLimiter()` directly with a tiny limit
+ * rather than going through `authRateLimiterOrNoop()`'s NODE_ENV=test bypass (see
+ * rateLimiter.ts) — that bypass exists so every OTHER module's own HTTP-integration tests
+ * can register/log in as many throwaway users as they need without tripping the
+ * production-sized limit; it would make this file's own regression coverage impossible if
+ * applied here too.
  */
 
 function makeApp(max: number) {

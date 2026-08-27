@@ -3,11 +3,11 @@ import type { ReactNode } from "react";
 import { Button } from "./Button.js";
 import { Dialog } from "./Dialog.js";
 
-// docs/frontend/component-specification.md — Dialog (provider/host). Mounted once near
-// App root (see App.tsx). Exposes an imperative confirm() that resolves true/false, so
-// a later phase can call it from anywhere without prop-drilling. Intended (a later
-// phase, not this one) to replace Dashboard.tsx's window.confirm() delete-project call
-// — see docs/frontend/dashboard-design.md's "Delete confirmation" section.
+// Dialog (provider/host). Mounted once near App root (see App.tsx). Exposes an imperative
+// confirm() that resolves true/false, so a later phase can call it from anywhere without
+// prop-drilling. Intended (a later phase, not this one) to replace Dashboard.tsx's
+// window.confirm() delete-project call — see the "Delete confirmation" behavior it is meant
+// to replace.
 
 interface ConfirmOptions {
   title: string;
@@ -15,7 +15,7 @@ interface ConfirmOptions {
   confirmLabel?: string;
   cancelLabel?: string;
   /** Destructive confirms default focus to Cancel (the safer default) and disable
-   * dismiss-on-overlay-click — docs/frontend/accessibility.md's dialog-focus contract. */
+   * dismiss-on-overlay-click — part of the dialog-focus contract. */
   destructive?: boolean;
 }
 

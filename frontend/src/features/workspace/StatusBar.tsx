@@ -5,19 +5,17 @@ import { IconButton } from "../../components/IconButton.js";
 import { StatusIndicator } from "../../components/StatusIndicator.js";
 import { cn } from "../../components/cn.js";
 
-// docs/frontend/workspace-design.md — "Status bar: consolidating four banners into
-// one". A single fixed-height (h-10) row that scrolls horizontally rather than
-// growing vertically as segments appear/disappear — the direct fix for the Phase 1
-// audit's §4/§22 finding that up to four stacked colored banners pushed the
-// workspace down by an unpredictable amount depending on project state.
+// "Status bar: consolidating four banners into one". A single fixed-height (h-10) row that
+// scrolls horizontally rather than growing vertically as segments appear/disappear — the
+// direct fix for the Phase 1 audit's §4/§22 finding that up to four stacked colored banners
+// pushed the workspace down by an unpredictable amount depending on project state.
 //
-// The five segments from component-hierarchy.md are implemented here as named
-// exports in one file rather than five separate files: each is small and only ever
-// composed by this one StatusBar, so keeping them together avoids fragmenting for
-// its own sake (documented deviation from the roadmap's literal file list — see
-// docs/frontend/frontend-implementation-roadmap.md's Phase 2D result). The
-// "RejectedCountSegment" is folded into PageBoundarySegment (a couple of words and a
-// checkbox that are meaningless without boundary context, not a standalone segment).
+// The five segments are implemented here as named exports in one file rather than five
+// separate files: each is small and only ever composed by this one StatusBar, so keeping
+// them together avoids fragmenting for its own sake (a documented deviation from the
+// roadmap's literal file list). The "RejectedCountSegment" is folded into
+// PageBoundarySegment (a couple of words and a checkbox that are meaningless without
+// boundary context, not a standalone segment).
 
 export function StatusBar({ segments }: { segments: ReactNode[] }) {
   const visible = segments.filter(Boolean);

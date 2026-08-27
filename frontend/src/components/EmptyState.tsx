@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Empty State. Icon-agnostic (the caller
-// supplies it) so it can serve Dashboard's "no projects" state today and the Layers
-// panel's "nothing drawn yet" state in a later phase without duplication.
+// Empty State. Icon-agnostic (the caller supplies it) so it can serve Dashboard's "no
+// projects" state today and the Layers panel's "nothing drawn yet" state in a later phase
+// without duplication.
 
 interface EmptyStateProps {
   icon?: ReactNode;

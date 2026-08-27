@@ -53,18 +53,17 @@ const upload = multer({
   },
 });
 
-// QA audit DEF-004 (docs/qa/MASTER_DEFECT_REGISTER.md): `upload.single("file")` is
-// plain Express middleware (callback-style `next(err)`, not the async/await style
-// `asyncHandler` wraps), so a multer-level rejection — an oversized file
-// (`MulterError`, code `LIMIT_FILE_SIZE`) or an unsupported MIME type (the plain
-// `Error` thrown by `fileFilter` above) — used to skip straight past every route
-// handler and land in the catch-all `errorHandler`, which answers every unhandled
-// error with a generic `500 INTERNAL "An unexpected server error occurred."` This
-// misrepresented an ordinary client input-validation failure as a server crash (wrong
-// status code, no actionable message) — placed directly after `upload.single`, this
-// intercepts exactly those two multer-level failures and reports them the same way
-// every other validation failure in this router already does; anything else is passed
-// through unchanged to the real error handler.
+// QA audit DEF-004: `upload.single("file")` is plain Express middleware (callback-style
+// `next(err)`, not the async/await style `asyncHandler` wraps), so a multer-level rejection
+// — an oversized file (`MulterError`, code `LIMIT_FILE_SIZE`) or an unsupported MIME type
+// (the plain `Error` thrown by `fileFilter` above) — used to skip straight past every route
+// handler and land in the catch-all `errorHandler`, which answers every unhandled error
+// with a generic `500 INTERNAL "An unexpected server error occurred."` This misrepresented
+// an ordinary client input-validation failure as a server crash (wrong status code, no
+// actionable message) — placed directly after `upload.single`, this intercepts exactly
+// those two multer-level failures and reports them the same way every other validation
+// failure in this router already does; anything else is passed through unchanged to the
+// real error handler.
 function handleUploadError(err: unknown, _req: Request, res: Response, next: NextFunction): void {
   if (err instanceof MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
@@ -144,15 +143,14 @@ assetsRouter.get<PageParams>("/", asyncHandler(async (req, res) => {
   res.json(await getRepositories().assets.listByPage(req.params.pageId));
 }));
 
-// GET /api/projects/:id/pages/:pageId/assets/:assetId/image — QA audit DEF-008
-// (docs/qa/MASTER_DEFECT_REGISTER.md): the source sketch used to be served from a
-// flat, unauthenticated-by-ownership `/uploads/:storageKey` static route — gated by
-// `requireAuth` (any logged-in session) but not by project/page ownership, so any
-// authenticated user who learned another user's storageKey could fetch that file
-// directly. This route replaces it: mounted under the already
+// GET /api/projects/:id/pages/:pageId/assets/:assetId/image — QA audit DEF-008: the source
+// sketch used to be served from a flat, unauthenticated-by-ownership `/uploads/:storageKey`
+// static route — gated by `requireAuth` (any logged-in session) but not by project/page
+// ownership, so any authenticated user who learned another user's storageKey could fetch
+// that file directly. This route replaces it: mounted under the already
 // requireProjectOwnership + requirePageInProject-gated `assetsRouter`, and — same
-// existence-enumeration-avoidance reasoning as `boundariesRouter` — 404s (not 403)
-// if the asset doesn't belong to this page.
+// existence-enumeration-avoidance reasoning as `boundariesRouter` — 404s (not 403) if the
+// asset doesn't belong to this page.
 assetsRouter.get<AssetParams>("/:assetId/image", asyncHandler(async (req, res) => {
   const asset = await getRepositories().assets.findById(req.params.assetId);
   if (!asset || asset.pageId !== req.params.pageId) {

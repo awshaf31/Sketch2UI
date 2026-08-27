@@ -8,12 +8,11 @@
 // oldOrder/newOrder), and keeps append-site code simple: a caller fills in only the
 // fields relevant to its `type` and leaves the rest undefined.
 //
-// Scope boundary: only detection identity/geometry/structure corrections are
-// recorded (class, bbox, parent, order, create, delete) — not Style or Content
-// overrides. Style/Content are presentational; they never feed the ML training loop
-// (plan §4.4 / §36) the way class/bbox/structure corrections do, which is the whole
-// reason this history exists. See docs/execution/phase-log.md Phase 4 for the
-// reasoning.
+// Scope boundary: only detection identity/geometry/structure corrections are recorded
+// (class, bbox, parent, order, create, delete) — not Style or Content overrides.
+// Style/Content are presentational; they never feed the ML training loop (plan §4.4 / §36)
+// the way class/bbox/structure corrections do, which is the whole reason this history
+// exists.
 
 import type { BBox } from "./detection.js";
 
@@ -40,12 +39,11 @@ export interface CorrectionRecord {
   detectionId: string;
   type: CorrectionType;
   /**
-   * Plan §4.1 "user/source". Always "user" today — every correction route in this
-   * app is triggered by direct human action through the web client; there is no
-   * automated correction pipeline yet (the §36 active-learning report only ranks
-   * what to label next, per PROJECT_STATUS.md — it does not act automatically).
-   * Kept as an explicit field, not a hardcoded literal in call sites, so a future
-   * automated path has somewhere to record itself.
+   * Plan §4.1 "user/source". Always "user" today — every correction route in this app is
+   * triggered by direct human action through the web client; there is no automated
+   * correction pipeline yet (the §36 active-learning report only ranks what to label next —
+   * it does not act automatically). Kept as an explicit field, not a hardcoded literal in
+   * call sites, so a future automated path has somewhere to record itself.
    */
   source: "user";
   timestamp: string;

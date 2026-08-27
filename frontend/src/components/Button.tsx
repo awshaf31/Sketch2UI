@@ -2,9 +2,9 @@ import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Button. Variants/sizes/states match that
-// spec's table; tinted color groups reuse the existing per-action hues (Detect/Approve/
-// Export) formalized as tokens instead of inline Tailwind color-utility strings.
+// Button. Variants/sizes/states match that spec's table; tinted color groups reuse the
+// existing per-action hues (Detect/Approve/ Export) formalized as tokens instead of inline
+// Tailwind color-utility strings.
 
 export type ButtonVariant = "primary" | "secondary" | "tinted" | "destructive" | "ghost";
 export type ButtonSize = "sm" | "md" | "lg";

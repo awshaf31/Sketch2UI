@@ -5,11 +5,10 @@ import { AppHeader } from "../components/AppHeader.js";
 import { Button } from "../components/Button.js";
 import PreviewPane from "../features/preview/PreviewPane.js";
 
-// docs/frontend/responsive-design.md — below 768px, the workspace does not attempt
-// the full editor (precise box-drawing on a phone screen isn't a workflow worth
-// pretending to support). This is a deliberate product boundary, stated on screen
-// instead of a silently-broken layout — rendered conditionally inside
-// ProjectWorkspace based on viewport width, not a new route.
+// below 768px, the workspace does not attempt the full editor (precise box-drawing on a
+// phone screen isn't a workflow worth pretending to support). This is a deliberate product
+// boundary, stated on screen instead of a silently-broken layout — rendered conditionally
+// inside ProjectWorkspace based on viewport width, not a new route.
 
 interface WorkspaceUnavailableProps {
   project: Project;

@@ -65,10 +65,9 @@ export interface CodeVersion {
   pageId: string;
   versionNumber: number;
   /**
-   * How this version came to exist. Both kinds are immutable rows in the same table —
-   * a hand-edit creates a NEW version rather than mutating one, so export and the
-   * evaluation baseline keep their guarantee that a version never changes underneath
-   * them (§18.8 / docs/eval).
+   * How this version came to exist. Both kinds are immutable rows in the same table — a
+   * hand-edit creates a NEW version rather than mutating one, so export and the evaluation
+   * baseline keep their guarantee that a version never changes underneath them.
    */
   source: "generated" | "edited";
   html: string;

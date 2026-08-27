@@ -2,11 +2,10 @@ import { useMemo, useState } from "react";
 import { cn } from "../../components/cn.js";
 import { EmptyState } from "../../components/EmptyState.js";
 
-// docs/frontend/code-preview-design.md (Phase 2I) — frame chrome, a loading progress
-// line, and an empty state, all new. The iframe's `sandbox=""` attribute, its
-// `srcDoc`/`title="Live preview"`, and `composeDocument()`'s asset-path rewrite logic
-// are byte-for-byte unchanged below — this is the app's one deliberate security
-// boundary (docs/frontend/README.md's non-negotiable constraints table), and this
+// Phase 2I — frame chrome, a loading progress line, and an empty state, all new. The
+// iframe's `sandbox=""` attribute, its `srcDoc`/`title="Live preview"`, and
+// `composeDocument()`'s asset-path rewrite logic are byte-for-byte unchanged below — this
+// is the app's one deliberate security boundary — a non-negotiable constraint — and this
 // phase's diff must be reviewable as touching none of it.
 
 interface PreviewPaneProps {

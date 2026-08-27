@@ -18,17 +18,15 @@ import { useDialog } from "../components/DialogHost.js";
 import { useToast } from "../components/ToastStack.js";
 import UploadDropzone from "../features/upload/UploadDropzone.js";
 
-// docs/frontend/dashboard-design.md — Phase 2C base implementation. Extended per a
-// direct product request (not a new frontend spec doc) to make "start with your
-// sketch" the Dashboard's primary workflow: a project name AND a sketch image can now
-// be supplied together in one hero form, instead of requiring a trip into the (empty)
-// project workspace just to upload. No API contract changed to build this — a project
-// already gets a default page on creation (backend/.../projects.routes.ts), and
-// api.uploadAsset(projectId, pageId, file) already exists; this just calls both in
-// sequence before navigating. AppHeader/H1 ("Projects")/create-form selectors/delete
-// dialog copy are all unchanged from the base implementation — see that phase's result
-// entry in docs/execution/phase-log.md (or the roadmap) for why those exact strings
-// matter to e2e/golden-path.spec.ts and friends.
+// Phase 2C base implementation. Extended per a direct product request (not a new frontend
+// spec doc) to make "start with your sketch" the Dashboard's primary workflow: a project
+// name AND a sketch image can now be supplied together in one hero form, instead of
+// requiring a trip into the (empty) project workspace just to upload. No API contract
+// changed to build this — a project already gets a default page on creation
+// (backend/.../projects.routes.ts), and api.uploadAsset(projectId, pageId, file) already
+// exists; this just calls both in sequence before navigating. AppHeader/H1
+// ("Projects")/create-form selectors/delete dialog copy are all unchanged from the base
+// implementation — those exact strings matter to e2e/golden-path.spec.ts and friends.
 
 function TrashIcon() {
   return (
@@ -236,9 +234,8 @@ export default function Dashboard() {
 
   async function handleDelete(id: string, projectName: string) {
     if (deletingId) return;
-    // Same guarantee as the window.confirm() this replaces — see
-    // docs/frontend/dashboard-design.md's "Delete confirmation" section: identical
-    // title/body copy, just rendered through the system Dialog instead of a native one.
+    // Same guarantee as the window.confirm() this replaces: identical title/body copy, just
+    // rendered through the system Dialog instead of a native one.
     const confirmed = await confirm({
       title: "Delete project?",
       body: `Delete "${projectName}"? This cannot be undone.`,
@@ -259,9 +256,9 @@ export default function Dashboard() {
   }
 
   return (
-    // docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 — the persistent rail replaces
-    // AppHeader's top nav. The column widens 720 -> 880px because the rail now takes
-    // the left edge, so the project grid keeps the same usable measure it had before.
+    // the persistent rail replaces AppHeader's top nav. The column widens 720 -> 880px
+    // because the rail now takes the left edge, so the project grid keeps the same usable
+    // measure it had before.
     <AppShell>
       <PageHeader
         title="Projects"

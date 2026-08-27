@@ -1,6 +1,5 @@
-// Barrel export for the Phase 2A primitive foundation (docs/frontend/component-specification.md).
-// Not yet consumed by Dashboard/ProjectWorkspace (Step 8 of Phase 2A) — available for
-// 2B onward per docs/frontend/frontend-implementation-roadmap.md.
+// Barrel export for the Phase 2A primitive foundation. Not yet consumed by
+// Dashboard/ProjectWorkspace (Step 8 of Phase 2A) — available for 2B onward.
 export * from "./cn.js";
 export * from "./Button.js";
 export * from "./IconButton.js";

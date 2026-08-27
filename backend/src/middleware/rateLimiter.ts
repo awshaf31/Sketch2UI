@@ -3,15 +3,14 @@ import type { RequestHandler } from "express";
 import { env } from "../config/env.js";
 import { sendError } from "./apiError.js";
 
-// QA audit DEF-009 (docs/qa/MASTER_DEFECT_REGISTER.md): /api/auth/login and
-// /api/auth/register had no rate limiting at all — open to unthrottled
-// brute-force/credential-stuffing attempts.
+// QA audit DEF-009: /api/auth/login and /api/auth/register had no rate limiting at all —
+// open to unthrottled brute-force/credential-stuffing attempts.
 //
-// In-memory per-process storage (express-rate-limit's default) matches this app's
-// existing single-process deployment model — jobs already run in-process rather than
-// through the Redis container `docker-compose.yml` provisions but nothing else uses
-// (see PROJECT_STATUS.md §3.3/§5). A shared store only earns its complexity once the
-// API actually runs as more than one instance.
+// In-memory per-process storage (express-rate-limit's default) matches this app's existing
+// single-process deployment model — jobs already run in-process rather than through the
+// Redis container `docker-compose.yml` provisions but nothing else uses nothing else uses.
+// A shared store only earns its complexity once the API actually runs as more than one
+// instance.
 //
 // 10 requests / 15 minutes per IP, on both routes: within the range OWASP's
 // authentication cheat sheet suggests for login throttling, and register reuses the

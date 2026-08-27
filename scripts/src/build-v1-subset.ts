@@ -256,8 +256,8 @@ generated from \`packages/shared-types/src/taxonomy.ts\`). The v1 detector train
 **${eligible.length}-class subset** of it.
 
 This is a **temporary data limitation, not a taxonomy change.** The excluded classes are
-still first-class members of the taxonomy, still labelled by annotators per
-\`docs/ml/annotation-guide.md\`, and still present in \`ml/dataset\`. They are held out of
+still first-class members of the taxonomy, still labelled by annotators, and still
+present in \`ml/dataset\`. They are held out of
 *this training run only* because there is not yet enough of them to learn or to measure.
 §9.3 is explicit that the class vocabulary should be expanded only once the first
 detector is stable — this is that staging, applied in reverse.

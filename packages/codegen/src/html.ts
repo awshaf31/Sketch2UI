@@ -87,7 +87,7 @@ const VOID_TAGS = new Set(["img", "input", "hr"]);
 /**
  * Classes rendered from a REAL crop of the source sketch when a resolver supplies one.
  *
- * Scope decision (documented deliberately — see docs/codegen-assets.md):
+ * Scope decision (documented deliberately):
  *   image, avatar, video, logo  -> cropped. These are substantial drawn regions where
  *     the sketch's own marks are the content: a picture box, a portrait, a media frame,
  *     a hand-drawn wordmark. Showing the real ink is strictly more faithful than a

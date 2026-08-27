@@ -1,9 +1,8 @@
 import { IconButton } from "../../components/IconButton.js";
 
-// docs/frontend/canvas-design.md §11–12 — zoom + fit-to-screen. New capability, not
-// present in the app before Phase 2E: the canvas previously had no zoom control at
-// all (only the live-preview pane had viewport presets). Percentage readout uses
-// font-mono per the type direction (it's data, not prose).
+// zoom + fit-to-screen. New capability, not present in the app before Phase 2E: the canvas
+// previously had no zoom control at all (only the live-preview pane had viewport presets).
+// Percentage readout uses font-mono per the type direction (it's data, not prose).
 
 function ZoomOutIcon() {
   return (

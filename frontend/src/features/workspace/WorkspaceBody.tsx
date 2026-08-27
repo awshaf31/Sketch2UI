@@ -5,29 +5,27 @@ import { Button } from "../../components/Button.js";
 import { Drawer } from "../../components/Drawer.js";
 import { cn } from "../../components/cn.js";
 
-// docs/frontend/workspace-design.md — the 4-region shell: Layers (left, 240px) /
-// Canvas (center, fluid) / Inspector (right, 320px), with a bottom dock spanning the
-// full width. This directly replaces the old 3-column layout (canvas / tree+inspector
-// sharing one 256px column / a fixed 480px right column) that Phase 1 audit's §4
-// flagged for starving the canvas on a 1366px laptop and squeezing the Inspector
-// under the tree. Every slot below still receives the exact same feature components
-// with the exact same props as before — this is a layout rearrangement, not new
-// functionality (see docs/frontend/design-to-code-mapping.md).
+// the 4-region shell: Layers (left, 240px) / Canvas (center, fluid) / Inspector (right,
+// 320px), with a bottom dock spanning the full width. This directly replaces the old
+// 3-column layout (canvas / tree+inspector sharing one 256px column / a fixed 480px right
+// column) that Phase 1 audit's §4 flagged for starving the canvas on a 1366px laptop and
+// squeezing the Inspector under the tree. Every slot below still receives the exact same
+// feature components with the exact same props as before — this is a layout rearrangement,
+// not new functionality.
 //
-// docs/frontend/responsive-design.md (Phase 2J) — at the tablet tier (768–1023px),
-// Layers/Inspector become toggleable overlay Drawers instead of fixed columns, and
-// the canvas takes the full width. The `layers`/`canvas`/`inspector`/`dock` content
-// itself is identical in both layouts — only how it's framed changes.
+// Phase 2J — at the tablet tier (768–1023px), Layers/Inspector become toggleable overlay
+// Drawers instead of fixed columns, and the canvas takes the full width. The
+// `layers`/`canvas`/`inspector`/`dock` content itself is identical in both layouts — only
+// how it's framed changes.
 //
-// The dock's height was a fixed 32%/40% with no way to reclaim that space for the
-// canvas — code-preview-design.md flagged resize/collapse as a later-phase capability.
-// Design audit 2026-08-26 (docs/frontend/saas-polish-audit-2026-08-26.md): added a
-// collapse toggle (state + the button itself live in ProjectWorkspace, next to the
-// dock's own Preview/Code tabs) — `dockCollapsed` just picks which height class
-// applies here, so this component stays a plain layout shell.
+// The dock's height was a fixed 32%/40% with no way to reclaim that space for the canvas —
+// resize/collapse was flagged as a later-phase capability. Design audit 2026-08-26: added a
+// collapse toggle (state + the button itself live in ProjectWorkspace, next to the dock's
+// own Preview/Code tabs) — `dockCollapsed` just picks which height class applies here, so
+// this component stays a plain layout shell.
 
 interface WorkspaceBodyProps {
-  /** The Pages/Layers/Assets navigator (docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §6).
+  /** The Pages/Layers/Assets navigator.
    *  Was a bare Layers tree before that change; this slot is otherwise unchanged. */
   navigator: ReactNode;
   canvas: ReactNode;
@@ -80,7 +78,7 @@ export function WorkspaceBody({ navigator, canvas, inspector, dock, isTablet, do
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex flex-1 overflow-hidden">
         {/* 260px (was 240px) to seat the Navigator's three-tab strip without the
-            labels crowding — see FINAL_SAAS_DESIGN_DIRECTION.md §6. */}
+            labels crowding. */}
         <Panel bordered="right" className="flex w-[260px] shrink-0 flex-col overflow-hidden">
           {navigator}
         </Panel>

@@ -2,11 +2,10 @@ import { Children, cloneElement, isValidElement } from "react";
 import type { ReactElement, ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Tabs. Replaces the Preview/Code and
-// HTML/CSS tab strips' hand-written pattern (ProjectWorkspace.tsx, CodePanel.tsx) with
-// one accessible primitive: role="tablist"/"tab", aria-selected, arrow-key navigation.
-// Not wired into either call site yet (that's 2D/2H per the roadmap) — this is the
-// foundation those phases consume.
+// Tabs. Replaces the Preview/Code and HTML/CSS tab strips' hand-written pattern
+// (ProjectWorkspace.tsx, CodePanel.tsx) with one accessible primitive:
+// role="tablist"/"tab", aria-selected, arrow-key navigation. Not wired into either call
+// site yet (that's 2D/2H per the roadmap) — this is the foundation those phases consume.
 
 interface TabsProps {
   value: string;

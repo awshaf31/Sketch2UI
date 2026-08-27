@@ -4,13 +4,12 @@ import { AppSidebar } from "./AppSidebar.js";
 import { useMediaQuery } from "./useMediaQuery.js";
 import { cn } from "./cn.js";
 
-// docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 (Gap 1) — the frame every
-// authenticated non-editor page renders inside. It owns exactly two things: where the
-// rail goes, and how wide the content column is. Page content is untouched by it.
+// The app shell — the frame every authenticated non-editor page renders inside. It owns
+// exactly two things: where the rail goes, and how wide the content column is. Page content
+// is untouched by it.
 //
-// Uses the same useMediaQuery breakpoint tiers as WorkspaceBody (docs/frontend/
-// responsive-design.md), so there's no drift between what this and CSS breakpoint
-// classes elsewhere consider "mobile".
+// Uses the same useMediaQuery breakpoint tiers as WorkspaceBody, so there's no drift
+// between what this and CSS breakpoint classes elsewhere consider "mobile".
 
 interface AppShellProps {
   children: ReactNode;

@@ -4,11 +4,10 @@ import { Button } from "./Button.js";
 import { cn } from "./cn.js";
 import { useAuth } from "../context/AuthContext.js";
 
-// docs/design/FINAL_SAAS_DESIGN_DIRECTION.md §5 (Gap 1) — the persistent left rail
-// that replaces AppHeader on /app and /app/account. AppHeader itself is NOT deleted:
-// Login/Register still mount it while unauthenticated, and the workspace deliberately
-// has neither (§4 — the editor keeps its full horizontal budget and escapes via its
-// own toolbar's "← Projects" link).
+// The persistent left rail that replaces AppHeader on /app and /app/account. AppHeader
+// itself is NOT deleted: Login/Register still mount it while unauthenticated, and the
+// workspace deliberately has neither (§4 — the editor keeps its full horizontal budget and
+// escapes via its own toolbar's "← Projects" link).
 //
 // Composition is taken from the SaaS reference in uiux/ (brand at top, primary nav in
 // the middle, user identity pinned to the bottom); nothing else about that reference

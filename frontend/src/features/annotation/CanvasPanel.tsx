@@ -5,19 +5,18 @@ import ClassPicker from "./ClassPicker.js";
 import { CanvasLegend } from "./CanvasLegend.js";
 import { CanvasToolbar } from "./CanvasToolbar.js";
 
-// docs/frontend/workspace-design.md "Canvas panel (center)" + canvas-design.md
-// §11–13 — extracted from ProjectWorkspace.tsx's inline canvas column, now owning
-// zoom/pan/fit state locally (a pure view concern with no server dependency, so it
-// doesn't belong in ProjectWorkspace's already-large state list).
+// The "Canvas panel (center)" region — extracted from ProjectWorkspace.tsx's inline canvas
+// column, now owning zoom/pan/fit state locally (a pure view concern with no server
+// dependency, so it doesn't belong in ProjectWorkspace's already-large state list).
 //
 // Zoom is implemented WITHOUT any change to AnnotationCanvas.tsx's pointer math:
 // AnnotationCanvas's root is `w-full` with an aspect-ratio, so it already renders at
 // whatever pixel width its parent gives it. Zoom here just sets that parent's width to
 // `asset.width * zoom` inside a scrollable container — AnnotationCanvas's own
-// `getImagePoint` already derives its screen-to-image scale from
-// `getBoundingClientRect()`, which reflects that rendered size automatically. This is
-// the reason canvas-design.md's zoom/pan capability could be added with zero edits to
-// the coordinate-transform functions the Phase 1 audit flagged as "hard-won, correct."
+// `getImagePoint` already derives its screen-to-image scale from `getBoundingClientRect()`,
+// which reflects that rendered size automatically. This is the reason the zoom/pan
+// capability could be added with zero edits to the coordinate-transform functions the Phase
+// 1 audit flagged as "hard-won, correct."
 
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 4;
@@ -84,8 +83,7 @@ export function CanvasPanel({
     userAdjustedZoomRef.current = false;
   }
 
-  // Default zoom is fit-to-screen the first time an asset is shown (canvas-design.md
-  // "Fit-to-screen").
+  // Default zoom is fit-to-screen the first time an asset is shown.
   useEffect(() => {
     userAdjustedZoomRef.current = false;
     const raf = requestAnimationFrame(fitToScreen);

@@ -4,10 +4,9 @@ import { createPortal } from "react-dom";
 import { Toast } from "./Toast.js";
 import type { ToastData, ToastVariant } from "./Toast.js";
 
-// docs/frontend/component-specification.md — Toast (provider/host). Mounted once near
-// App root (see App.tsx). Intended, in a later phase, to replace every window.alert()
-// call site in ProjectWorkspace.tsx (see docs/frontend/design-to-code-mapping.md's
-// exact list) — not done in this phase; those call sites are untouched.
+// Toast (provider/host). Mounted once near App root (see App.tsx). Intended, in a later
+// phase, to replace every window.alert() call site in ProjectWorkspace.tsx — not done in
+// this phase; those call sites are untouched.
 
 const AUTO_DISMISS_MS = 4000;
 
@@ -35,7 +34,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setToasts((prev) => [...prev, { id, variant, message }]);
       // Success/info auto-dismiss; error must be manually dismissed — an error the
-      // user didn't finish reading shouldn't vanish on its own (component-specification.md).
+      // user didn't finish reading shouldn't vanish on its own.
       if (variant !== "error") {
         timers.current[id] = window.setTimeout(() => dismissToast(id), AUTO_DISMISS_MS);
       }

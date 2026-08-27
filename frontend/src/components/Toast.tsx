@@ -1,9 +1,9 @@
 import { IconButton } from "./IconButton.js";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Toast (presentational shell). Semantic-
-// colored left edge + icon-less dot (matches StatusIndicator's convention) + message +
-// dismiss. Rendered by ToastStack.tsx's provider — not used directly by feature code.
+// Toast (presentational shell). Semantic- colored left edge + icon-less dot (matches
+// StatusIndicator's convention) + message + dismiss. Rendered by ToastStack.tsx's provider
+// — not used directly by feature code.
 
 export type ToastVariant = "success" | "error" | "info";
 

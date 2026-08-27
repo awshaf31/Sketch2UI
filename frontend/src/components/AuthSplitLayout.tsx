@@ -3,13 +3,12 @@ import { Link } from "react-router-dom";
 import { AppHeader } from "./AppHeader.js";
 import { BrandMark } from "./BrandMark.js";
 
-// docs/frontend/SKETCH2UI_REDESIGN_BLUEPRINT_2026-08-27.md — Mockup 4 (Auth
-// direction, lowest priority). Replaces Login/Register's floating Card-on-tinted-field
-// with two bordered panels + one hairline divider — the app's own "borders as
-// structure, not shadow" vocabulary, applied here instead of imported SaaS chrome.
-// AppHeader (top nav) is unchanged; only what used to wrap the Card is new. Below
-// 640px the left panel is never rendered (not hidden post-stack) — Sketch2UI branding
-// still comes from AppHeader at every width, so nothing is lost by dropping it.
+// Mockup 4 (Auth direction, lowest priority). Replaces Login/Register's floating
+// Card-on-tinted-field with two bordered panels + one hairline divider — the app's own
+// "borders as structure, not shadow" vocabulary, applied here instead of imported SaaS
+// chrome. AppHeader (top nav) is unchanged; only what used to wrap the Card is new. Below
+// 640px the left panel is never rendered (not hidden post-stack) — Sketch2UI branding still
+// comes from AppHeader at every width, so nothing is lost by dropping it.
 
 function SketchToUIGraphic() {
   return (

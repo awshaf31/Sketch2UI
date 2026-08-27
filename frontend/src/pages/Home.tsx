@@ -7,12 +7,12 @@ import { MarketingHeader } from "../components/MarketingHeader.js";
 import { MarketingFooter } from "../components/MarketingFooter.js";
 import { useAuth } from "../context/AuthContext.js";
 
-// SaaS phase S3 — public marketing site. Product-structure/design-direction inspired
-// by a supplied SaaS reference (per the brief); no wording, statistics, or visual
-// assets were copied from it. Every capability named below is real and already shipped
-// (cross-checked against PROJECT_STATUS.md and packages/shared-types/src/taxonomy.ts
-// during the D0 audit) — no invented stats ("10K+ users" etc.), consistent with the
-// design-direction.md constraint against decoration that doesn't encode information.
+// SaaS phase S3 — public marketing site. Product-structure/design-direction inspired by a
+// supplied SaaS reference (per the brief); no wording, statistics, or visual assets were
+// copied from it. Every capability named below is real and already shipped (cross-checked
+// against packages/shared-types/src/taxonomy.ts during the D0 audit) — no invented stats
+// ("10K+ users" etc.), consistent with the constraint against decoration that doesn't
+// encode information.
 //
 // 2026-08-27 restyle — adopted the new violet/indigo brand palette (see
 // tailwind.config.js) and the layout language from a supplied reference mockup, with
@@ -48,8 +48,8 @@ function SectionHeading({ eyebrow, title, lede }: { eyebrow: string; title: stri
 }
 
 // Small outline icons, matching the app's existing hand-rolled icon convention
-// (Dashboard.tsx's TrashIcon/SearchIcon) rather than pulling in a new icon library for
-// one page — 1.5px stroke, geometric, per design-direction.md.
+// (Dashboard.tsx's TrashIcon/SearchIcon) rather than pulling in a new icon library for one
+// page — 1.5px stroke, geometric.
 
 function UploadIcon() {
   return (

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Badge. Formalizes the "Beta" tag /
-// source badges / confidence pills that exist today as one-off inline className
-// strings (e.g. the header's "Beta" span in ProjectWorkspace.tsx) into one component.
+// Badge. Formalizes the "Beta" tag / source badges / confidence pills that exist today as
+// one-off inline className strings (e.g. the header's "Beta" span in ProjectWorkspace.tsx)
+// into one component.
 
 export type BadgeTone = "neutral" | "brand" | "selection" | "violet" | "success" | "warning" | "error" | "info";
 

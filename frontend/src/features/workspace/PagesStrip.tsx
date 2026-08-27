@@ -7,9 +7,8 @@ import { useDialog } from "../../components/DialogHost.js";
 import { api } from "../../services/api.js";
 import { cn } from "../../components/cn.js";
 
-// docs/execution/d3-multipage-handoff.md — one pill per page, built from existing
-// Button/IconButton/Input primitives rather than Tabs.tsx (no add/rename/delete
-// affordance there).
+// one pill per page, built from existing Button/IconButton/Input primitives rather than
+// Tabs.tsx (no add/rename/delete affordance there).
 
 function PencilIcon() {
   return (

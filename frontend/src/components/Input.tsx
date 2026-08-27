@@ -2,9 +2,8 @@ import { forwardRef } from "react";
 import type { InputHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "./cn.js";
 
-// docs/frontend/component-specification.md — Input / Field. `mono` switches to
-// font-mono for data fields (Geometry x/y/w/h, href) per the typography direction;
-// prose fields (Content text/altText) leave it off.
+// Input / Field. `mono` switches to font-mono for data fields (Geometry x/y/w/h, href) per
+// the typography direction; prose fields (Content text/altText) leave it off.
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "size"> {
   size?: "sm" | "md";
