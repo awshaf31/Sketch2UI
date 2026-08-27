@@ -29,4 +29,9 @@ export class JsonSessionRepository implements SessionRepository {
     db.state.sessions = db.state.sessions.filter((s) => s.tokenHash !== tokenHash);
     db.save();
   }
+
+  async deleteAllForUser(userId: string): Promise<void> {
+    db.state.sessions = db.state.sessions.filter((s) => s.userId !== userId);
+    db.save();
+  }
 }

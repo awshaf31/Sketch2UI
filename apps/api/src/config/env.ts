@@ -38,4 +38,19 @@ export const env = {
    * "postgres" for every module; see the amendment's rollback section.
    */
   persistenceDriver: (process.env.PERSISTENCE_DRIVER ?? "json") as "json" | "postgres",
+
+  // Google Sign-In — verifies the ID token Google Identity Services hands the
+  // frontend (google-auth-library, auth.routes.ts's POST /google). No client secret:
+  // ID-token verification only needs the public Client ID as the expected audience.
+  googleClientId: process.env.GOOGLE_CLIENT_ID,
+
+  // Forgot-password email (Resend). Left unset in local dev is a supported state —
+  // email.ts logs the reset link to the console instead of sending it.
+  resendApiKey: process.env.RESEND_API_KEY,
+  // Resend's shared, unverified-domain sender — works with zero setup, but can only
+  // deliver to the email address that owns the Resend account until a real domain is
+  // verified there.
+  emailFrom: process.env.EMAIL_FROM ?? "onboarding@resend.dev",
+  // Base URL the reset-password link points at — the frontend origin, not this API.
+  webUrl: process.env.WEB_URL ?? "http://localhost:5173",
 };

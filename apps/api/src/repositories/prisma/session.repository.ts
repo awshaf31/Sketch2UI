@@ -33,4 +33,8 @@ export class PrismaSessionRepository implements SessionRepository {
     // PrismaProjectRepository's setActiveCodeVersion/setStatus).
     await this.prisma.session.deleteMany({ where: { tokenHash } });
   }
+
+  async deleteAllForUser(userId: string): Promise<void> {
+    await this.prisma.session.deleteMany({ where: { userId } });
+  }
 }

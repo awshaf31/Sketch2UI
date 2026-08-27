@@ -15,6 +15,8 @@ const Home = lazy(() => import("./pages/Home.js"));
 const Pricing = lazy(() => import("./pages/Pricing.js"));
 const Login = lazy(() => import("./pages/Login.js"));
 const Register = lazy(() => import("./pages/Register.js"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword.js"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword.js"));
 const Dashboard = lazy(() => import("./pages/Dashboard.js"));
 const Account = lazy(() => import("./pages/Account.js"));
 const ProjectWorkspace = lazy(loadProjectWorkspace);
@@ -76,6 +78,8 @@ export default function App() {
                 <Route path="/pricing" element={<Pricing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route
                   path="/app"
                   element={

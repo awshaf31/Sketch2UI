@@ -32,6 +32,7 @@ import type {
   PageBoundary,
   PageBoundaryRecord,
   PageBoundarySource,
+  PasswordResetToken,
   Project,
   ProjectAsset,
   ProjectExport,
@@ -423,7 +424,10 @@ export interface CorrectionRepository {
 
 export interface CreateUserInput {
   email: string;
-  passwordHash: string;
+  /** Null for a Google-only signup — there is no password to hash. */
+  passwordHash: string | null;
+  /** Set when the account originates from (or has linked) a Google sign-in. */
+  googleId?: string;
 }
 
 export interface UserRepository {
@@ -444,6 +448,12 @@ export interface UserRepository {
    * check:db-state's zero-direct-access invariant applies across all of
    * apps/api/src, including test files. */
   setRole(id: string, role: string): Promise<User | null>;
+  /** Attaches a verified Google account id to an existing user — either a brand-new
+   * Google-only signup, or linking Google onto a pre-existing password account whose
+   * email Google has already verified as the same address. */
+  linkGoogleAccount(id: string, googleId: string): Promise<User>;
+  /** Password reset: the only way `passwordHash` changes after account creation. */
+  updatePasswordHash(id: string, passwordHash: string): Promise<User | null>;
 }
 
 export interface CreateSessionInput {
@@ -456,6 +466,24 @@ export interface SessionRepository {
   create(input: CreateSessionInput): Promise<void>;
   findByTokenHash(tokenHash: string): Promise<Session | null>;
   deleteByTokenHash(tokenHash: string): Promise<void>;
+  /** Password reset logs the user out everywhere — every OTHER auth event (login,
+   * register, a second device signing in) intentionally leaves existing sessions
+   * alone, so this is scoped to exactly the one flow that needs it. */
+  deleteAllForUser(userId: string): Promise<void>;
+}
+
+export interface CreatePasswordResetTokenInput {
+  userId: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
+export interface PasswordResetTokenRepository {
+  create(input: CreatePasswordResetTokenInput): Promise<void>;
+  findByTokenHash(tokenHash: string): Promise<PasswordResetToken | null>;
+  /** Called both when issuing a fresh token (an old, unused link should stop working)
+   * and after a successful reset (the token that was just used, plus any others). */
+  deleteAllForUser(userId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------

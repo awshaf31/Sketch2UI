@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AuthSplitLayout } from "../components/AuthSplitLayout.js";
 import { Button } from "../components/Button.js";
 import { Field } from "../components/Field.js";
+import { GoogleSignInButton } from "../components/GoogleSignInButton.js";
 import { Input } from "../components/Input.js";
 import { PasswordInput } from "../components/PasswordInput.js";
 import { useAuth } from "../context/AuthContext.js";
@@ -49,7 +50,15 @@ export default function Login() {
             disabled={submitting}
           />
         </Field>
-        <Field label="Password" htmlFor="login-password">
+        <div className="flex flex-col gap-xs">
+          <div className="flex items-center justify-between">
+            <label htmlFor="login-password" className="text-xs text-text-secondary">
+              Password
+            </label>
+            <Link to="/forgot-password" className="text-xs text-primary hover:underline">
+              Forgot password?
+            </Link>
+          </div>
           <PasswordInput
             id="login-password"
             autoComplete="current-password"
@@ -58,7 +67,7 @@ export default function Login() {
             onChange={(e) => setPassword(e.target.value)}
             disabled={submitting}
           />
-        </Field>
+        </div>
         {error && <p className="text-sm text-error">{error}</p>}
         <Button
           type="submit"
@@ -71,6 +80,12 @@ export default function Login() {
           Log in
         </Button>
       </form>
+      <div className="my-lg flex items-center gap-sm text-2xs uppercase tracking-wide text-text-muted">
+        <div className="h-px flex-1 bg-border" />
+        or
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <GoogleSignInButton />
       <p className="mt-lg text-sm text-text-secondary">
         No account?{" "}
         <Link to="/register" className="text-primary hover:underline">

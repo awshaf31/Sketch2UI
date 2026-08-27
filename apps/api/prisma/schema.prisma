@@ -125,6 +125,7 @@ enum AuditEvent {
   user_registered
   user_login
   user_logout
+  user_password_reset
   project_created
   project_deleted
   project_accessed_by_admin
@@ -139,7 +140,11 @@ enum AuditEvent {
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
-  passwordHash String
+  /// Null for a Google-only account — nothing to verify a password login against.
+  passwordHash String?
+  /// Google's stable per-account subject id, set once a Google sign-in has linked
+  /// this account.
+  googleId     String?  @unique
   /// SaaS phase S6 — requireAdmin.ts gates every /api/admin route on this. Granted
   /// only via apps/api/scripts/promote-admin.ts (a controlled, out-of-band operation
   /// — never a self-service or admin-UI action).
@@ -147,9 +152,10 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  projects  Project[]
-  sessions  Session[]
-  auditLogs AuditLog[]
+  projects           Project[]
+  sessions           Session[]
+  auditLogs          AuditLog[]
+  passwordResetTokens PasswordResetToken[]
 
   @@map("users")
 }
@@ -167,6 +173,20 @@ model Session {
 
   @@index([userId])
   @@map("sessions")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  userId    String
+  /// sha256(raw token) — same hashed-at-rest convention as Session.tokenHash.
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
 }
 
 model Project {

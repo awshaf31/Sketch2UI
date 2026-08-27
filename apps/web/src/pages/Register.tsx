@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { AuthSplitLayout } from "../components/AuthSplitLayout.js";
 import { Button } from "../components/Button.js";
 import { Field } from "../components/Field.js";
+import { GoogleSignInButton } from "../components/GoogleSignInButton.js";
 import { Input } from "../components/Input.js";
 import { PasswordInput } from "../components/PasswordInput.js";
 import { useAuth } from "../context/AuthContext.js";
@@ -70,6 +71,12 @@ export default function Register() {
           Create account
         </Button>
       </form>
+      <div className="my-lg flex items-center gap-sm text-2xs uppercase tracking-wide text-text-muted">
+        <div className="h-px flex-1 bg-border" />
+        or
+        <div className="h-px flex-1 bg-border" />
+      </div>
+      <GoogleSignInButton />
       <p className="mt-lg text-sm text-text-secondary">
         Already have an account?{" "}
         <Link to="/login" className="text-primary hover:underline">

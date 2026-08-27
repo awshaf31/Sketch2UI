@@ -1,7 +1,12 @@
 export interface User {
   id: string;
   email: string;
-  passwordHash: string;
+  /** Null for a Google-only account — nothing to verify a password login against. */
+  passwordHash: string | null;
+  /** Google's stable per-account subject id, set once a Google sign-in has linked
+   * this account (first Google sign-in for a new email, or a later one for an
+   * existing password account with a matching, Google-verified email). */
+  googleId?: string | null;
   role: string;
   createdAt: string;
   updatedAt: string;

@@ -8,6 +8,7 @@ import type {
   Detection,
   Job,
   Page,
+  PasswordResetToken,
   Project,
   ProjectAsset,
   PageBoundaryRecord,
@@ -39,6 +40,9 @@ interface StoreShape {
   /** Phase D1 authentication. */
   users: User[];
   sessions: Session[];
+  /** Password reset — one-time bearer tokens, same hashed-at-rest convention as
+   * sessions (token.ts). */
+  passwordResetTokens: PasswordResetToken[];
   /** SaaS phase S10 — append-oriented; see AuditLogRepository. */
   auditLogs: AuditLog[];
 }
@@ -57,6 +61,7 @@ function emptyStore(): StoreShape {
     correctionRecords: [],
     users: [],
     sessions: [],
+    passwordResetTokens: [],
     auditLogs: [],
   };
 }

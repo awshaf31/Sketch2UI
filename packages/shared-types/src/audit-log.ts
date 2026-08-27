@@ -11,6 +11,7 @@ export type AuditEvent =
   | "user_registered"
   | "user_login"
   | "user_logout"
+  | "user_password_reset"
   | "project_created"
   | "project_deleted"
   | "project_accessed_by_admin"

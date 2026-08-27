@@ -178,6 +178,17 @@ export const api = {
   me(): Promise<PublicUser> {
     return request("/api/auth/me");
   },
+  /** `credential` is the signed ID token Google Identity Services hands the button's
+   * callback — verified server-side, never trusted as-is. */
+  googleLogin(credential: string): Promise<PublicUser> {
+    return request("/api/auth/google", { method: "POST", body: JSON.stringify({ credential }) });
+  },
+  forgotPassword(email: string): Promise<void> {
+    return request("/api/auth/forgot-password", { method: "POST", body: JSON.stringify({ email }) });
+  },
+  resetPassword(token: string, password: string): Promise<void> {
+    return request("/api/auth/reset-password", { method: "POST", body: JSON.stringify({ token, password }) });
+  },
 
   // Admin (SaaS phase S6+). Server-side role-gated (requireAdmin.ts) — a non-admin
   // caller gets 403 regardless of what the frontend shows.

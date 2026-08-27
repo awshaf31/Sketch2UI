@@ -24,6 +24,11 @@ export type ErrorCode =
   | "FORBIDDEN"
   | "EMAIL_IN_USE"
   | "INVALID_CREDENTIALS"
+  // Forgot/reset password: a missing, already-used, or expired reset token.
+  | "INVALID_TOKEN"
+  // A route whose external dependency (e.g. Google sign-in's Client ID) has no
+  // configuration yet — distinct from the request itself being invalid.
+  | "NOT_CONFIGURED"
   // QA audit DEF-009 (docs/qa/MASTER_DEFECT_REGISTER.md): rate limiting on
   // /api/auth/login and /register.
   | "RATE_LIMITED";

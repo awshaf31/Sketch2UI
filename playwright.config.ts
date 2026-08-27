@@ -61,6 +61,7 @@ fs.writeFileSync(
       },
     ],
     sessions: [],
+    passwordResetTokens: [],
     auditLogs: [],
   })
 );

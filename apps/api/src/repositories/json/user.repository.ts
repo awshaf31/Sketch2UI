@@ -24,6 +24,7 @@ export class JsonUserRepository implements UserRepository {
       id: uuid(),
       email: input.email,
       passwordHash: input.passwordHash,
+      googleId: input.googleId,
       role: "user",
       createdAt: now,
       updatedAt: now,
@@ -45,6 +46,24 @@ export class JsonUserRepository implements UserRepository {
     const user = db.state.users.find((u) => u.id === id);
     if (!user) return null;
     user.role = role;
+    user.updatedAt = new Date().toISOString();
+    db.save();
+    return detach(user);
+  }
+
+  async linkGoogleAccount(id: string, googleId: string): Promise<User> {
+    const user = db.state.users.find((u) => u.id === id);
+    if (!user) throw new Error(`User ${id} not found.`);
+    user.googleId = googleId;
+    user.updatedAt = new Date().toISOString();
+    db.save();
+    return detach(user);
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<User | null> {
+    const user = db.state.users.find((u) => u.id === id);
+    if (!user) return null;
+    user.passwordHash = passwordHash;
     user.updatedAt = new Date().toISOString();
     db.save();
     return detach(user);

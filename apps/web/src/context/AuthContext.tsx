@@ -15,6 +15,7 @@ interface AuthContextValue {
   user: PublicUser | null;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: (credential: string) => Promise<void>;
   logout: () => Promise<void>;
   /** Re-runs the initial /me check — lets an "error" screen offer a real retry. */
   refresh: () => void;
@@ -57,6 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("authenticated");
   }, []);
 
+  const loginWithGoogle = useCallback(async (credential: string) => {
+    const u = await api.googleLogin(credential);
+    setUser(u);
+    setStatus("authenticated");
+  }, []);
+
   const logout = useCallback(async () => {
     try {
       await api.logout();
@@ -67,7 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ status, user, login, register, logout, refresh }}>
+    <AuthContext.Provider value={{ status, user, login, register, loginWithGoogle, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

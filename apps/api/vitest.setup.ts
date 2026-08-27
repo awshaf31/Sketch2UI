@@ -49,6 +49,12 @@ const tempStore = path.join(tempDir, "store.json");
 // Unconditional overwrite — this must beat whatever .env said.
 process.env.STORE_FILE = tempStore;
 
+// A harmless placeholder so auth.routes.test.ts's Google sign-in cases don't 501 on
+// "not configured" — real verification (google-auth-library) is mocked in that file,
+// so this value is never actually checked against Google, only used as the expected
+// `audience` argument the mock asserts against.
+process.env.GOOGLE_CLIENT_ID ||= "test-google-client-id";
+
 /**
  * Redirect Postgres tests to a DEDICATED test database.
  *

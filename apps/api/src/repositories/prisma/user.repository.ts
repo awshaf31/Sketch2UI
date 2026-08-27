@@ -8,6 +8,7 @@ function toRecord(row: PrismaUser): User {
     id: row.id,
     email: row.email,
     passwordHash: row.passwordHash,
+    googleId: row.googleId,
     role: row.role,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -31,7 +32,7 @@ export class PrismaUserRepository implements UserRepository {
 
   async create(input: CreateUserInput): Promise<User> {
     const row = await this.prisma.user.create({
-      data: { email: input.email, passwordHash: input.passwordHash },
+      data: { email: input.email, passwordHash: input.passwordHash, googleId: input.googleId },
     });
     return toRecord(row);
   }
@@ -53,6 +54,20 @@ export class PrismaUserRepository implements UserRepository {
       // Prisma throws on an update to a missing row — findById/create/etc. in this
       // same file already prefer "return null" over a thrown error for a missing
       // record, so this matches that convention rather than introducing a new one.
+      return null;
+    }
+  }
+
+  async linkGoogleAccount(id: string, googleId: string): Promise<User> {
+    const row = await this.prisma.user.update({ where: { id }, data: { googleId } });
+    return toRecord(row);
+  }
+
+  async updatePasswordHash(id: string, passwordHash: string): Promise<User | null> {
+    try {
+      const row = await this.prisma.user.update({ where: { id }, data: { passwordHash } });
+      return toRecord(row);
+    } catch {
       return null;
     }
   }
