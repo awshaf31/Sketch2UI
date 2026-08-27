@@ -303,7 +303,7 @@ source sketch; symbolic classes (icons, form controls) are rendered as markup in
 
 ## License
 
-[MIT](./LICENSE) © ahsafahmath.
+[MIT](./LICENSE) © awshafahmath.
 
 One carve-out: the two **external datasets** merged in by `npm run dataset:import` are
 CC BY 4.0 and carry their own attribution requirements, which travel with any
