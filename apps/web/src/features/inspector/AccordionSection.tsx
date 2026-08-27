@@ -31,7 +31,10 @@ export function AccordionSection({ title, defaultOpen = false, dot = null, child
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex w-full items-center gap-xs px-md py-sm text-left text-2xs font-semibold uppercase tracking-wider text-text-muted transition-colors duration-fast hover:text-text-secondary"
+        className={cn(
+          "flex w-full items-center gap-xs px-md py-sm text-left text-2xs font-semibold uppercase tracking-wider text-text-muted transition-colors duration-fast hover:bg-surface-sunken hover:text-text-secondary",
+          open && "bg-surface-sunken"
+        )}
       >
         <svg
           viewBox="0 0 10 10"
@@ -53,7 +56,7 @@ export function AccordionSection({ title, defaultOpen = false, dot = null, child
       <div
         className={cn(
           "grid transition-[grid-template-rows] duration-normal",
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          open ? "grid-rows-[1fr] bg-surface-sunken" : "grid-rows-[0fr]"
         )}
       >
         <div className="overflow-hidden">{children}</div>
