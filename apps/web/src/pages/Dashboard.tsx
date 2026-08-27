@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Project } from "@sketch2ui/shared-types";
+import type { Project, ProjectStatus } from "@sketch2ui/shared-types";
 import { api } from "../services/api.js";
 import { AppShell, PageHeader } from "../components/AppShell.js";
+import { Badge } from "../components/Badge.js";
+import type { BadgeTone } from "../components/Badge.js";
 import { BrandMark } from "../components/BrandMark.js";
 import { Button } from "../components/Button.js";
 import { Card } from "../components/Card.js";
@@ -10,6 +12,7 @@ import { EmptyState } from "../components/EmptyState.js";
 import { ErrorState } from "../components/ErrorState.js";
 import { IconButton } from "../components/IconButton.js";
 import { Input } from "../components/Input.js";
+import { ProjectThumbnail } from "../components/ProjectThumbnail.js";
 import { cn } from "../components/cn.js";
 import { useDialog } from "../components/DialogHost.js";
 import { useToast } from "../components/ToastStack.js";
@@ -70,6 +73,19 @@ function PencilIcon() {
 }
 
 const GRID_CLASSES = "grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-lg";
+
+// Blueprint Mockup 2 — "success/neutral tones" only; status is real data, this just
+// gives it a Badge instead of a plain text string.
+const STATUS_BADGE_TONE: Record<ProjectStatus, BadgeTone> = {
+  draft: "neutral",
+  annotated: "neutral",
+  generated: "success",
+  archived: "neutral",
+};
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
 
 /** Object-URL lifecycle for the client-side-only sketch preview shown before a
  * project exists to upload it to — created/revoked as the staged file changes, and
@@ -135,6 +151,9 @@ export default function Dashboard() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState("");
+  // Populated by each card's ProjectThumbnail as it looks up the project's first
+  // page — a byproduct of that lookup, not a separate fetch (see ProjectThumbnail.tsx).
+  const [pageCounts, setPageCounts] = useState<Record<string, number>>({});
   const navigate = useNavigate();
   const { confirm } = useDialog();
   const { showToast } = useToast();
@@ -319,7 +338,7 @@ export default function Dashboard() {
             {loading ? (
               <div className={GRID_CLASSES} aria-hidden="true">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-[92px] rounded-lg border border-border bg-surface-sunken" />
+                  <div key={i} className="h-[268px] rounded-lg border border-border bg-surface-sunken" />
                 ))}
               </div>
             ) : listError ? (
@@ -356,8 +375,44 @@ export default function Dashboard() {
                     <Card
                       key={p.id}
                       interactive
-                      className={cn("group relative", isDeleting && "pointer-events-none opacity-50")}
+                      className={cn("group", isDeleting && "pointer-events-none opacity-50")}
                     >
+                      <div className="relative -m-lg mb-lg h-[148px] overflow-hidden rounded-t-lg">
+                        <ProjectThumbnail
+                          projectId={p.id}
+                          projectName={p.name}
+                          onPageCount={(count) => setPageCounts((prev) => ({ ...prev, [p.id]: count }))}
+                        />
+                        <div
+                          className={cn(
+                            "absolute right-sm top-sm flex items-center gap-2xs opacity-0 transition-opacity duration-fast",
+                            "focus-within:opacity-100 group-hover:opacity-100",
+                            (isDeleting || isEditing) && "opacity-100"
+                          )}
+                        >
+                          {!isEditing && (
+                            <IconButton
+                              aria-label={`Rename "${p.name}"`}
+                              icon={<PencilIcon />}
+                              size="sm"
+                              disabled={isDeleting}
+                              onClick={() => startRename(p)}
+                              className="border border-border bg-surface text-text-muted"
+                            />
+                          )}
+                          {!isEditing && (
+                            <IconButton
+                              aria-label={`Delete "${p.name}"`}
+                              icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
+                              size="sm"
+                              disabled={isDeleting}
+                              onClick={() => handleDelete(p.id, p.name)}
+                              className="border border-border bg-surface text-text-muted hover:text-error"
+                            />
+                          )}
+                        </div>
+                      </div>
+
                       {isEditing ? (
                         <Input
                           autoFocus
@@ -370,45 +425,24 @@ export default function Dashboard() {
                             if (e.key === "Enter") void commitRename(p);
                             if (e.key === "Escape") setEditingId(null);
                           }}
-                          className="mr-2xl"
                         />
                       ) : (
                         <button
                           onClick={() => navigate(`/app/projects/${p.id}`)}
                           disabled={isDeleting}
-                          className="block w-full truncate pr-3xl text-left text-md font-medium text-text-primary"
+                          className="block w-full truncate text-left text-md font-medium text-text-primary"
                         >
                           {p.name}
                         </button>
                       )}
-                      <p className="mt-2xs text-xs text-text-muted">{p.status}</p>
-                      <div
-                        className={cn(
-                          "absolute right-sm top-sm flex items-center gap-2xs opacity-0 transition-opacity duration-fast",
-                          "focus-within:opacity-100 group-hover:opacity-100",
-                          (isDeleting || isEditing) && "opacity-100"
-                        )}
-                      >
-                        {!isEditing && (
-                          <IconButton
-                            aria-label={`Rename "${p.name}"`}
-                            icon={<PencilIcon />}
-                            size="sm"
-                            disabled={isDeleting}
-                            onClick={() => startRename(p)}
-                            className="text-text-muted"
-                          />
-                        )}
-                        {!isEditing && (
-                          <IconButton
-                            aria-label={`Delete "${p.name}"`}
-                            icon={isDeleting ? <SpinnerIcon /> : <TrashIcon />}
-                            size="sm"
-                            disabled={isDeleting}
-                            onClick={() => handleDelete(p.id, p.name)}
-                            className="text-text-muted hover:text-error"
-                          />
-                        )}
+                      <div className="mt-2xs flex items-center gap-sm">
+                        <Badge tone={STATUS_BADGE_TONE[p.status]}>{p.status}</Badge>
+                        <p className="truncate text-xs text-text-muted">
+                          {pageCounts[p.id] !== undefined
+                            ? `${pageCounts[p.id]} ${pageCounts[p.id] === 1 ? "page" : "pages"} · `
+                            : ""}
+                          Created {formatDate(p.createdAt)}
+                        </p>
                       </div>
                     </Card>
                   );
