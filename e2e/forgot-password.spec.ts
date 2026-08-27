@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { registerAndLogin } from "./auth.js";
 
-// Forgot/reset password — apps/api/src/modules/auth/auth.routes.ts's POST
+// Forgot/reset password — backend/src/modules/auth/auth.routes.ts's POST
 // /forgot-password and /reset-password. This suite's e2e webServer has no
 // RESEND_API_KEY (see playwright.config.ts's apiEnv), so the reset link only ever
 // prints to the API's own stdout — there's no inbox for a browser test to read it
 // from. The full "request a link, click it, set a new password, log in with it" path
 // is covered directly against the routes instead, in
-// apps/api/src/modules/auth/auth.routes.test.ts, where the token is available in the
+// backend/src/modules/auth/auth.routes.test.ts, where the token is available in the
 // test process. This suite covers what IS reachable through the browser: the
 // generic, enumeration-safe confirmation, and the reset page's handling of a
 // missing/invalid token.

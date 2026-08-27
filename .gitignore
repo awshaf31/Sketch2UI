@@ -4,17 +4,17 @@ build/
 .DS_Store
 *.log
 
-# local persistence layer (temporary JSON store, see apps/api/src/db/jsonStore.ts)
-apps/api/data/store.json
+# local persistence layer (temporary JSON store, see backend/src/db/jsonStore.ts)
+backend/data/store.json
 data/uploads/*
 !data/uploads/.gitkeep
 
-# apps/api/data/ (as opposed to the repo-root data/ above) only ever appears by
+# backend/data/ (as opposed to the repo-root data/ above) only ever appears by
 # accident: env.ts's defaults resolve to repo-root data/, so anything landing under
-# apps/api/data/ means a process ran with STORE_FILE/UPLOADS_DIR resolved relative to
-# a cwd of apps/api/ instead of the repo root. Ignore the whole directory rather than
+# backend/data/ means a process ran with STORE_FILE/UPLOADS_DIR resolved relative to
+# a cwd of backend/ instead of the repo root. Ignore the whole directory rather than
 # letting that debris get committed piecemeal.
-apps/api/data/
+backend/data/
 
 # Generated export ZIPs — rebuildable from any stored CodeVersion.
 data/exports/
@@ -43,7 +43,7 @@ ml/training/.venv/
 ml/training/runs/
 
 # CV worker environment.
-services/cv-worker/.venv/
+cv-service/.venv/
 __pycache__/
 .pytest_cache/
 *.pyc
@@ -65,3 +65,9 @@ yolov8*.pt
 # used by the app, the build, or any test — it is kept on disk only so the removal
 # stays reversible. Safe to delete outright once confirmed.
 dlt/
+
+# Redis dump file, written into whatever cwd redis-server was launched from.
+dump.rdb
+
+# Vite's transient esbuild output for vite.config.ts.
+*.timestamp-*.mjs

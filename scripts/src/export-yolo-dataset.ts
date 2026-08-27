@@ -4,10 +4,10 @@
  * Plan references: section 22.1 (annotate -> validate -> export -> quality-check),
  * section 9.7 (split policy), section 51 step 7 (build the YOLO dataset).
  *
- * This is a standalone build-time tool. It reads apps/api's persisted store file
+ * This is a standalone build-time tool. It reads backend's persisted store file
  * directly rather than importing the API's db module, so it stays entirely out of
- * the API's request path and carries no runtime coupling to apps/api or
- * services/cv-worker (that integration is step 9).
+ * the API's request path and carries no runtime coupling to backend or
+ * cv-service (that integration is step 9).
  *
  * Usage:
  *   npm run export:dataset            # write the dataset

@@ -1,139 +1,258 @@
 # Sketch2UI
 
-Hand-drawn wireframe → HTML/CSS → live preview. Full plan in
-[`Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md`](./docs/planning/Sketch2UI_Complete_Highly_Detailed_Implementation_Plan.md).
+Turn a hand-drawn wireframe into working HTML/CSS. Upload a sketch, annotate the regions
+(or let the trained detector find them), and Sketch2UI reconstructs the layout into a UI
+tree, generates HTML/CSS, and renders a live preview you can export as a self-contained ZIP.
 
-## Current state
+![CI](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml/badge.svg)
 
-Steps 1-12 of the plan's practical build order (§51) are done: sketch → manual
-annotation **or** automated detection → page-boundary filtering → UI tree → HTML/CSS →
-live preview, with a trained detector behind the **Detect** button.
+---
+
+## Features
+
+- **Sketch upload** — drop a wireframe image straight onto the dashboard or into a project.
+- **Annotation canvas** — draw class-tagged boxes over regions; keyboard nudge, zoom, fit-to-screen.
+- **Automated detection** *(beta)* — a YOLO detector proposes boxes; correcting one adopts it as yours.
+- **Page-boundary filtering** — strips everything outside the drawn page frame.
+- **Layout reconstruction** — detections → UI-IR tree → semantic HTML + CSS.
+- **Live preview** — sandboxed iframe that updates as you edit.
+- **Inspector overrides** — per-element geometry, style, content and structure edits.
+- **Multi-page projects** — several pages per project, with working cross-page links.
+- **Export ZIP** — `index.html`, `styles.css`, real image crops in `assets/`, and the source sketch.
+- **Accounts & admin** — email/password + Google Sign-In, password reset, an admin console
+  (users, projects, jobs, models, audit logs).
+
+---
+
+## Architecture
 
 ```
-apps/web            React + TS + Vite + Tailwind — upload, annotation canvas, UI tree,
-                     code viewer, live preview
-apps/api             Node + Express + TS — projects, asset upload, detections, codegen
-packages/shared-types Detection / UI-IR / Project types shared by web, api and codegen
-packages/codegen      Layout reconstruction (detections -> UI-IR) + HTML/CSS generators
-scripts               Build-time tools — YOLO dataset export
-ml/dataset            YOLO dataset (classes.txt, data.yaml, images/, labels/)
-ml/training           Detector training (§9.8-9.10)
-ml/models             Frozen model registry — ui-detector/v1.0.0
-services/cv-worker     Python/FastAPI inference service (loads the frozen model)
+          ┌────────────┐        REST         ┌────────────┐
+          │  frontend  │ ──────────────────► │  backend   │
+          │ React + TS │ ◄────────────────── │  Node + TS │
+          └────────────┘                     └─────┬──────┘
+                                                   │ HTTP (loopback only)
+                                                   ▼
+                                            ┌────────────┐
+                                            │ cv-service │
+                                            │  FastAPI   │
+                                            │  + YOLO    │
+                                            └────────────┘
+                     ┌───────────────────────────┴──────────┐
+                     ▼                                      ▼
+              PostgreSQL / JSON store              ml/models registry
 ```
 
-Dataset and labelling: [`docs/ml/annotation-guide.md`](./docs/ml/annotation-guide.md),
-[`ml/dataset/README.md`](./ml/dataset/README.md). Page boundary:
-[`docs/ml/page-boundary.md`](./docs/ml/page-boundary.md).
+The frontend never talks to the CV service directly — the backend proxies it, so the
+inference service stays off the public internet.
 
-## Running it
+---
+
+## Project structure
+
+```
+sketch2ui/
+├── frontend/                 React 18 + TypeScript + Vite + Tailwind
+│   ├── public/                 static assets
+│   └── src/
+│       ├── components/         design-system primitives (Button, Dialog, Panel, …)
+│       ├── features/           annotation, workspace, inspector, code, preview, tree, upload
+│       ├── pages/              routed screens (Dashboard, ProjectWorkspace, Admin*, auth)
+│       ├── services/           API client
+│       ├── stores/             Zustand state
+│       └── context/            providers (toast, dialog, auth)
+│
+├── backend/                  Node + Express + TypeScript
+│   ├── database/               Prisma schema + SQL migrations
+│   ├── src/
+│   │   ├── modules/            HTTP routes + services by domain
+│   │   ├── repositories/       storage abstraction — json/ and prisma/ adapters
+│   │   ├── middleware/         auth, ownership, rate limiting, error handling
+│   │   ├── config/             environment resolution
+│   │   └── db/                 JSON store + JSON→Postgres migration
+│   └── scripts/                one-off operational scripts (promote-admin, backfills)
+│
+├── cv-service/               Python + FastAPI inference service (loads the frozen model)
+│
+├── packages/
+│   ├── shared-types/           Detection / UI-IR / Project types shared across all three
+│   └── codegen/                layout reconstruction + HTML/CSS generators
+│
+├── ml/
+│   ├── dataset/                YOLO dataset (classes.txt, data.yaml, images/, labels/)
+│   ├── training/               detector training
+│   ├── models/                 frozen model registry — ui-detector/v1.0.0
+│   └── evaluation/             regression baselines new model versions are scored against
+│
+├── scripts/                  build-time tooling (dataset export, reports, eval)
+├── e2e/                      Playwright end-to-end specs
+├── tests/fixtures/           golden demo fixture
+├── data/                     runtime storage — uploads/, exports/
+└── docker-compose.yml        Postgres + Redis for local development
+```
+
+`frontend`, `backend`, `packages/*` and `scripts` are npm workspaces; `cv-service` is a
+separate Python venv.
+
+---
+
+## Tech stack
+
+| Layer | Stack |
+|---|---|
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Zustand, Monaco |
+| Backend | Node 20, Express, TypeScript, Multer, Prisma |
+| Database | PostgreSQL (Prisma) — with a JSON file store as the default local driver |
+| CV service | Python 3.11, FastAPI, Ultralytics YOLOv8 |
+| Testing | Vitest, Pytest, Playwright |
+| CI | GitHub Actions |
+
+---
+
+## Getting started
+
+### Prerequisites
+
+- Node.js 20+
+- Python 3.11+ (only for the CV service)
+- Docker (optional — only for Postgres/Redis)
+
+### Install
 
 ```bash
+git clone https://github.com/ahsafahmath/sketch2ui.git
+cd sketch2ui
 npm install
 cp .env.example .env
-
-# three terminals
-npm run dev:api   # http://localhost:4000
-npm run dev:web   # http://localhost:5173
-
-cd services/cv-worker && .venv/bin/uvicorn main:app --port 8000 --host 127.0.0.1
 ```
 
-The CV worker is optional — everything except the **Detect** button works without it.
-See [`services/cv-worker/README.md`](./services/cv-worker/README.md) for setup.
+### Run
 
-Then: create a project on the dashboard, upload a sketch image, draw boxes over
-its regions (pick a class first), and the UI tree / HTML / CSS / preview panels
-update live. "Save code version" persists a `CodeVersion` via the API.
+Two terminals:
 
-## Persistence
+```bash
+npm run dev:backend    # http://localhost:4000
+npm run dev:frontend   # http://localhost:5173
+```
 
-`apps/api` currently stores projects/assets/detections/code versions in a local
-JSON file (`apps/api/data/store.json`) and uploaded images under `data/uploads/`.
-This stands in for the Postgres schema in the plan (section 8) so the skeleton
-runs without any infrastructure. `docker-compose.yml` provisions Postgres + Redis
-for when that swap happens (Prisma, BullMQ job queue — plan sections 8, 27).
+The CV service is optional — everything except the **Detect** button works without it:
 
-## Building the dataset
+```bash
+cd cv-service
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn main:app --port 8000 --host 127.0.0.1
+```
 
-The annotation canvas in `apps/web` *is* the labelling tool — drawing a box and picking
-a class produces exactly the records the exporter consumes. Label per
-[`docs/ml/annotation-guide.md`](./docs/ml/annotation-guide.md), then:
+Then create a project, upload a sketch, draw boxes over its regions (pick a class first),
+and the UI tree / HTML / CSS / preview panels update live.
+
+---
+
+## Configuration
+
+All settings live in `.env` — see [`.env.example`](./.env.example) for the annotated list.
+The essentials:
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `PORT` | Backend port | `4000` |
+| `CORS_ORIGIN` | Allowed frontend origin | `http://localhost:5173` |
+| `VITE_API_URL` | Backend URL the frontend calls | `http://localhost:4000` |
+| `PERSISTENCE_DRIVER` | `json` or `postgres` | `json` |
+| `DATABASE_URL` | Prisma connection string | — |
+| `VITE_GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_ID` | Google Sign-In (optional) | unset |
+| `RESEND_API_KEY` | Password-reset email (optional) | unset — link is logged instead |
+
+Every optional integration degrades gracefully: unset Google credentials hide the
+Sign-In button, and an unset Resend key logs the reset link to the console.
+
+---
+
+## Database
+
+The default `json` driver keeps everything in `backend/data/store.json`, so the app runs
+with no infrastructure at all. To use Postgres:
+
+```bash
+docker compose up -d postgres redis
+npm run db:generate -w backend      # generate the Prisma client
+npm run db:migrate  -w backend      # apply migrations
+npm run db:migrate-json -w backend  # optional: import existing JSON data
+```
+
+Then set `PERSISTENCE_DRIVER=postgres` in `.env`. The schema and migrations live in
+[`backend/database/`](./backend/database). Uploaded images are stored on disk under
+`data/uploads/` under both drivers.
+
+---
+
+## Testing
+
+```bash
+npm run typecheck   # TypeScript across all workspaces
+npm run test        # unit + integration (Vitest)
+npm run test:py     # CV service (Pytest)
+npm run test:e2e    # end-to-end (Playwright)
+```
+
+The boundary-overlap algorithm is implemented twice — once in TypeScript, once in Python —
+because it has to run in both. Both suites run it against the *same* golden fixture,
+`packages/shared-types/fixtures/boundary-overlap-parity.json`, which is what stops the two
+copies drifting apart.
+
+Repository tests rewrite `DATABASE_URL` to a `_test` database and refuse to run otherwise,
+so they can never truncate development data.
+
+---
+
+## Dataset and model
+
+The annotation canvas *is* the labelling tool — drawing a box and picking a class produces
+exactly the records the exporter consumes.
 
 ```bash
 npm run export:dataset              # -> ml/dataset/{images,labels}/{train,val,test}
-npm run export:dataset -- --clean   # drop stale manual labels first (after re-annotating)
+npm run export:dataset -- --clean   # drop stale manual labels first
 npm run export:dataset -- --dry-run # report only
-
 npm run import:external             # merge the two external CC BY datasets
+npm run build:v1                    # rebuild the v1 training subset
 ```
 
-Run the exporter first — it regenerates `classes.txt` from the taxonomy, and the
-importer refuses to run against a stale one. Both print per-class counts and flag
-classes with too few examples to train on (§9.3).
+Run the exporter before the importer — it regenerates `classes.txt` from the taxonomy, and
+the importer refuses to run against a stale one.
 
-The external sources are CC BY 4.0 and **require attribution on redistribution** — see
-the attribution section of [`ml/dataset/README.md`](./ml/dataset/README.md).
-
-## Automated detection (beta)
-
-With the CV worker running, **Detect** on the project workspace runs the frozen detector
-over the sketch and adds its boxes alongside your manual ones. Model boxes render dashed
-purple with their confidence; correcting one adopts it as yours.
-
-⚠️ **Experimental.** `ui-detector/v1.0.0` was trained on 156 images and its per-class
-AP@0.5 ranges from 0.36 to 0.995 — `select`, `radio_button` and `carousel` are near
-chance. Check every box. See
-[`ml/models/ui-detector/v1.0.0/README.md`](./ml/models/ui-detector/v1.0.0/README.md).
-
-## Layout reconstruction
-
-`packages/codegen` turns detections into a UI-IR tree and then HTML/CSS. What happened
-when it first met real detector output — and the one fix that needed — is in
-[`docs/codegen-layout-findings.md`](./docs/codegen-layout-findings.md).
-
-## Exporting
-
-**Export ZIP** on the workspace packages the project's latest saved code version into a
-self-contained download (§18.8, FR-09): `index.html`, `styles.css`, `assets/`, the
-original `source-sketch.*`, and a `README.txt`. Open `index.html` directly — no server.
-Every export is kept and re-downloadable from the toolbar strip.
-
-Images in `assets/` are **real crops of the source sketch** (§15.5). Which classes get
-cropped vs. stay symbolic is a documented decision — see
-[`docs/codegen-assets.md`](./docs/codegen-assets.md).
-
-## Tests
+Feedback loop and evaluation:
 
 ```bash
-npm run test      # TypeScript (vitest)
-npm run test:py   # Python (pytest, cv-worker)
+npm run report:active-learning   # which sketches most need attention next
+npm run report:dataset-quality   # read-only label/dataset checks
+npm run eval                     # writes ml/evaluation/baseline-<version>.json
 ```
 
-Both run the **same** golden fixture,
-`packages/shared-types/fixtures/boundary-overlap-parity.json`, against their own
-implementation of the boundary-overlap algorithm. It is implemented twice because it must
-run in two languages; the shared fixture is what stops the two copies drifting apart —
-verified by perturbing one side and watching 12 of 19 cases fail.
+**Approve for training** in the workspace snapshots an asset's current boxes as ground
+truth; the next `export:dataset` merges them under a `corr_` prefix.
 
-## Feedback loop and evaluation
+> ⚠️ **The detector is experimental.** `ui-detector/v1.0.0` was trained on 156 images and
+> its per-class AP@0.5 ranges from 0.36 to 0.995 — `select`, `radio_button` and `carousel`
+> are near chance. Check every box. See
+> [`ml/models/ui-detector/v1.0.0/README.md`](./ml/models/ui-detector/v1.0.0/README.md).
 
-**Approve for training** on the workspace snapshots an asset's current boxes as ground
-truth (§36, FR-11). `npm run export:dataset` merges approved snapshots into `ml/dataset`
-under a `corr_` prefix, superseding the plain manual export for the same image.
+The external dataset sources are CC BY 4.0 and **require attribution on redistribution** —
+see the attribution section of [`ml/dataset/README.md`](./ml/dataset/README.md).
 
-```bash
-npm run report:active-learning   # §36 — which sketches most need attention next
-npm run report:dataset-quality   # read-only label/dataset checks — see docs/ml/dataset-quality-v1.1.md
-npm run eval                     # §21 — writes docs/eval/baseline-<version>.json
-```
+---
 
-`docs/eval/` is the §20.6 regression benchmark future model versions are compared
-against — see [`docs/eval/README.md`](./docs/eval/README.md) for what it does and does
-not measure.
+## Export format
 
-## Next steps (per the plan's practical build order)
+**Export ZIP** packages the project's latest saved code version into a self-contained
+download: `index.html`, `styles.css`, `assets/`, the original `source-sketch.*`, and a
+`README.txt`. Open `index.html` directly — no server needed. Every export is kept and
+re-downloadable from the workspace toolbar. Images in `assets/` are real crops of the
+source sketch; symbolic classes (icons, form controls) are rendered as markup instead.
 
-All 12 steps of the practical build order are complete. Natural next work: collect more
-sketches (the active-learning report ranks which), retrain as `v1.1.0`, and compare it
-against `docs/eval/baseline-v1.0.0.json`.
+---
+
+## License
+
+Not currently licensed for redistribution. The bundled external datasets are CC BY 4.0 and
+carry their own attribution requirements — see `ml/dataset/README.md`.

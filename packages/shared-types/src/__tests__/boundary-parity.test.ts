@@ -7,7 +7,7 @@ import { insideFraction } from "../boundary-geometry.js";
 // PARITY CONTRACT — see packages/shared-types/fixtures/boundary-overlap-parity.json.
 //
 // The same fixture file is executed by the Python suite in
-// services/cv-worker/tests/test_boundary_parity.py against boundary_filter.py. Both must
+// cv-service/tests/test_boundary_parity.py against boundary_filter.py. Both must
 // pass. This is what keeps the two language implementations from drifting apart, since
 // a cross-language algorithm cannot simply be de-duplicated the way the split hash was.
 

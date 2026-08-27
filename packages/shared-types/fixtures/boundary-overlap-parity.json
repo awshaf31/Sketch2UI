@@ -3,7 +3,7 @@
     "PARITY CONTRACT for the Sutherland-Hodgman boundary-overlap algorithm.",
     "",
     "The algorithm is implemented TWICE because it must run in two languages:",
-    "  services/cv-worker/app/preprocessing/boundary_filter.py  (server-side filtering)",
+    "  cv-service/app/preprocessing/boundary_filter.py  (server-side filtering)",
     "  packages/shared-types/src/boundary-geometry.ts           (instant client re-filter)",
     "",
     "Unlike the split hash — which was de-duplicated in Step 12 by moving it into",

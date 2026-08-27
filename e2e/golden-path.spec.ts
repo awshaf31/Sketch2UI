@@ -6,7 +6,7 @@ import { registerAndLogin } from "./auth.js";
 //
 // Detection is MOCKED (see mock-cv-worker.ts / playwright.config.ts) so this suite is
 // deterministic and fast, and does not depend on the real model being installed or
-// running. Real CV inference has its own coverage: services/cv-worker's pytest suite,
+// running. Real CV inference has its own coverage: cv-service's pytest suite,
 // and the manual regression checklist against a live worker.
 
 const FIXTURE_SKETCH = path.join(__dirname, "fixtures", "sketch.png");

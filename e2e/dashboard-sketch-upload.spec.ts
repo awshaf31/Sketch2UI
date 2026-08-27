@@ -4,7 +4,7 @@ import { registerAndLogin } from "./auth.js";
 
 // Dashboard "start with your sketch" hero — a direct product request to let a sketch
 // be attached to a project at creation time, instead of requiring a trip into the
-// (empty) project workspace first. See apps/web/src/pages/Dashboard.tsx's header
+// (empty) project workspace first. See frontend/src/pages/Dashboard.tsx's header
 // comment for why this needed zero API contract changes: a project already gets a
 // default page on creation, and the existing api.uploadAsset() is just called once
 // more, before navigating.

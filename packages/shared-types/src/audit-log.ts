@@ -1,5 +1,5 @@
 // SaaS phase S10 — Audit Logs (brief Phase 14). Append-oriented: the repository
-// contract (see apps/api/src/repositories/types.ts) deliberately exposes no update or
+// contract (see backend/src/repositories/types.ts) deliberately exposes no update or
 // delete method for this domain — a real audit trail is never edited after the fact.
 //
 // MODEL_ACTIVATED (from the brief's example list) is intentionally absent: there is

@@ -49,12 +49,12 @@ importer refuses to run against a stale one.
 carrying an external source prefix are spared, because the exporter cannot regenerate
 them — re-run `import:external` to refresh those.
 
-The exporter reads `apps/api/data/store.json` and `data/uploads/`, takes every
+The exporter reads `backend/data/store.json` and `data/uploads/`, takes every
 `Detection` with `status === "active"` and `source === "manual"`, converts it to YOLO
 format, and writes the image/label pairs. Model-produced detections are excluded on
 purpose: training on them would be self-training on the detector's own output.
 
-The labelling tool is the **existing annotation canvas in `apps/web`** — drawing a box
+The labelling tool is the **existing annotation canvas in `frontend`** — drawing a box
 and picking a class there produces exactly the records this script consumes. There is no
 separate labelling tool.
 

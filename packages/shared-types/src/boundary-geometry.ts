@@ -4,7 +4,7 @@ import { DEFAULT_OVERLAP_THRESHOLD } from "./page-boundary.js";
 
 // The section 10.4 hard filtering rule, in TypeScript.
 //
-// This is a deliberate port of services/cv-worker/app/preprocessing/boundary_filter.py.
+// This is a deliberate port of cv-service/app/preprocessing/boundary_filter.py.
 // The two must agree: the worker applies the rule once at detection time, and the client
 // re-applies it whenever the user drags the boundary (section 10.3 Strategy C) so the
 // accepted/rejected split updates without a re-detect. Change one, change the other.

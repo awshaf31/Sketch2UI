@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, "../..");
 export const DATASET_DIR = path.join(REPO_ROOT, "ml", "dataset");
 export const UPLOADS_DIR = path.join(REPO_ROOT, "data", "uploads");
-export const STORE_FILE = path.join(REPO_ROOT, "apps", "api", "data", "store.json");
+export const STORE_FILE = path.join(REPO_ROOT, "backend", "data", "store.json");
 
 export const CLASSES_FILE = path.join(DATASET_DIR, "classes.txt");
 export const DATA_YAML = path.join(DATASET_DIR, "data.yaml");

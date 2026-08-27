@@ -5,8 +5,8 @@
 Trained on **156 images** across **16 classes**. That is far below what a
 16-class hand-drawn-sketch detector needs. The metrics below show the
 training and evaluation pipeline runs end to end (§9.8). They are **not** evidence that
-this detector is usable, and it should not be wired into `services/cv-worker` or
-`apps/api` on the strength of them.
+this detector is usable, and it should not be wired into `cv-service` or
+`backend` on the strength of them.
 
 Frozen per §9.10. Do not overwrite this directory — cut a new version instead.
 
@@ -146,7 +146,7 @@ then retrain.
    matter: selects drawn next to visually identical inputs and textareas.
 2. Re-run `npm run export:dataset && npm run import:external && npm run build:v1`.
 3. Retrain as a new version — never overwrite this one.
-4. Only wire a model into `services/cv-worker` (§51 step 9) once its metrics justify it.
+4. Only wire a model into `cv-service` (§51 step 9) once its metrics justify it.
 
 ## Why the headline numbers overstate this model
 

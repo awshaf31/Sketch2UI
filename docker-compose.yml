@@ -1,6 +1,6 @@
 # Postgres + Redis for the phases after the skeleton (dataset/job-queue work).
-# The apps/api skeleton currently uses a local JSON file store and runs without
-# this file — see apps/api/src/db/jsonStore.ts.
+# The backend skeleton currently uses a local JSON file store and runs without
+# this file — see backend/src/db/jsonStore.ts.
 services:
   postgres:
     image: postgres:16-alpine

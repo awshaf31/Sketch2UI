@@ -8,7 +8,7 @@
  *   §21.4 code metrics             — HTML/CSS parse, duplicate ids, unmapped classes
  *   §21.7 end-to-end success rate  — % of sketches reaching a usable preview
  *
- * DELIBERATELY NOT covered (see docs/eval/README.md):
+ * DELIBERATELY NOT covered (see the header of this file):
  *   §21.1 detection metrics  — already produced by training; lives in
  *                              ml/models/ui-detector/v1.0.0/metrics.json
  *   §21.5 visual similarity  — no reference-design benchmark exists; only sketches.
@@ -16,7 +16,7 @@
  *
  * Usage:
  *   npm run eval                       # requires the cv-worker running on :8000
- *   npm run eval -- --out docs/eval/baseline-v1.0.0.json
+ *   npm run eval -- --out ml/evaluation/baseline-v1.0.0.json
  */
 
 import fs from "node:fs";
@@ -29,7 +29,7 @@ import { REPO_ROOT } from "./dataset-layout.js";
 
 const args = process.argv.slice(2);
 const outIdx = args.indexOf("--out");
-const OUT_FILE = outIdx >= 0 ? args[outIdx + 1] : "docs/eval/baseline-v1.0.0.json";
+const OUT_FILE = outIdx >= 0 ? args[outIdx + 1] : "ml/evaluation/baseline-v1.0.0.json";
 const WORKER = process.env.CV_WORKER_URL ?? "http://127.0.0.1:8000";
 
 const SAMPLES = path.join(REPO_ROOT, "sample_images_object_detataction_expectation");
@@ -205,7 +205,7 @@ function evaluateAssertions(root: UIRoot, assertions: Assertion[]) {
 
 function checkCode(html: string, css: string, tree: UIRoot) {
   // Parse/duplicate-id checks come from the SHARED validator in shared-types, which is
-  // the same code apps/api enforces when persisting a hand-edited version. Keeping a
+  // the same code backend enforces when persisting a hand-edited version. Keeping a
   // second copy here would let the metric and the gate disagree.
   const validation = validateGeneratedCode(html, css);
 
@@ -282,7 +282,7 @@ async function main(): Promise<void> {
       };
     }
 
-    // Build detections exactly as apps/api persists them.
+    // Build detections exactly as backend persists them.
     const dets: Detection[] = r.detections.map((d, i) => ({
       id: `d${i}`, projectId: "p", pageId: "pg", sourceAssetId: "a",
       className: d.className, confidence: d.confidence, bbox: d.bbox,

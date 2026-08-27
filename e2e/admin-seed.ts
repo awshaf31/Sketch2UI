@@ -10,7 +10,7 @@ import { randomBytes, scryptSync } from "node:crypto";
 export const E2E_ADMIN_EMAIL = "e2e-admin@sketch2ui.local";
 export const E2E_ADMIN_PASSWORD = "e2e-admin-password";
 
-/** Mirrors apps/api/src/modules/auth/password.ts's hashPassword() exactly (same salt
+/** Mirrors backend/src/modules/auth/password.ts's hashPassword() exactly (same salt
  * length, same scrypt cost parameters, same "salt:hash" hex encoding) but
  * synchronous — playwright.config.ts has no async context to await in (Playwright
  * loads it as a plain CommonJS config, per its own `__dirname` usage). */

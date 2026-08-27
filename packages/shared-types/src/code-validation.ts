@@ -2,8 +2,8 @@
 //
 // Extracted from scripts/src/evaluate.ts so the SAME checks run in three places:
 //   - the §21 evaluation harness (where they started),
-//   - apps/api, before persisting a hand-edited code version,
-//   - apps/web, for instant feedback before the user hits Save.
+//   - backend, before persisting a hand-edited code version,
+//   - frontend, for instant feedback before the user hits Save.
 //
 // Same reasoning as the split hash (Step 12) and the boundary geometry: one behaviour
 // should have one implementation. A validator that disagrees with the metric it is named

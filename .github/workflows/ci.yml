@@ -36,7 +36,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install CV worker dependencies
-        working-directory: services/cv-worker
+        working-directory: cv-service
         run: |
           python -m venv .venv
           .venv/bin/pip install -r requirements.txt

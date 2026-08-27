@@ -1,13 +1,13 @@
 import http from "node:http";
 
-// A deterministic stand-in for services/cv-worker — plan §24: "mock detection result...
+// A deterministic stand-in for cv-service — plan §24: "mock detection result...
 // and separately test real CV inference." Real model output is nondeterministic (a
 // version bump, a retrain, or hardware differences can shift a box by a pixel or drop a
 // low-confidence detection), which would make the E2E suite flaky for reasons that have
 // nothing to do with the web/API code it exists to protect.
 //
-// Implements just enough of the worker contract (services/cv-worker's actual API) for
-// apps/api/src/modules/detections/detect.job.ts to accept the response: POST /detect
+// Implements just enough of the worker contract (cv-service's actual API) for
+// backend/src/modules/detections/detect.job.ts to accept the response: POST /detect
 // returns exactly one detection, and GET /health respond for parity with a real check.
 
 const PORT = Number(process.env.MOCK_CV_WORKER_PORT ?? 8099);
@@ -61,7 +61,7 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: { code: "NOT_FOUND", message: "unknown route" } }));
 });
 
-// Loopback-only, matching the real worker (services/cv-worker runs uvicorn with
+// Loopback-only, matching the real worker (cv-service runs uvicorn with
 // host="127.0.0.1" — "the worker must not be reachable from the public internet, only
 // through this API"). Without an explicit host, Node's default bind is all interfaces,
 // which would needlessly expose this unauthenticated mock to the local network for the

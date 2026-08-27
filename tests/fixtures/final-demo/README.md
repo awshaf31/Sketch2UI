@@ -44,9 +44,9 @@ working as designed rather than papering over the model's honestly-documented li
 ## Running the demo with this fixture
 
 ```bash
-npm run dev:api
-npm run dev:web
-# separately: cd services/cv-worker && .venv/bin/uvicorn main:app --port 8000 --host 127.0.0.1
+npm run dev:backend
+npm run dev:frontend
+# separately: cd cv-service && .venv/bin/uvicorn main:app --port 8000 --host 127.0.0.1
 ```
 
 Then follow the plan's §27 user journey, uploading `sketch.png` from this directory at

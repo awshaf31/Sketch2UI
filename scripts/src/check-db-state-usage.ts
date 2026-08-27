@@ -22,7 +22,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const API_SRC = path.resolve(__dirname, "../../apps/api/src");
+const API_SRC = path.resolve(__dirname, "../../backend/src");
 
 /**
  * Modules converted to the repository layer. Each must stay free of direct store

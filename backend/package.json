@@ -1,0 +1,47 @@
+{
+  "name": "@sketch2ui/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/server.ts",
+    "start": "node --env-file=.env dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "db:generate": "prisma generate --schema database/schema.prisma",
+    "db:migrate": "prisma migrate deploy --schema database/schema.prisma",
+    "db:migrate-json": "tsx src/db/migrate-json-to-postgres.ts",
+    "db:backfill-legacy-owner": "tsx scripts/backfill-legacy-owner.ts",
+    "db:backfill-pages": "tsx scripts/backfill-pages.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "@sketch2ui/codegen": "*",
+    "@sketch2ui/shared-types": "*",
+    "@types/archiver": "^6.0.4",
+    "archiver": "^7.0.1",
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "express-rate-limit": "^8.6.2",
+    "google-auth-library": "^10.9.1",
+    "image-size": "^1.1.1",
+    "multer": "^2.0.0",
+    "resend": "^6.24.0",
+    "sharp": "^0.35.3",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.14.10",
+    "@types/supertest": "^7.2.1",
+    "@types/uuid": "^9.0.8",
+    "prisma": "^5.22.0",
+    "supertest": "^7.2.2",
+    "tsx": "^4.16.2",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.11"
+  }
+}

@@ -8,13 +8,13 @@ import { E2E_ADMIN_EMAIL, E2E_ADMIN_PASSWORD, hashPasswordSync } from "./e2e/adm
 // against THROWAWAY storage, entirely isolated from real dev data:
 //
 //   - A fresh temp directory per run for the JSON store/uploads/exports (same isolation
-//     pattern as apps/api/vitest.setup.ts, applied here instead of a Postgres rewrite
+//     pattern as backend/vitest.setup.ts, applied here instead of a Postgres rewrite
 //     since PERSISTENCE_DRIVER is simply never set — the API defaults to JSON).
 //   - Dedicated ports (4100/5273/8099) so this suite can run alongside a normal
 //     `npm run dev` session without colliding with it.
-//   - A mock CV worker (e2e/mock-cv-worker.ts) standing in for services/cv-worker, so
+//   - A mock CV worker (e2e/mock-cv-worker.ts) standing in for cv-service, so
 //     the suite is deterministic and does not depend on the real model being running.
-//     Real CV inference is exercised separately (services/cv-worker's own pytest suite,
+//     Real CV inference is exercised separately (cv-service's own pytest suite,
 //     and the manual regression checklist) — see e2e/mock-cv-worker.ts's header comment.
 
 const API_PORT = 4100;
@@ -28,10 +28,10 @@ fs.mkdirSync(path.join(dataDir, "exports"), { recursive: true });
 
 // SaaS phase S12 — a seeded admin account for e2e/admin.spec.ts's full admin
 // journey. Role changes are deliberately never self-service or route-driven
-// (apps/api/scripts/promote-admin.ts is the only real path — see admin.routes.ts's
+// (backend/scripts/promote-admin.ts is the only real path — see admin.routes.ts's
 // header comment), so the isolated e2e store needs its one admin account written to
 // disk before the API server ever starts, rather than promoted afterward: the JSON
-// store loads once at process startup (apps/api/src/db/jsonStore.ts) and the
+// store loads once at process startup (backend/src/db/jsonStore.ts) and the
 // `webServer` below runs for the whole suite, so a promotion after boot would write
 // to a file the already-running process never re-reads. Credentials/hashing live in
 // ./e2e/admin-seed.ts (not here) so admin.spec.ts can import just the credentials
@@ -78,7 +78,7 @@ const apiEnv = {
   // touches Postgres (dev or test) regardless of what the real .env says.
   //
   // SaaS phase S5 — this spawned API process previously ran with no NODE_ENV set (so
-  // apps/api/src/config/env.ts defaulted it to "development"), meaning the real
+  // backend/src/config/env.ts defaulted it to "development"), meaning the real
   // DEF-009 auth rate limiter (10 req/15min per IP — rateLimiter.ts) was silently
   // active against this suite's single shared dev-server instance the whole time.
   // That was latent (harmless) while the suite made few registrations; adding more
@@ -123,7 +123,7 @@ export default defineConfig({
     },
     {
       command: "npx tsx src/server.ts",
-      cwd: path.join(__dirname, "apps/api"),
+      cwd: path.join(__dirname, "backend"),
       port: API_PORT,
       env: apiEnv,
       reuseExistingServer: false,
@@ -137,7 +137,7 @@ export default defineConfig({
     // defect changed — completely unexercised.
     {
       command: `npx vite build && npx vite preview --port ${WEB_PORT} --strictPort`,
-      cwd: path.join(__dirname, "apps/web"),
+      cwd: path.join(__dirname, "frontend"),
       port: WEB_PORT,
       env: { VITE_API_URL: `http://localhost:${API_PORT}` },
       reuseExistingServer: false,

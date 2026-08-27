@@ -9,7 +9,7 @@
  * ml/dataset/README.md. Their zips are downloaded to a scratch dir and never committed.
  *
  * Like export-yolo-dataset.ts this is a standalone build-time tool: it touches only the
- * filesystem, never apps/api's request path or services/cv-worker.
+ * filesystem, never backend's request path or cv-service.
  *
  * Usage:
  *   npm run import:external              # download (if needed), remap, write

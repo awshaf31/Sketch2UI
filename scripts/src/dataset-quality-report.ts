@@ -1,7 +1,7 @@
 /**
  * Dataset quality report — execution plan Phase 5 (§5.2, §5.4).
  *
- * Read-only. Never writes to ml/dataset/, apps/api/data/store.json, or anywhere else —
+ * Read-only. Never writes to ml/dataset/, backend/data/store.json, or anywhere else —
  * this is a diagnostic tool, not an export/mutation script (compare
  * export-yolo-dataset.ts, which does write). Reports directly against whatever is
  * currently on disk under ml/dataset/{images,labels}/{train,val,test}/, i.e. the FULL
