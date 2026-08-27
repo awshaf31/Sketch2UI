@@ -4,7 +4,7 @@ Turn a hand-drawn wireframe into working HTML/CSS. Upload a sketch, annotate the
 (or let the trained detector find them), and Sketch2UI reconstructs the layout into a UI
 tree, generates HTML/CSS, and renders a live preview you can export as a self-contained ZIP.
 
-[![CI](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml/badge.svg)](https://github.com/ahsafahmath/sketch2ui/actions/workflows/ci.yml)
+[![CI](https://github.com/awshaf31/sketch2ui/actions/workflows/ci.yml/badge.svg)](https://github.com/awshaf31/sketch2ui/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 ![Node](https://img.shields.io/badge/node-20%2B-brightgreen)
 ![Python](https://img.shields.io/badge/python-3.11%2B-blue)
@@ -124,7 +124,7 @@ separate Python venv.
 ### Install
 
 ```bash
-git clone https://github.com/ahsafahmath/sketch2ui.git
+git clone https://github.com/awshaf31/sketch2ui.git
 cd sketch2ui
 npm install
 cp .env.example .env
