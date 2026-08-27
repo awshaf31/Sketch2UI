@@ -1,10 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { AppHeader } from "../components/AppHeader.js";
-import { BrandMark } from "../components/BrandMark.js";
+import { AuthSplitLayout } from "../components/AuthSplitLayout.js";
 import { Button } from "../components/Button.js";
-import { Card } from "../components/Card.js";
 import { Field } from "../components/Field.js";
 import { Input } from "../components/Input.js";
 import { PasswordInput } from "../components/PasswordInput.js";
@@ -35,69 +33,49 @@ export default function Register() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-bg">
-      <AppHeader />
-      <div
-        className="flex flex-1 items-center justify-center px-lg py-3xl"
-        // Inline gradient because Tailwind's arbitrary-value syntax can't reference a
-        // theme color by name here — #e9eefc is exactly the `primary-subtle` token
-        // from tailwind.config.js, just spelled out since this is a raw CSS value.
-        style={{ backgroundImage: "radial-gradient(ellipse 60% 50% at 50% 0%, #e9eefc, transparent)" }}
-      >
-        <div className="w-full max-w-[400px]">
-          <Link
-            to="/"
-            className="mb-lg flex items-center justify-center gap-xs text-text-primary transition-colors duration-fast hover:text-primary"
-          >
-            <BrandMark className="h-7 w-7 text-primary" />
-            <span className="text-xl font-semibold">Sketch2UI</span>
-          </Link>
-          <Card>
-            <h1 className="text-lg font-semibold text-text-primary">Create an account</h1>
-            <form onSubmit={handleSubmit} className="mt-lg flex flex-col gap-md">
-              <Field label="Email" htmlFor="register-email">
-                <Input
-                  id="register-email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={submitting}
-                />
-              </Field>
-              <Field label="Password" htmlFor="register-password" helperText={`At least ${MIN_PASSWORD_LENGTH} characters.`}>
-                <PasswordInput
-                  id="register-password"
-                  autoComplete="new-password"
-                  required
-                  minLength={MIN_PASSWORD_LENGTH}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={submitting}
-                />
-              </Field>
-              {error && <p className="text-sm text-error">{error}</p>}
-              <Button
-                type="submit"
-                variant="primary"
-                size="lg"
-                disabled={!email || password.length < MIN_PASSWORD_LENGTH}
-                loading={submitting}
-                loadingLabel="Creating account…"
-              >
-                Create account
-              </Button>
-            </form>
-            <p className="mt-lg text-sm text-text-secondary">
-              Already have an account?{" "}
-              <Link to="/login" className="text-primary hover:underline">
-                Log in
-              </Link>
-            </p>
-          </Card>
-        </div>
-      </div>
-    </div>
+    <AuthSplitLayout>
+      <h1 className="text-lg font-semibold text-text-primary">Create an account</h1>
+      <form onSubmit={handleSubmit} className="mt-lg flex flex-col gap-md">
+        <Field label="Email" htmlFor="register-email">
+          <Input
+            id="register-email"
+            type="email"
+            autoComplete="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={submitting}
+          />
+        </Field>
+        <Field label="Password" htmlFor="register-password" helperText={`At least ${MIN_PASSWORD_LENGTH} characters.`}>
+          <PasswordInput
+            id="register-password"
+            autoComplete="new-password"
+            required
+            minLength={MIN_PASSWORD_LENGTH}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={submitting}
+          />
+        </Field>
+        {error && <p className="text-sm text-error">{error}</p>}
+        <Button
+          type="submit"
+          variant="primary"
+          size="lg"
+          disabled={!email || password.length < MIN_PASSWORD_LENGTH}
+          loading={submitting}
+          loadingLabel="Creating account…"
+        >
+          Create account
+        </Button>
+      </form>
+      <p className="mt-lg text-sm text-text-secondary">
+        Already have an account?{" "}
+        <Link to="/login" className="text-primary hover:underline">
+          Log in
+        </Link>
+      </p>
+    </AuthSplitLayout>
   );
 }
