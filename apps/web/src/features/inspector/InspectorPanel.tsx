@@ -8,6 +8,7 @@ import type {
 } from "@sketch2ui/shared-types";
 import { ALL_CLASSES, contentFieldsFor, validateGeometryOverride } from "@sketch2ui/shared-types";
 import { AccordionSection } from "./AccordionSection.js";
+import { GeometrySpatialEditor } from "./GeometrySpatialEditor.js";
 import { InspectorSectionFooter } from "./InspectorSectionFooter.js";
 import { Button } from "../../components/Button.js";
 import { EmptyState } from "../../components/EmptyState.js";
@@ -796,6 +797,13 @@ export default function InspectorPanel({
             Normalized [0..1] relative to the sketch. Leave a field blank to inherit the
             detection's stored value.
           </div>
+
+          <GeometrySpatialEditor
+            bbox={selected.bbox}
+            draft={geometryDraft}
+            onDraftChange={setGeometryDraft}
+            disabled={busy}
+          />
 
           <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
             <Field label="x" htmlFor="geo-x" layout="inline-80">
