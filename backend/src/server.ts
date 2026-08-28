@@ -24,6 +24,7 @@ import { contentOverridesRouter } from "./modules/content-overrides/content-over
 import { geometryOverridesRouter } from "./modules/geometry-overrides/geometry-overrides.routes.js";
 import { structureOverridesRouter } from "./modules/structure-overrides/structure-overrides.routes.js";
 import { correctionsRouter } from "./modules/corrections/corrections.routes.js";
+import { systemRouter } from "./modules/system/status.routes.js";
 
 const app = express();
 
@@ -66,6 +67,9 @@ app.use("/api/projects/:id/pages", pagesRouter);
 app.use("/api/projects/:id/exports", exportsRouter);
 app.use("/api/jobs", jobsRouter);
 app.use("/api/projects", projectsRouter);
+
+// Not project-scoped — the workspace footer's system-status bar.
+app.use("/api/system", systemRouter);
 
 app.use(errorHandler);
 

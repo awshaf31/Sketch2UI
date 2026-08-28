@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { HTMLAttributes } from "react";
 import { cn } from "./cn.js";
 
 // Panel. The structural shell for every workspace region (Layers, Canvas, Inspector, dock).
@@ -6,9 +6,7 @@ import { cn } from "./cn.js";
 // never shadow. Not applied to ProjectWorkspace's existing regions in this phase (Step 8) —
 // available for 2D onward.
 
-interface PanelProps {
-  children: ReactNode;
-  className?: string;
+interface PanelProps extends HTMLAttributes<HTMLDivElement> {
   bordered?: "all" | "right" | "left" | "top" | "bottom" | "none";
 }
 
@@ -21,6 +19,10 @@ const BORDER_CLASSES: Record<NonNullable<PanelProps["bordered"]>, string> = {
   none: "",
 };
 
-export function Panel({ children, className, bordered = "all" }: PanelProps) {
-  return <div className={cn("bg-surface shadow-none", BORDER_CLASSES[bordered], className)}>{children}</div>;
+export function Panel({ children, className, bordered = "all", ...rest }: PanelProps) {
+  return (
+    <div className={cn("bg-surface shadow-none", BORDER_CLASSES[bordered], className)} {...rest}>
+      {children}
+    </div>
+  );
 }

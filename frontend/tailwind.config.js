@@ -14,10 +14,19 @@ export default {
         // token names as before on purpose — every existing className string
         // (Button/Card/Badge/etc.) keeps working unchanged, it just now resolves to
         // the new palette everywhere in the app.
-        bg: "#FCFBFD",
+        // 2026-08-28 — lightened `bg` and `surface-sunken` per direct user feedback
+        // that the app read as too dark/gray overall, especially the workspace canvas
+        // background and everything else built on `surface-sunken` (status bar, header
+        // pills, sunken accordion sections). Both moved roughly halfway back toward
+        // pure white rather than all the way to it — `surface-sunken` still needs to
+        // read as a step behind `surface`'s white panels, or that depth cue disappears
+        // entirely. A lighter background can only IMPROVE contrast against the existing
+        // (unchanged) text colors below, never regress it, so no WCAG re-check was
+        // needed for this direction specifically.
+        bg: "#FDFCFE",
         surface: "#FFFFFF",
         "surface-raised": "#FFFFFF",
-        "surface-sunken": "#F5F3FA",
+        "surface-sunken": "#FAF9FE",
         border: "#E5E2EF",
         "border-strong": "#D2CDEA",
         "text-primary": "#081E55",
@@ -140,6 +149,27 @@ export default {
       transitionTimingFunction: {
         decelerate: "cubic-bezier(0.2, 0, 0, 1)",
         accelerate: "cubic-bezier(0.4, 0, 0.8, 1)",
+      },
+
+      // Detect's scan-line overlay (DetectionScanOverlay.tsx) — the one deliberate
+      // motion signature in the app, reusing the existing corner-bracket/viewfinder
+      // motif (BrandMark, canvas selection brackets, Fit/Full-view icons, CanvasLegend)
+      // for the one moment that's literally "the model looking at the sketch." Fades in
+      // at the top, sweeps to the bottom, fades out, then jumps back invisibly — no
+      // visible snap. `top`, not `translateY`, because a percentage transform is
+      // relative to the element's OWN box (meaningless for a 1px-tall line); `top`
+      // percentages are relative to the containing block, which is what "sweep the full
+      // height" actually needs.
+      keyframes: {
+        "scan-sweep": {
+          "0%": { top: "0%", opacity: "0" },
+          "6%": { opacity: "1" },
+          "94%": { opacity: "1" },
+          "100%": { top: "100%", opacity: "0" },
+        },
+      },
+      animation: {
+        "scan-sweep": "scan-sweep 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
       },
     },
   },

@@ -505,7 +505,17 @@ export const api = {
   listCorrections(projectId: string, pageId: string): Promise<CorrectionRecord[]> {
     return request(`/api/projects/${projectId}/pages/${pageId}/corrections`);
   },
+
+  // Workspace redesign — footer system-status bar. Not project-scoped.
+  systemStatus(): Promise<SystemStatus> {
+    return request("/api/system/status");
+  },
 };
+
+export interface SystemStatus {
+  cvWorker: "connected" | "degraded" | "unreachable";
+  modelVersionId: string | null;
+}
 
 export interface CodeVersionSummaryEntry {
   id: string;

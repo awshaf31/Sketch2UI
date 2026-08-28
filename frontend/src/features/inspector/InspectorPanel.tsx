@@ -16,6 +16,7 @@ import { Field } from "../../components/Field.js";
 import { Input, Textarea } from "../../components/Input.js";
 import { Select } from "../../components/Select.js";
 import { Tooltip } from "../../components/Tooltip.js";
+import { cn } from "../../components/cn.js";
 
 // Style + Content + Geometry inspector — plan §6.7 / §17.3. Field set matches the
 // plan's grouping exactly: Style is display/gap/padding/margin/font-size/alignment
@@ -257,6 +258,15 @@ interface StructureDraft {
 }
 
 const STRUCTURE_ROOT_SENTINEL = "__root__";
+
+// Single source of truth for the section names/order, since the empty state's preview
+// row below can't just be generated from the real AccordionSection blocks further down
+// (each is hand-written JSX with its own distinct fields, not a data-driven loop). Found
+// out of sync with the real order (Detection/Geometry/Style/Structure/Content) — this had
+// its own independent "Structure" before "Style" — while investigating an unrelated
+// report; keeping both reads off this one array is what actually prevents that drift
+// recurring, not just correcting the order once.
+const SECTION_TITLES = ["Detection", "Geometry", "Style", "Structure", "Content"] as const;
 
 function toStructureDraft(override: StructureOverride | null): StructureDraft {
   if (!override) return { parent: "", displayOrder: "" };
@@ -567,7 +577,7 @@ export default function InspectorPanel({
         </h2>
         <EmptyState title="Select a component" description="to inspect and edit" />
         <div className="mt-auto flex flex-wrap justify-center gap-sm border-t border-border px-md py-sm">
-          {["Detection", "Geometry", "Structure", "Style", "Content"].map((section) => (
+          {SECTION_TITLES.map((section) => (
             <span key={section} className="text-2xs uppercase tracking-wide text-text-muted">
               {section}
             </span>
@@ -604,15 +614,33 @@ export default function InspectorPanel({
           </div>
 
           {/* Confidence is READ-ONLY by design (§17.3): a user can correct the class,
-              never falsify the model's own score. Manual boxes are 1.0 by definition. */}
+              never falsify the model's own score. Manual boxes are 1.0 by definition.
+              Rendered as a real bar, not just a number — this is the one piece of the
+              Inspector that's literally a measurement, so it gets the one data-viz
+              treatment in an otherwise plain-text panel. The fill color matches the
+              same detection-model/primary distinction the canvas itself already draws
+              (model-sourced vs. manual), and the exact percentage stays in text right
+              beside it — the bar reinforces, it doesn't replace, the number. */}
           <div className="px-md pb-sm text-xs text-text-muted">
-            <div>
-              Model confidence:{" "}
-              <span className="font-mono font-medium text-text-secondary">
+            <div className="flex items-center gap-sm">
+              <span className="shrink-0">Model confidence</span>
+              <span
+                className="h-1.5 min-w-[48px] flex-1 overflow-hidden rounded-pill bg-surface-sunken"
+                aria-hidden="true"
+              >
+                <span
+                  className={cn(
+                    "block h-full rounded-pill transition-[width] duration-normal",
+                    selected.source === "model" ? "bg-detection-model" : "bg-primary"
+                  )}
+                  style={{ width: `${Math.round(selected.confidence * 100)}%` }}
+                />
+              </span>
+              <span className="shrink-0 font-mono font-medium text-text-secondary">
                 {Math.round(selected.confidence * 100)}%
               </span>
             </div>
-            <div>
+            <div className="mt-xs">
               Source: <span className="font-medium text-text-secondary">{selected.source}</span>
               {selected.modelVersionId && (
                 <>
@@ -657,127 +685,6 @@ export default function InspectorPanel({
                     disabled={busy || !classDirty}
                     aria-label="Apply Detection changes"
                     title="Save this class and regenerate the code"
-                  >
-                    Apply
-                  </Button>
-                </Tooltip>
-              </>
-            }
-          />
-        </AccordionSection>
-
-        {/* -------- Style section -------- */}
-        <AccordionSection
-          title="Style"
-          dot={styleDirty ? "dirty" : hasStyleOverride ? "applied" : null}
-        >
-          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
-            <Field label="display" htmlFor="style-display" layout="inline-80">
-              <Select
-                id="style-display"
-                value={styleDraft.display}
-                onChange={(e) => setStyleDraft({ ...styleDraft, display: e.target.value })}
-                disabled={busy}
-              >
-                {DISPLAY_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </Select>
-            </Field>
-
-            <Field label="gap" htmlFor="style-gap" layout="inline-80">
-              <Input
-                id="style-gap"
-                value={styleDraft.gap}
-                placeholder="e.g. 12px"
-                onChange={(e) => setStyleDraft({ ...styleDraft, gap: e.target.value })}
-                disabled={busy}
-                mono
-              />
-            </Field>
-
-            <Field label="padding" htmlFor="style-padding" layout="inline-80">
-              <Input
-                id="style-padding"
-                value={styleDraft.padding}
-                placeholder="e.g. 16px or 8px 12px"
-                onChange={(e) => setStyleDraft({ ...styleDraft, padding: e.target.value })}
-                disabled={busy}
-                mono
-              />
-            </Field>
-
-            <Field label="margin" htmlFor="style-margin" layout="inline-80">
-              <Input
-                id="style-margin"
-                value={styleDraft.margin}
-                placeholder="e.g. 0 0 16px 0"
-                onChange={(e) => setStyleDraft({ ...styleDraft, margin: e.target.value })}
-                disabled={busy}
-                mono
-              />
-            </Field>
-
-            <Field label="font-size" htmlFor="style-font-size" layout="inline-80">
-              <Input
-                id="style-font-size"
-                value={styleDraft["font-size"]}
-                placeholder="e.g. 16px"
-                onChange={(e) => setStyleDraft({ ...styleDraft, "font-size": e.target.value })}
-                disabled={busy}
-                mono
-              />
-            </Field>
-
-            <Field label="alignment" htmlFor="style-text-align" layout="inline-80">
-              <Select
-                id="style-text-align"
-                value={styleDraft["text-align"]}
-                onChange={(e) => setStyleDraft({ ...styleDraft, "text-align": e.target.value })}
-                disabled={busy}
-              >
-                {ALIGN_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </Select>
-            </Field>
-          </div>
-
-          {styleError && <ErrorBanner message={styleError} />}
-
-          <InspectorSectionFooter
-            label={
-              busy
-                ? "Working…"
-                : styleDirty
-                  ? "Unapplied"
-                  : hasStyleOverride
-                    ? "Applied"
-                    : "No style overrides"
-            }
-            tone={busy ? "muted" : styleDirty ? "warning" : hasStyleOverride ? "success" : "muted"}
-            actions={
-              <>
-                <Tooltip content="Clear this component's style overrides and revert to the auto-inferred layout">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={handleResetStyle}
-                    disabled={busy || !hasStyleOverride}
-                    aria-label="Reset Style override"
-                    title="Clear this component's style overrides and revert to the auto-inferred layout"
-                  >
-                    Reset
-                  </Button>
-                </Tooltip>
-                <Tooltip content="Save these style tweaks and regenerate the code">
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={handleApplyStyle}
-                    disabled={busy || !styleDirty}
-                    aria-label="Apply Style changes"
-                    title="Save these style tweaks and regenerate the code"
                   >
                     Apply
                   </Button>
@@ -901,6 +808,127 @@ export default function InspectorPanel({
                     disabled={busy || !geometryDirty}
                     aria-label="Apply Geometry changes"
                     title="Save this position/size and regenerate the code"
+                  >
+                    Apply
+                  </Button>
+                </Tooltip>
+              </>
+            }
+          />
+        </AccordionSection>
+
+        {/* -------- Style section -------- */}
+        <AccordionSection
+          title="Style"
+          dot={styleDirty ? "dirty" : hasStyleOverride ? "applied" : null}
+        >
+          <div className="grid grid-cols-[80px_1fr] items-center gap-x-2 gap-y-2 px-md pb-sm">
+            <Field label="display" htmlFor="style-display" layout="inline-80">
+              <Select
+                id="style-display"
+                value={styleDraft.display}
+                onChange={(e) => setStyleDraft({ ...styleDraft, display: e.target.value })}
+                disabled={busy}
+              >
+                {DISPLAY_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="gap" htmlFor="style-gap" layout="inline-80">
+              <Input
+                id="style-gap"
+                value={styleDraft.gap}
+                placeholder="e.g. 12px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, gap: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="padding" htmlFor="style-padding" layout="inline-80">
+              <Input
+                id="style-padding"
+                value={styleDraft.padding}
+                placeholder="e.g. 16px or 8px 12px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, padding: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="margin" htmlFor="style-margin" layout="inline-80">
+              <Input
+                id="style-margin"
+                value={styleDraft.margin}
+                placeholder="e.g. 0 0 16px 0"
+                onChange={(e) => setStyleDraft({ ...styleDraft, margin: e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="font-size" htmlFor="style-font-size" layout="inline-80">
+              <Input
+                id="style-font-size"
+                value={styleDraft["font-size"]}
+                placeholder="e.g. 16px"
+                onChange={(e) => setStyleDraft({ ...styleDraft, "font-size": e.target.value })}
+                disabled={busy}
+                mono
+              />
+            </Field>
+
+            <Field label="alignment" htmlFor="style-text-align" layout="inline-80">
+              <Select
+                id="style-text-align"
+                value={styleDraft["text-align"]}
+                onChange={(e) => setStyleDraft({ ...styleDraft, "text-align": e.target.value })}
+                disabled={busy}
+              >
+                {ALIGN_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          {styleError && <ErrorBanner message={styleError} />}
+
+          <InspectorSectionFooter
+            label={
+              busy
+                ? "Working…"
+                : styleDirty
+                  ? "Unapplied"
+                  : hasStyleOverride
+                    ? "Applied"
+                    : "No style overrides"
+            }
+            tone={busy ? "muted" : styleDirty ? "warning" : hasStyleOverride ? "success" : "muted"}
+            actions={
+              <>
+                <Tooltip content="Clear this component's style overrides and revert to the auto-inferred layout">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleResetStyle}
+                    disabled={busy || !hasStyleOverride}
+                    aria-label="Reset Style override"
+                    title="Clear this component's style overrides and revert to the auto-inferred layout"
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Tooltip content="Save these style tweaks and regenerate the code">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyStyle}
+                    disabled={busy || !styleDirty}
+                    aria-label="Apply Style changes"
+                    title="Save these style tweaks and regenerate the code"
                   >
                     Apply
                   </Button>

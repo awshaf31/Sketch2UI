@@ -4,6 +4,7 @@ import AnnotationCanvas from "./AnnotationCanvas.js";
 import ClassPicker from "./ClassPicker.js";
 import { CanvasLegend } from "./CanvasLegend.js";
 import { CanvasToolbar } from "./CanvasToolbar.js";
+import { CanvasEditToolbar } from "./CanvasEditToolbar.js";
 
 // The "Canvas panel (center)" region — extracted from ProjectWorkspace.tsx's inline canvas
 // column, now owning zoom/pan/fit state locally (a pure view concern with no server
@@ -45,6 +46,12 @@ interface CanvasPanelProps {
   pageBoundary?: PagePolygon | null;
   boundaryEditable?: boolean;
   onBoundaryChange?: (polygon: PagePolygon) => void;
+  canUndo: boolean;
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
+  /** Shows the Detect scan-line overlay on the sketch while a job is running. */
+  detecting?: boolean;
 }
 
 export function CanvasPanel({
@@ -61,9 +68,17 @@ export function CanvasPanel({
   pageBoundary,
   boundaryEditable,
   onBoundaryChange,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
+  detecting = false,
 }: CanvasPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
+  // "draw" preserves today's always-on drag-to-create by default — see
+  // AnnotationCanvas.tsx's own comment on the prop this feeds.
+  const [mode, setMode] = useState<"select" | "draw">("draw");
   // Measured scroll-container size, used to compute centering padding below. Kept in
   // state (not read directly at render time) because the container's size can change
   // for reasons that have nothing to do with zoom — a tablet drawer opening, the dock
@@ -157,6 +172,17 @@ export function CanvasPanel({
     <>
       <div className="flex items-center justify-between gap-sm border-b border-border px-md py-sm">
         <div className="flex items-center gap-sm">
+          <CanvasEditToolbar
+            mode={mode}
+            onModeChange={setMode}
+            canDelete={!!selectedId}
+            onDelete={onDeleteSelected}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={onUndo}
+            onRedo={onRedo}
+          />
+          <span aria-hidden="true" className="h-4 w-px shrink-0 bg-border" />
           <span className="text-xs text-text-muted">New box class:</span>
           <ClassPicker value={activeClass} onChange={onActiveClassChange} />
         </div>
@@ -196,6 +222,8 @@ export function CanvasPanel({
               pageBoundary={pageBoundary}
               boundaryEditable={boundaryEditable}
               onBoundaryChange={onBoundaryChange}
+              mode={mode}
+              detecting={detecting}
             />
           </div>
         </div>

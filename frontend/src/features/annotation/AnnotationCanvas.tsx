@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { BBox, Detection, PagePolygon, ProjectAsset } from "@sketch2ui/shared-types";
 import { isContainerClass } from "@sketch2ui/shared-types";
 import PageBoundaryOverlay from "../detection/PageBoundaryOverlay.js";
+import { DetectionScanOverlay } from "./DetectionScanOverlay.js";
 import { cn } from "../../components/cn.js";
 
 const MIN_BOX_PX = 6;
@@ -80,6 +81,12 @@ interface AnnotationCanvasProps {
   pageBoundary?: PagePolygon | null;
   boundaryEditable?: boolean;
   onBoundaryChange?: (polygon: PagePolygon) => void;
+  /** "draw" (default) preserves today's always-on drag-to-create. "select" suppresses
+   * the empty-space create-drag; clicking a box still selects it either way. */
+  mode?: "select" | "draw";
+  /** Shows the scan-line signature overlay (DetectionScanOverlay) while a Detect job
+   * is running. Purely presentational — doesn't gate any interaction below. */
+  detecting?: boolean;
 }
 
 function toPixels(bbox: BBox, asset: ProjectAsset) {
@@ -165,6 +172,13 @@ export default function AnnotationCanvas({
   pageBoundary,
   boundaryEditable = false,
   onBoundaryChange,
+  // Redesign gap-closing pass — explicit Select/Draw Box toolbar. Defaults to "draw" so
+  // every existing drag-to-create behavior is UNCHANGED for anyone who never touches
+  // the new toolbar; switching to "select" is an opt-in that suppresses accidental
+  // create-drags. Clicking an existing box to select/deselect works in either mode —
+  // only the empty-space create-drag is gated.
+  mode = "draw",
+  detecting = false,
 }: AnnotationCanvasProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -338,14 +352,16 @@ export default function AnnotationCanvas({
       <svg
         ref={svgRef}
         viewBox={`0 0 ${asset.width} ${asset.height}`}
-        className="absolute inset-0 h-full w-full cursor-crosshair"
+        className={cn("absolute inset-0 h-full w-full", mode === "draw" ? "cursor-crosshair" : "cursor-default")}
         role="application"
         aria-label={`Sketch annotation canvas, ${detections.length} detection${detections.length === 1 ? "" : "s"}. Tab to a detection to focus it, Enter to select, arrow keys to nudge the selected one.`}
         onMouseDown={(e) => {
           if (e.target !== svgRef.current) return;
           const point = getImagePoint(e);
           onSelect(null);
-          setDrag({ kind: "draw", startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+          if (mode === "draw") {
+            setDrag({ kind: "draw", startX: point.x, startY: point.y, currentX: point.x, currentY: point.y });
+          }
         }}
       >
         {renderOrder.map((detection) => {
@@ -520,6 +536,7 @@ export default function AnnotationCanvas({
       <p className="pointer-events-none absolute bottom-2 left-2 rounded-sm bg-text-primary/70 px-2 py-1 font-mono text-2xs text-text-inverse">
         Drawing as: <strong className="font-semibold">{activeClass}</strong> · drag to draw · click box to select · Delete to remove
       </p>
+      {detecting && <DetectionScanOverlay />}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import type {
   CodeVersion,
   ContentOverride,
   CorrectionRecord,
+  Detection,
   DetectionStatus,
   GeometryOverride,
   Page,
@@ -30,12 +31,16 @@ import CodePanel from "../features/code/CodePanel.js";
 import PreviewPane from "../features/preview/PreviewPane.js";
 import InspectorPanel from "../features/inspector/InspectorPanel.js";
 import { useDetectionJob } from "../features/detection/useDetectionJob.js";
+import { useDetectionHistory } from "../features/detection/useDetectionHistory.js";
 import { buildTreeAndCode } from "../utils/tree.js";
 import { WorkspaceToolbar } from "../features/workspace/WorkspaceToolbar.js";
 import { WorkspaceBody } from "../features/workspace/WorkspaceBody.js";
 import { WorkspaceNavigator } from "../features/workspace/WorkspaceNavigator.js";
 import { PagesPanel } from "../features/workspace/PagesPanel.js";
 import { AssetsPanel } from "../features/workspace/AssetsPanel.js";
+import { useSystemStatus } from "../features/workspace/useSystemStatus.js";
+import { SystemStatusBar } from "../features/workspace/SystemStatusBar.js";
+import { VersionCompareDialog } from "../features/workspace/VersionCompareDialog.js";
 // Retained only for the narrow pre-asset window — see the render-site comment above
 // its one remaining usage below.
 import { PagesStrip } from "../features/workspace/PagesStrip.js";
@@ -49,6 +54,7 @@ import {
 import { useToast } from "../components/ToastStack.js";
 import { cn } from "../components/cn.js";
 import { IconButton } from "../components/IconButton.js";
+import { Tooltip } from "../components/Tooltip.js";
 import { useMediaQuery } from "../components/useMediaQuery.js";
 import { WorkspaceUnavailable } from "./WorkspaceUnavailable.js";
 
@@ -85,6 +91,21 @@ function DockChevronIcon({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+// New feature — "Preview full view". Four corner arrows pointing outward (expand) or
+// inward (already full view, click to exit) — the standard fullscreen-toggle glyph, same
+// stroke/viewBox convention as every other inline icon in this file.
+function FullViewIcon({ active }: { active: boolean }) {
+  return active ? (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M6 2v2.5A1.5 1.5 0 0 1 4.5 6H2M10 2v2.5A1.5 1.5 0 0 0 11.5 6H14M6 14v-2.5A1.5 1.5 0 0 0 4.5 10H2M10 14v-2.5a1.5 1.5 0 0 1 1.5-1.5H14" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+      <path d="M2 5.5V3.5A1.5 1.5 0 0 1 3.5 2h2M10.5 2h2A1.5 1.5 0 0 1 14 3.5v2M14 10.5v2a1.5 1.5 0 0 1-1.5 1.5h-2M5.5 14h-2A1.5 1.5 0 0 1 2 12.5v-2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function ProjectWorkspace() {
   const { id } = useParams<{ id: string }>();
   const { showToast } = useToast();
@@ -103,6 +124,14 @@ export default function ProjectWorkspace() {
   // reclaim that space for the canvas during Detect/Correct, where Preview/Code isn't
   // needed yet.
   const [dockCollapsed, setDockCollapsed] = useState(false);
+  // New feature — "Preview full view": temporarily replaces the whole 4-region
+  // WorkspaceBody with just the Preview pane, full-bleed, so the generated page isn't
+  // confined to the dock's own (even expanded) height. The dock's Preview/Code tab
+  // strip (the only thing that can set `rightTab`) isn't even rendered while this is
+  // true — WorkspaceBody itself is swapped out below — so `rightTab` can't drift away
+  // from "preview" while full view is active; exiting (the button here, or Escape,
+  // wired further down) is the only way out, by design.
+  const [previewFullView, setPreviewFullView] = useState(false);
   const [saving, setSaving] = useState(false);
   // Section 10: the page boundary for the current asset, plus UI toggles.
   const [boundary, setBoundary] = useState<PageBoundary | null>(null);
@@ -153,6 +182,12 @@ export default function ProjectWorkspace() {
   // This is a plain local list fed by the same listAssets()/uploadAsset() calls, kept in
   // sync alongside `asset` rather than replacing it.
   const [assetList, setAssetList] = useState<ProjectAsset[]>([]);
+  // Real-save-timestamp for the footer's "Autosaved Xs ago" — bumped at the end of
+  // every existing persisted-save path (box create/move/delete/class-change, every
+  // Inspector Apply, Save version, Save edit). Not a new autosave mechanism — every one
+  // of those paths already persists immediately today, this just timestamps it.
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   const {
     currentPageId,
@@ -169,6 +204,69 @@ export default function ProjectWorkspace() {
     select,
     setActiveClass,
   } = useProjectStore();
+
+  // Canvas undo/redo — session-only, cleared on page/asset switch below. Wired to the
+  // RAW mutation functions (performCreate/performDelete/handleUpdate/handleChangeClass,
+  // defined further down as hoisted function declarations) so replaying a step never
+  // records a new history entry on top of itself — only the "WithHistory"-suffixed
+  // wrappers used as the actual canvas/inspector callbacks do that.
+  const history = useDetectionHistory({
+    setBBox: (detId, bbox) => handleUpdate(detId, bbox),
+    setClassName: (detId, className) => handleChangeClass(detId, className),
+    remove: (detId) => performDelete(detId),
+    add: (detection) => performCreate(detection.bbox, detection.className),
+  });
+
+  useEffect(() => {
+    history.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPageId, asset?.id]);
+
+  useEffect(() => {
+    function handleUndoRedoKeydown(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return;
+      // Never hijack undo/redo away from a text field or Monaco's own editor stack —
+      // the project-rename input and the Code panel both need their native Cmd+Z.
+      // Checked via document.activeElement rather than e.target: live-verified in the
+      // Browser pane that a dispatched Ctrl+Z can reach this window listener with
+      // `target` NOT set to the actually-focused input (confirmed by focusing the
+      // rename input and watching a canvas undo fire anyway) — activeElement is the
+      // direct, unambiguous answer to "is the user currently typing somewhere" and
+      // isn't sensitive to how a given key event got dispatched/targeted.
+      const active = document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.isContentEditable ||
+          active.closest(".monaco-editor"))
+      ) {
+        return;
+      }
+      e.preventDefault();
+      if (e.shiftKey) {
+        void history.redo();
+      } else {
+        void history.undo();
+      }
+    }
+    window.addEventListener("keydown", handleUndoRedoKeydown);
+    return () => window.removeEventListener("keydown", handleUndoRedoKeydown);
+  }, [history]);
+
+  // Escape exits Preview full view — same convention Dialog.tsx already uses for its
+  // own overlay. Harmless if a Dialog also happens to be open at the same time (both
+  // just react to the same keypress independently); full view has no overlay of its
+  // own to conflict with a Dialog's focus trap.
+  useEffect(() => {
+    if (!previewFullView) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === "Escape") setPreviewFullView(false);
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [previewFullView]);
 
   // `currentPageId`/`asset`/`detections`/`selectedId` live in a MODULE-LEVEL Zustand
   // store (projectStore.ts) — unlike this component's own `useState` fields, they do
@@ -240,6 +338,10 @@ export default function ProjectWorkspace() {
     if (job.pageBoundary) setBoundary(job.pageBoundary);
     await refreshDetections();
   });
+
+  // Backs the header's "AI Model" pill and the footer's "AI Service"/"CV Worker"
+  // segments — one shared poll (see useSystemStatus.ts) so both can never disagree.
+  const systemStatus = useSystemStatus();
 
   // Refresh the version list and pull the full content of whichever version is now
   // active. Called after any save (generated or edited) and after an explicit activate.
@@ -468,26 +570,46 @@ export default function ProjectWorkspace() {
     }
   }
 
-  async function handleCreate(bbox: BBox) {
-    if (!id || !currentPageId || !asset) return;
+  /**
+   * Raw create — explicit className rather than reading `activeClass`, so undo/redo
+   * (useDetectionHistory's `add` callback) can recreate a detection with its ORIGINAL
+   * class regardless of whatever class is currently active in the picker. `handleCreate`
+   * below is the thin wrapper every existing call site actually uses.
+   */
+  async function performCreate(bbox: BBox, className: string): Promise<Detection | null> {
+    if (!id || !currentPageId || !asset) return null;
     try {
       const detection = await api.createDetection(id, currentPageId, {
-        className: activeClass,
+        className,
         bbox,
         sourceAssetId: asset.id,
       });
       addDetection(detection);
       void refreshCorrections();
+      setLastSavedAt(new Date());
+      return detection;
     } catch (e) {
       // The box the user just drew has no local representation until this resolves
       // (unlike update/delete there's nothing optimistic to roll back) — surface why
       // it didn't appear rather than letting it silently vanish.
       window.alert(`Could not create the box: ${(e as Error).message}`);
+      return null;
     }
   }
 
-  async function handleUpdate(detectionId: string, bbox: BBox) {
-    if (!id || !currentPageId) return;
+  async function handleCreate(bbox: BBox) {
+    const created = await performCreate(bbox, activeClass);
+    if (created) history.recordCreate(created);
+  }
+
+  /**
+   * Raw move/resize — no history recording of its own. `handleUpdateWithHistory` below
+   * (the canvas's actual `onUpdate` prop) wraps this with a recorded undo/redo entry;
+   * undo/redo itself (useDetectionHistory's `setBBox` callback) calls this directly so
+   * replaying a step never records a NEW step on top of itself.
+   */
+  async function handleUpdate(detectionId: string, bbox: BBox): Promise<boolean> {
+    if (!id || !currentPageId) return false;
     const previous = detections.find((d) => d.id === detectionId);
     updateDetection(detectionId, { bbox }); // optimistic, keeps the drag responsive
     // Adopt the server's record: correcting a model detection flips it to source
@@ -501,10 +623,11 @@ export default function ProjectWorkspace() {
       // what the server actually has, and tell the user why the drag didn't stick.
       if (previous) updateDetection(detectionId, previous);
       window.alert(`Could not save the change: ${(e as Error).message}`);
-      return;
+      return false;
     }
     updateDetection(detectionId, saved);
     void refreshCorrections();
+    setLastSavedAt(new Date());
     // A canvas drag is the user committing a concrete new geometry directly to the
     // detection. Any prior inspector-authored geometry override would then win over
     // the drag on next render — visually the drag would silently revert. Clear the
@@ -522,23 +645,42 @@ export default function ProjectWorkspace() {
         // Left in place: not worth surfacing — detection.bbox already reflects the drag.
       }
     }
+    return true;
   }
 
-  async function handleDeleteSelected() {
-    if (!id || !currentPageId || !selectedId) return;
-    const target = selectedId;
-    const previous = detections.find((d) => d.id === target);
-    removeDetection(target);
+  async function handleUpdateWithHistory(detectionId: string, bbox: BBox) {
+    const before = detections.find((d) => d.id === detectionId)?.bbox;
+    const ok = await handleUpdate(detectionId, bbox);
+    if (ok && before) history.recordBBoxChange(detectionId, before, bbox);
+  }
+
+  /** Raw delete by explicit id — `handleDeleteSelected` below (the canvas/toolbar's
+   * actual entry point) wraps this with a recorded undo/redo entry; undo/redo itself
+   * (useDetectionHistory's `remove` callback) calls this directly. */
+  async function performDelete(detectionId: string): Promise<boolean> {
+    if (!id || !currentPageId) return false;
+    const previous = detections.find((d) => d.id === detectionId);
+    removeDetection(detectionId);
     try {
-      await api.deleteDetection(id, currentPageId, target);
+      await api.deleteDetection(id, currentPageId, detectionId);
       void refreshCorrections();
+      setLastSavedAt(new Date());
+      return true;
     } catch (e) {
       // Bring the box back rather than leaving the UI showing it gone when the
       // server still has it — a reload would otherwise "resurrect" it with no
       // explanation of why it came back.
       if (previous) addDetection(previous);
       window.alert(`Could not delete the box: ${(e as Error).message}`);
+      return false;
     }
+  }
+
+  async function handleDeleteSelected() {
+    if (!selectedId) return;
+    const snapshot = detections.find((d) => d.id === selectedId);
+    const ok = await performDelete(selectedId);
+    if (ok && snapshot) history.recordDelete(snapshot);
   }
 
   /**
@@ -551,8 +693,8 @@ export default function ProjectWorkspace() {
    * same behavior, not a new one. Regenerates code afterward so preview/export
    * follow the same Apply pattern as the other Inspector groups.
    */
-  async function handleChangeClass(detectionId: string, className: string) {
-    if (!id || !currentPageId) return;
+  async function handleChangeClass(detectionId: string, className: string): Promise<boolean> {
+    if (!id || !currentPageId) return false;
     setApplyingDetection(true);
     try {
       const saved = await api.updateDetection(id, currentPageId, detectionId, { className });
@@ -560,9 +702,17 @@ export default function ProjectWorkspace() {
       await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
+      setLastSavedAt(new Date());
+      return true;
     } finally {
       setApplyingDetection(false);
     }
+  }
+
+  async function handleChangeClassWithHistory(detectionId: string, className: string) {
+    const before = detections.find((d) => d.id === detectionId)?.className;
+    const ok = await handleChangeClass(detectionId, className);
+    if (ok && before !== undefined) history.recordClassChange(detectionId, before, className);
   }
 
   /**
@@ -587,6 +737,7 @@ export default function ProjectWorkspace() {
     if (id && currentPageId && asset) {
       void api
         .savePageBoundary(id, currentPageId, asset.id, next)
+        .then(() => setLastSavedAt(new Date()))
         .catch((e) =>
           window.alert(`Boundary change is not saved and won't survive a reload: ${(e as Error).message}`)
         );
@@ -633,6 +784,7 @@ export default function ProjectWorkspace() {
       // preview would still show the previous active version and the new row would only
       // appear on a page reload.
       await refreshVersions();
+      setLastSavedAt(new Date());
     } catch (e) {
       window.alert(`Could not save version: ${(e as Error).message}`);
     } finally {
@@ -649,6 +801,7 @@ export default function ProjectWorkspace() {
       // the new version, so refreshVersions makes it the panels' new source of truth.
       await api.saveEditedCode(id, currentPageId, { ...input, basedOnVersionId: activeVersion?.id });
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setSavingEdit(false);
     }
@@ -684,6 +837,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingStyle(false);
     }
@@ -701,6 +855,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingStyle(false);
     }
@@ -725,6 +880,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingContent(false);
     }
@@ -742,6 +898,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingContent(false);
     }
@@ -771,6 +928,7 @@ export default function ProjectWorkspace() {
       await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingGeometry(false);
     }
@@ -788,6 +946,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingGeometry(false);
     }
@@ -817,6 +976,7 @@ export default function ProjectWorkspace() {
       await api.generateCode(id, currentPageId);
       await refreshVersions();
       void refreshCorrections();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingStructure(false);
     }
@@ -834,6 +994,7 @@ export default function ProjectWorkspace() {
       });
       await api.generateCode(id, currentPageId);
       await refreshVersions();
+      setLastSavedAt(new Date());
     } finally {
       setApplyingStructure(false);
     }
@@ -886,6 +1047,13 @@ export default function ProjectWorkspace() {
     () => (selectedId ? corrections.filter((c) => c.detectionId === selectedId) : []),
     [selectedId, corrections]
   );
+
+  // Shared "is a persisted mutation in flight" union — was two separately inlined
+  // copies of the same five flags (InspectorPanel's `busy`, PreviewPane's `loading`);
+  // the header's new save-state pill needs the same signal, so this is now the one
+  // place it's computed.
+  const applyingAny =
+    applyingStyle || applyingContent || applyingGeometry || applyingStructure || applyingDetection;
 
   if (loading) {
     return <p className="p-6 text-sm text-text-muted">Loading project…</p>;
@@ -940,6 +1108,11 @@ export default function ProjectWorkspace() {
         onExport={handleExport}
         saving={saving}
         onSaveVersion={handleSaveVersion}
+        versionLabel={activeVersionEntry ? `v${activeVersionEntry.versionNumber}` : null}
+        saveState={applyingAny || saving || savingEdit ? "saving" : "saved"}
+        aiModel={systemStatus.status?.modelVersionId}
+        detectionState={detectJob.error ? "error" : detectJob.running ? "active" : "idle"}
+        pageDetectionConfidence={boundary?.confidence ?? null}
       />
 
       {/* Pages moved into the
@@ -1002,6 +1175,37 @@ export default function ProjectWorkspace() {
         <div className="flex-1 p-xl">
           <UploadDropzone onFile={handleUpload} uploading={uploading} error={uploadError} />
         </div>
+      ) : previewFullView ? (
+        // "Preview full view" — the whole 4-region WorkspaceBody (Navigator/Canvas/
+        // Inspector/dock) is swapped out for just this, so the generated page gets the
+        // full workspace height instead of being capped by the dock's own (even
+        // expanded/resized) share of it. Reuses the exact same html/css/resolveAssetPath/
+        // loading values the dock's own PreviewPane already renders with — this is a
+        // different LOCATION for the same PreviewPane, not a second code path.
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex shrink-0 items-center justify-between border-b border-border bg-surface-sunken px-md py-xs">
+            <span className="text-2xs font-medium uppercase tracking-wide text-text-muted">
+              Preview · full view
+            </span>
+            <Tooltip content="Exit full view (Esc)">
+              <IconButton
+                aria-label="Exit preview full view"
+                size="sm"
+                active
+                onClick={() => setPreviewFullView(false)}
+                icon={<FullViewIcon active />}
+              />
+            </Tooltip>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <PreviewPane
+              html={html}
+              css={css}
+              resolveAssetPath={resolveAssetPath}
+              loading={applyingAny || saving || savingEdit}
+            />
+          </div>
+        </div>
       ) : (
         <WorkspaceBody
           isTablet={isTablet}
@@ -1053,11 +1257,16 @@ export default function ProjectWorkspace() {
               onActiveClassChange={setActiveClass}
               onSelect={select}
               onCreate={handleCreate}
-              onUpdate={handleUpdate}
+              onUpdate={handleUpdateWithHistory}
               onDeleteSelected={handleDeleteSelected}
               pageBoundary={boundary?.polygon ?? null}
               boundaryEditable={editingBoundary}
               onBoundaryChange={handleBoundaryChange}
+              canUndo={history.canUndo}
+              canRedo={history.canRedo}
+              onUndo={history.undo}
+              onRedo={history.redo}
+              detecting={detectJob.running}
             />
           }
           inspector={
@@ -1084,15 +1293,9 @@ export default function ProjectWorkspace() {
               onResetGeometry={handleResetGeometry}
               onApplyStructure={handleApplyStructure}
               onResetStructure={handleResetStructure}
-              onChangeClass={handleChangeClass}
+              onChangeClass={handleChangeClassWithHistory}
               history={selectedHistory}
-              busy={
-                applyingStyle ||
-                applyingContent ||
-                applyingGeometry ||
-                applyingStructure ||
-                applyingDetection
-              }
+              busy={applyingAny}
             />
           }
           dock={
@@ -1133,7 +1336,23 @@ export default function ProjectWorkspace() {
                       {v.isActive ? " · active" : ""}
                     </button>
                   ))}
+                  <button
+                    onClick={() => setCompareOpen(true)}
+                    disabled={versionList.length < 2}
+                    className="ml-auto rounded-sm px-xs py-2xs text-2xs text-text-secondary underline-offset-2 transition-colors duration-fast hover:bg-surface hover:text-text-primary disabled:pointer-events-none disabled:opacity-50"
+                  >
+                    Compare versions
+                  </button>
                 </div>
+              )}
+              {id && currentPageId && (
+                <VersionCompareDialog
+                  open={compareOpen}
+                  onDismiss={() => setCompareOpen(false)}
+                  projectId={id}
+                  pageId={currentPageId}
+                  versions={versionList}
+                />
               )}
               <div className="flex items-center border-b border-border bg-surface-sunken">
                 {(["preview", "code"] as const).map((t) => (
@@ -1150,10 +1369,22 @@ export default function ProjectWorkspace() {
                     {t}
                   </button>
                 ))}
+                {rightTab === "preview" && (
+                  <Tooltip content={previewFullView ? "Exit full view" : "Expand preview to full view"}>
+                    <IconButton
+                      aria-label={previewFullView ? "Exit preview full view" : "Expand preview to full view"}
+                      size="sm"
+                      className="ml-auto"
+                      active={previewFullView}
+                      onClick={() => setPreviewFullView((v) => !v)}
+                      icon={<FullViewIcon active={previewFullView} />}
+                    />
+                  </Tooltip>
+                )}
                 <IconButton
                   aria-label={dockCollapsed ? "Expand preview/code panel" : "Collapse preview/code panel"}
                   size="sm"
-                  className="ml-auto mr-xs"
+                  className={cn(rightTab === "preview" ? "mr-xs" : "ml-auto mr-xs")}
                   onClick={() => setDockCollapsed((c) => !c)}
                   icon={<DockChevronIcon collapsed={dockCollapsed} />}
                 />
@@ -1166,15 +1397,7 @@ export default function ProjectWorkspace() {
                     resolveAssetPath={resolveAssetPath}
                     // Reuses the same busy signals InspectorPanel's `busy` prop already
                     // combines, plus the two code-save flags — no new state (Phase 2I).
-                    loading={
-                      applyingStyle ||
-                      applyingContent ||
-                      applyingGeometry ||
-                      applyingStructure ||
-                      applyingDetection ||
-                      saving ||
-                      savingEdit
-                    }
+                    loading={applyingAny || saving || savingEdit}
                   />
                 ) : (
                   <CodePanel
@@ -1190,6 +1413,12 @@ export default function ProjectWorkspace() {
           }
         />
       )}
+
+      <SystemStatusBar
+        cvWorker={systemStatus.status?.cvWorker ?? null}
+        apiReachable={systemStatus.apiReachable}
+        lastSavedAt={lastSavedAt}
+      />
     </div>
   );
 }
